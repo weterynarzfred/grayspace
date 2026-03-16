@@ -61,23 +61,24 @@
   text-align: left;
   @include interactive-tile;
 
+  &:hover {
+    background: $bg-surface-hover;
+    border-color: $border-hover;
+  }
+
   &:focus-visible {
     @include focus-ring;
   }
 }
 
+.entryName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .selected {
   border-color: $accent;
   background: $bg-selected;
-}
-
-.file {
-  cursor: default;
-
-  &:hover {
-    background: $bg-surface;
-    border-color: $border-default;
-  }
 }
 
 .entryPath {

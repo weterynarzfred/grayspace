@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 #[derive(Serialize)]
 struct DriveInfo {
@@ -79,13 +80,47 @@ fn parent_path(path: &str) -> Option<String> {
         .map(|parent| parent.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+fn open_path(path: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .args(["/C", "start", "", path])
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+
+    #[allow(unreachable_code)]
+    Err("Opening paths is not supported on this platform.".to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             list_drives,
             list_directory,
-            parent_path
+            parent_path,
+            open_path
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

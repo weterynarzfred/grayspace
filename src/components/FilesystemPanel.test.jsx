@@ -29,6 +29,10 @@ describe("FilesystemPanel", () => {
         return "C:\\";
       }
 
+      if (command === "open_path" && payload?.path === "C:\\notes.txt") {
+        return null;
+      }
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
   });
@@ -47,7 +51,7 @@ describe("FilesystemPanel", () => {
     render(<FilesystemPanel />);
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
-    fireEvent.click(driveButton);
+    fireEvent.doubleClick(driveButton);
 
     expect(await screen.findByText("Files")).toBeInTheDocument();
     expect(await screen.findByText("Users")).toBeInTheDocument();
@@ -59,23 +63,77 @@ describe("FilesystemPanel", () => {
     render(<FilesystemPanel />);
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
-    fireEvent.click(driveButton);
+    fireEvent.doubleClick(driveButton);
 
     const usersButton = await screen.findByRole("button", { name: /Users/i });
-    fireEvent.click(usersButton);
+    fireEvent.doubleClick(usersButton);
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Users/i })).toBeInTheDocument();
     });
 
-    const pathNav = screen.getByRole("navigation", { name: "Current path" });
-    const rootCrumb = Array.from(pathNav.querySelectorAll("button")).find(
-      (button) => button.textContent?.trim() === "C:\\",
-    );
-
-    expect(rootCrumb).toBeDefined();
+    const rootCrumb = screen.getByRole("button", { name: "Drives" });
     fireEvent.click(rootCrumb);
 
+    expect(await screen.findByText("Select a drive")).toBeInTheDocument();
+    expect(screen.getByText("C:")).toBeInTheDocument();
+  });
+
+  it("single click selects but does not open a drive", async () => {
+    render(<FilesystemPanel />);
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.click(driveButton);
+
+    expect(screen.getByText("Drives")).toBeInTheDocument();
+    expect(screen.getByText("Select a drive")).toBeInTheDocument();
+  });
+
+  it("opens a file on double click", async () => {
+    render(<FilesystemPanel />);
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const fileButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.doubleClick(fileButton);
+
+    expect(invoke).toHaveBeenCalledWith("open_path", { path: "C:\\notes.txt" });
+  });
+
+  it("navigates up only on double click for .. entry", async () => {
+    render(<FilesystemPanel />);
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.doubleClick(usersButton);
+
+    expect(await screen.findByRole("button", { name: /Users/i })).toBeInTheDocument();
+
+    const upButton = screen.getByRole("button", { name: /\.\.\s*Up/i });
+    fireEvent.click(upButton);
+
+    expect(screen.queryByText("notes.txt")).not.toBeInTheDocument();
+
+    fireEvent.doubleClick(upButton);
+
     expect(await screen.findByText("notes.txt")).toBeInTheDocument();
+  });
+
+  it("uses breadcrumb root to return to drive selection", async () => {
+    render(<FilesystemPanel />);
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    expect(await screen.findByText("Files")).toBeInTheDocument();
+
+    const drivesCrumb = await screen.findByRole("button", { name: "Drives" });
+    fireEvent.click(drivesCrumb);
+
+    expect(await screen.findByText("Select a drive")).toBeInTheDocument();
+    expect(screen.getByText("Drives")).toBeInTheDocument();
   });
 });

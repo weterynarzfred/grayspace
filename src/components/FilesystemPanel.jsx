@@ -3,9 +3,11 @@ import { useEffect, useState } from "react";
 import styles from "./FilesystemPanel.module.scss";
 
 function FilesystemPanel() {
+  const upEntrySelectionId = "__up__";
   const [drives, setDrives] = useState([]);
   const [currentDrive, setCurrentDrive] = useState("");
   const [currentPath, setCurrentPath] = useState("");
+  const [selectedPath, setSelectedPath] = useState("");
   const [entries, setEntries] = useState([]);
   const [isLoadingDrives, setIsLoadingDrives] = useState(true);
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
@@ -30,6 +32,7 @@ function FilesystemPanel() {
   useEffect(() => {
     if (!currentPath) {
       setEntries([]);
+      setSelectedPath("");
       return;
     }
 
@@ -65,6 +68,7 @@ function FilesystemPanel() {
   function selectDrive(path) {
     setCurrentDrive(path);
     setCurrentPath(path);
+    setSelectedPath("");
     setError("");
   }
 
@@ -76,6 +80,7 @@ function FilesystemPanel() {
     if (currentPath === currentDrive) {
       setCurrentPath("");
       setCurrentDrive("");
+      setSelectedPath("");
       setError("");
       return;
     }
@@ -89,18 +94,32 @@ function FilesystemPanel() {
       ) {
         setCurrentPath("");
         setCurrentDrive("");
+        setSelectedPath("");
         return;
       }
 
       setCurrentPath(parent);
+      setSelectedPath("");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to navigate to parent folder.");
     }
   }
 
   function handleEntryClick(entry) {
+    setSelectedPath(entry.path);
+  }
+
+  async function handleEntryDoubleClick(entry) {
     if (entry.is_dir) {
       setCurrentPath(entry.path);
+      setSelectedPath("");
+      return;
+    }
+
+    try {
+      await invoke("open_path", { path: entry.path });
+    } catch (openError) {
+      setError(openError instanceof Error ? openError.message : "Failed to open file.");
     }
   }
 
@@ -113,7 +132,10 @@ function FilesystemPanel() {
     const driveRoot = currentDrive.replace(/[\\/]+$/, "");
     const normalizedCurrentPath = currentPath.replace(/[\\/]+$/, "");
 
-    const crumbs = [{ label: currentDrive, path: currentDrive }];
+    const crumbs = [
+      { label: "Drives", path: "" },
+      { label: currentDrive, path: currentDrive },
+    ];
     const remainder = normalizedCurrentPath
       .slice(driveRoot.length)
       .replace(/^[\\/]+/, "");
@@ -164,8 +186,9 @@ function FilesystemPanel() {
             <li key={drive.path} className={styles.entryItem}>
               <button
                 type="button"
-                className={`${styles.entryButton} ${currentDrive === drive.path ? styles.selected : ""}`}
-                onClick={() => selectDrive(drive.path)}
+                className={`${styles.entryButton} ${selectedPath === drive.path ? styles.selected : ""}`}
+                onClick={() => setSelectedPath(drive.path)}
+                onDoubleClick={() => selectDrive(drive.path)}
               >
                 <span className={styles.entryName}>{drive.name}</span>
                 <span className={styles.entryPath}>{drive.path}</span>
@@ -178,7 +201,14 @@ function FilesystemPanel() {
       {isBrowsing && !isLoadingEntries && !error && (
         <ul className={styles.entryList}>
           <li className={styles.entryItem}>
-            <button type="button" className={styles.entryButton} onClick={goUp}>
+            <button
+              type="button"
+              className={`${styles.entryButton} ${
+                selectedPath === upEntrySelectionId ? styles.selected : ""
+              }`}
+              onClick={() => setSelectedPath(upEntrySelectionId)}
+              onDoubleClick={goUp}
+            >
               <span className={styles.entryName}>..</span>
               <span className={styles.entryPath}>Up</span>
             </button>
@@ -189,6 +219,7 @@ function FilesystemPanel() {
                 type="button"
                 className={`${styles.entryButton} ${entry.is_dir ? "" : styles.file}`}
                 onClick={() => handleEntryClick(entry)}
+                onDoubleClick={() => handleEntryDoubleClick(entry)}
               >
                 <span className={styles.entryName}>{entry.name}</span>
                 <span className={styles.entryPath}>{entry.is_dir ? "Folder" : "File"}</span>
