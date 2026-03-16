@@ -1,4 +1,3 @@
-import { PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { useState } from "react";
 import {
   getBreadcrumbDndId,
@@ -8,12 +7,6 @@ import {
 
 function useFilesystemDnd({ entries, currentPath, isMovingEntry, moveEntry }) {
   const [activeDragPath, setActiveDragPath] = useState("");
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 4 },
-    }),
-  );
 
   function getBreadcrumbDropId(path) {
     return getBreadcrumbDndId(path);
@@ -59,7 +52,6 @@ function useFilesystemDnd({ entries, currentPath, isMovingEntry, moveEntry }) {
   }
 
   return {
-    sensors,
     activeDragPath,
     getBreadcrumbDropId,
     handleDragStart,

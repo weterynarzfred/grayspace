@@ -5,6 +5,7 @@ function buildStatusMessages({
   isLoadingDrives,
   isLoadingEntries,
   isMovingEntry,
+  isImportingExternal,
   error,
 }) {
   const messages = [];
@@ -25,6 +26,13 @@ function buildStatusMessages({
   if (isBrowsing && isMovingEntry) {
     messages.push({ id: "moving-entry", text: "Moving item...", tone: "muted" });
   }
+  if (isBrowsing && isImportingExternal) {
+    messages.push({
+      id: "importing-external",
+      text: "Importing dropped items...",
+      tone: "muted",
+    });
+  }
   if (error) {
     messages.push({ id: "error", text: error, tone: "error" });
   }
@@ -37,6 +45,7 @@ function FilesystemStatusMessages({
   isLoadingDrives,
   isLoadingEntries,
   isMovingEntry,
+  isImportingExternal,
   error,
 }) {
   const messages = buildStatusMessages({
@@ -44,6 +53,7 @@ function FilesystemStatusMessages({
     isLoadingDrives,
     isLoadingEntries,
     isMovingEntry,
+    isImportingExternal,
     error,
   });
 

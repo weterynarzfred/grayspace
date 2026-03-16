@@ -1,27 +1,38 @@
-import {
-  DndContext,
-  DragOverlay,
-  pointerWithin,
-} from "@dnd-kit/core";
+import { DragOverlay } from "@dnd-kit/core";
+import { useRef } from "react";
+import { usePanelsDndHandlers } from "../PanelsDndLayer";
 import Breadcrumbs, { buildBreadcrumbs } from "./Breadcrumbs";
 import DraggableFilesystemEntry from "./DraggableFilesystemEntry";
 import EntryItem from "./EntryItem";
 import FilesystemStatusMessages from "./FilesystemStatusMessages";
 import UpEntryDropTarget from "./UpEntryDropTarget";
 import useFilesystemDnd from "./hooks/useFilesystemDnd";
+import useExternalFilesystemDrop from "./hooks/useExternalFilesystemDrop";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import styles from "./FilesystemPanel.module.scss";
 
 const UP_ENTRY_SELECTION_ID = "__up__";
 
 function FilesystemPanel() {
+  const panelRef = useRef(null);
   const nav = useFilesystemNavigation();
   const isBrowsing = nav.currentPath !== "";
+  const isEntryOperationInProgress = nav.isMovingEntry || nav.isImportingExternal;
   const dnd = useFilesystemDnd({
     entries: nav.entries,
     currentPath: nav.currentPath,
-    isMovingEntry: nav.isMovingEntry,
+    isMovingEntry: isEntryOperationInProgress,
     moveEntry: nav.moveEntry,
+  });
+  const { isExternalDragOver } = useExternalFilesystemDrop({
+    panelRef,
+    isEnabled: isBrowsing && !isEntryOperationInProgress,
+    onDropPaths: nav.importExternalPaths,
+  });
+  usePanelsDndHandlers({
+    onDragStart: dnd.handleDragStart,
+    onDragEnd: dnd.handleDragEnd,
+    onDragCancel: dnd.handleDragCancel,
   });
   const activeDragEntry =
     nav.entries.find((entry) => entry.path === dnd.activeDragPath) ?? null;
@@ -30,13 +41,18 @@ function FilesystemPanel() {
     breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
 
   return (
-    <section className={`${styles.panelContent} ${styles.panelList}`} aria-label="Filesystem panel">
+    <section
+      ref={panelRef}
+      className={`${styles.panelContent} ${styles.panelList} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
+      aria-label="Filesystem panel"
+    >
       <h2 className={styles.title}>{isBrowsing ? "Files" : "Drives"}</h2>
       <FilesystemStatusMessages
         isBrowsing={isBrowsing}
         isLoadingDrives={nav.isLoadingDrives}
         isLoadingEntries={nav.isLoadingEntries}
         isMovingEntry={nav.isMovingEntry}
+        isImportingExternal={nav.isImportingExternal}
         error={nav.error}
       />
 
@@ -56,14 +72,7 @@ function FilesystemPanel() {
       )}
 
       {isBrowsing && (
-        <DndContext
-          sensors={dnd.sensors}
-          collisionDetection={pointerWithin}
-          autoScroll={false}
-          onDragStart={dnd.handleDragStart}
-          onDragEnd={dnd.handleDragEnd}
-          onDragCancel={dnd.handleDragCancel}
-        >
+        <>
           <Breadcrumbs
             currentPath={nav.currentPath}
             currentDrive={nav.currentDrive}
@@ -78,7 +87,7 @@ function FilesystemPanel() {
               <UpEntryDropTarget
                 destinationPath={upDestinationPath}
                 isSelected={nav.selectedPath === UP_ENTRY_SELECTION_ID}
-                isMovingEntry={nav.isMovingEntry}
+                isMovingEntry={isEntryOperationInProgress}
                 activeDragPath={dnd.activeDragPath}
                 onClick={() => nav.setSelectedPath(UP_ENTRY_SELECTION_ID)}
                 onDoubleClick={nav.goUp}
@@ -88,7 +97,7 @@ function FilesystemPanel() {
                   key={entry.path}
                   entry={entry}
                   isSelected={nav.selectedPath === entry.path}
-                  isMovingEntry={nav.isMovingEntry}
+                  isMovingEntry={isEntryOperationInProgress}
                   activeDragPath={dnd.activeDragPath}
                   onClick={() => nav.selectEntry(entry.path)}
                   onDoubleClick={() => nav.openEntry(entry)}
@@ -106,7 +115,7 @@ function FilesystemPanel() {
               </div>
             )}
           </DragOverlay>
-        </DndContext>
+        </>
       )}
     </section>
   );

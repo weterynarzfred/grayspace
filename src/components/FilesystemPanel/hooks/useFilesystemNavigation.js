@@ -10,6 +10,7 @@ function useFilesystemNavigation() {
   const [isLoadingDrives, setIsLoadingDrives] = useState(true);
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
   const [isMovingEntry, setIsMovingEntry] = useState(false);
+  const [isImportingExternal, setIsImportingExternal] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -150,6 +151,30 @@ function useFilesystemNavigation() {
     }
   }
 
+  async function importExternalPaths(paths) {
+    if (!currentPath || !Array.isArray(paths) || paths.length === 0) {
+      return;
+    }
+
+    const activePath = currentPath;
+
+    setIsImportingExternal(true);
+    setError("");
+
+    try {
+      await invoke("import_paths", { paths, destinationDir: activePath });
+
+      const refreshedEntries = await invoke("list_directory", { path: activePath });
+      setEntries(refreshedEntries);
+      setSelectedPath("");
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : "Failed to import dropped items.");
+      throw importError;
+    } finally {
+      setIsImportingExternal(false);
+    }
+  }
+
   return {
     drives,
     currentDrive,
@@ -159,6 +184,7 @@ function useFilesystemNavigation() {
     isLoadingDrives,
     isLoadingEntries,
     isMovingEntry,
+    isImportingExternal,
     error,
     setCurrentPath,
     setSelectedPath,
@@ -167,6 +193,7 @@ function useFilesystemNavigation() {
     selectEntry,
     openEntry,
     moveEntry,
+    importExternalPaths,
   };
 }
 

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
+import PanelsDndLayer from "../PanelsDndLayer";
 import FilesystemPanel from "./FilesystemPanel";
 
 const dndCallbacks = {
@@ -8,9 +9,21 @@ const dndCallbacks = {
   onDragEnd: undefined,
   onDragCancel: undefined,
 };
+let externalDropCallback;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    onDragDropEvent: vi.fn(async (handler) => {
+      externalDropCallback = handler;
+      return () => {
+        externalDropCallback = undefined;
+      };
+    }),
+  }),
 }));
 
 vi.mock("@dnd-kit/core", () => ({
@@ -38,8 +51,17 @@ vi.mock("@dnd-kit/core", () => ({
   })),
 }));
 
+function renderFilesystemPanel() {
+  return render(
+    <PanelsDndLayer>
+      <FilesystemPanel />
+    </PanelsDndLayer>,
+  );
+}
+
 describe("FilesystemPanel", () => {
   beforeEach(() => {
+    externalDropCallback = undefined;
     dndCallbacks.onDragStart = undefined;
     dndCallbacks.onDragEnd = undefined;
     dndCallbacks.onDragCancel = undefined;
@@ -105,12 +127,31 @@ describe("FilesystemPanel", () => {
         return null;
       }
 
+      if (command === "import_paths") {
+        const destinationDir = payload?.destinationDir;
+        const importPaths = payload?.paths ?? [];
+        const destinationEntries = directoryState[destinationDir];
+        if (!destinationEntries) {
+          throw new Error(`Unhandled import destination path: ${destinationDir}`);
+        }
+
+        importPaths.forEach((sourcePath) => {
+          const sourceName = path.win32.basename(sourcePath);
+          destinationEntries.push({
+            name: sourceName,
+            path: path.win32.join(destinationDir, sourceName),
+            is_dir: false,
+          });
+        });
+        return null;
+      }
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
   });
 
   it("loads and shows available drives", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     expect(screen.getByText("Loading drives...")).toBeInTheDocument();
 
@@ -120,7 +161,7 @@ describe("FilesystemPanel", () => {
   });
 
   it("navigates into a selected drive and lists entries", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
@@ -132,7 +173,7 @@ describe("FilesystemPanel", () => {
   });
 
   it("uses breadcrumbs to jump back to a parent path", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
@@ -152,7 +193,7 @@ describe("FilesystemPanel", () => {
   });
 
   it("single click selects but does not open a drive", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.click(driveButton);
@@ -163,7 +204,7 @@ describe("FilesystemPanel", () => {
   });
 
   it("single click selects folders and files", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
@@ -179,7 +220,7 @@ describe("FilesystemPanel", () => {
   });
 
   it("opens a file on double click", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
@@ -191,7 +232,7 @@ describe("FilesystemPanel", () => {
   });
 
   it("moves an entry when dropped onto a folder", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
@@ -219,7 +260,7 @@ describe("FilesystemPanel", () => {
   });
 
   it("does not move an entry when dropped onto itself", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
@@ -238,7 +279,7 @@ describe("FilesystemPanel", () => {
   });
 
   it("moves an entry when dropped onto the .. up target", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
@@ -266,7 +307,7 @@ describe("FilesystemPanel", () => {
   });
 
   it("moves an entry when dropped onto a breadcrumb folder", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
@@ -294,7 +335,7 @@ describe("FilesystemPanel", () => {
   });
 
   it("navigates up only on double click for .. entry", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
@@ -315,7 +356,7 @@ describe("FilesystemPanel", () => {
   });
 
   it("uses breadcrumb root to return to drive selection", async () => {
-    render(<FilesystemPanel />);
+    renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
@@ -327,5 +368,47 @@ describe("FilesystemPanel", () => {
 
     expect(await screen.findByText("Select a drive")).toBeInTheDocument();
     expect(screen.getByText("Drives")).toBeInTheDocument();
+  });
+
+  it("imports external files dropped over the filesystem panel", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof externalDropCallback).toBe("function");
+      expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+    });
+
+    const panel = screen.getByLabelText("Filesystem panel");
+    panel.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 500,
+      width: 500,
+      height: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    await externalDropCallback?.({
+      payload: {
+        type: "drop",
+        paths: ["D:\\Downloads\\clip.mp4"],
+        position: { x: 100, y: 100 },
+      },
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("import_paths", {
+        paths: ["D:\\Downloads\\clip.mp4"],
+        destinationDir: "C:\\",
+      });
+    });
+
+    expect(await screen.findByText("clip.mp4")).toBeInTheDocument();
   });
 });

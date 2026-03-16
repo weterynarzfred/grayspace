@@ -153,6 +153,80 @@ fn move_path(source: &str, destination_dir: &str) -> Result<(), String> {
     fs::rename(&source_path, &destination_path).map_err(|error| error.to_string())
 }
 
+fn copy_path_recursive(source_path: &Path, destination_path: &Path) -> Result<(), String> {
+    if source_path.is_dir() {
+        fs::create_dir(destination_path).map_err(|error| error.to_string())?;
+
+        let read_dir = fs::read_dir(source_path).map_err(|error| error.to_string())?;
+        for entry in read_dir {
+            let source_entry = entry.map_err(|error| error.to_string())?;
+            let source_entry_path = source_entry.path();
+            let destination_entry_path = destination_path.join(source_entry.file_name());
+            copy_path_recursive(&source_entry_path, &destination_entry_path)?;
+        }
+
+        return Ok(());
+    }
+
+    fs::copy(source_path, destination_path)
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+fn import_single_path(source_path: &Path, destination_dir_path: &Path) -> Result<(), String> {
+    if !source_path.exists() {
+        return Err(format!(
+            "The source path '{}' does not exist.",
+            source_path.to_string_lossy()
+        ));
+    }
+
+    let source_name = source_path
+        .file_name()
+        .ok_or_else(|| "Cannot determine the item name for this path.".to_string())?;
+    let destination_path = destination_dir_path.join(source_name);
+
+    if destination_path.exists() {
+        return Err(format!(
+            "An item named '{}' already exists in the destination folder.",
+            source_name.to_string_lossy()
+        ));
+    }
+
+    let source_canonical = fs::canonicalize(source_path).map_err(|error| error.to_string())?;
+    let destination_canonical =
+        fs::canonicalize(destination_dir_path).map_err(|error| error.to_string())?;
+
+    if source_canonical == destination_canonical {
+        return Err("Cannot import a file or folder into itself.".to_string());
+    }
+
+    if source_canonical.is_dir() && destination_canonical.starts_with(&source_canonical) {
+        return Err("Cannot import a folder into itself or one of its descendants.".to_string());
+    }
+
+    copy_path_recursive(source_path, &destination_path)
+}
+
+#[tauri::command]
+fn import_paths(paths: Vec<String>, destination_dir: &str) -> Result<(), String> {
+    if paths.is_empty() {
+        return Err("No paths were provided for import.".to_string());
+    }
+
+    let destination_dir_path = PathBuf::from(destination_dir);
+    if !destination_dir_path.is_dir() {
+        return Err("The destination must be an existing folder.".to_string());
+    }
+
+    for source in paths {
+        let source_path = PathBuf::from(source);
+        import_single_path(&source_path, &destination_dir_path)?;
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -161,7 +235,8 @@ pub fn run() {
             list_directory,
             parent_path,
             open_path,
-            move_path
+            move_path,
+            import_paths
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -169,7 +244,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{list_directory, move_path, parent_path};
+    use super::{import_paths, list_directory, move_path, parent_path};
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -305,6 +380,89 @@ mod tests {
         let source = source_file.to_string_lossy().to_string();
         let destination = destination_dir.to_string_lossy().to_string();
         let result = move_path(&source, &destination);
+
+        assert!(result.is_err());
+        assert!(result
+            .expect_err("should return an error")
+            .contains("already exists in the destination folder"));
+        assert!(source_file.exists(), "source file should remain in place");
+
+        fs::remove_dir_all(&test_root).expect("should clean up temp root");
+    }
+
+    #[test]
+    fn import_paths_copies_file_into_destination_folder() {
+        let test_root = unique_test_root("grayspace_import_file");
+        let source_dir = test_root.join("source");
+        let destination_dir = test_root.join("destination");
+        let source_file = source_dir.join("notes.txt");
+
+        fs::create_dir_all(&source_dir).expect("should create source dir");
+        fs::create_dir_all(&destination_dir).expect("should create destination dir");
+        fs::write(&source_file, "hello").expect("should create source file");
+
+        let source = source_file.to_string_lossy().to_string();
+        let destination = destination_dir.to_string_lossy().to_string();
+        import_paths(vec![source.clone()], &destination).expect("import_paths should copy file");
+
+        assert!(
+            source_file.exists(),
+            "source file should remain in place after import"
+        );
+        assert!(
+            destination_dir.join("notes.txt").exists(),
+            "destination should contain imported file"
+        );
+
+        fs::remove_dir_all(&test_root).expect("should clean up temp root");
+    }
+
+    #[test]
+    fn import_paths_copies_directory_recursively() {
+        let test_root = unique_test_root("grayspace_import_dir");
+        let source_dir = test_root.join("assets");
+        let nested_dir = source_dir.join("nested");
+        let destination_dir = test_root.join("destination");
+
+        fs::create_dir_all(&nested_dir).expect("should create nested source dirs");
+        fs::create_dir_all(&destination_dir).expect("should create destination dir");
+        fs::write(source_dir.join("root.txt"), "root").expect("should create source root file");
+        fs::write(nested_dir.join("leaf.txt"), "leaf").expect("should create nested source file");
+
+        let source = source_dir.to_string_lossy().to_string();
+        let destination = destination_dir.to_string_lossy().to_string();
+        import_paths(vec![source], &destination).expect("import_paths should copy directory");
+
+        let imported_root = destination_dir.join("assets");
+        assert!(imported_root.exists(), "destination should contain imported folder");
+        assert!(
+            imported_root.join("root.txt").exists(),
+            "destination should contain top-level file"
+        );
+        assert!(
+            imported_root.join("nested").join("leaf.txt").exists(),
+            "destination should contain nested file"
+        );
+
+        fs::remove_dir_all(&test_root).expect("should clean up temp root");
+    }
+
+    #[test]
+    fn import_paths_rejects_destination_name_collision() {
+        let test_root = unique_test_root("grayspace_import_collision");
+        let source_dir = test_root.join("source");
+        let destination_dir = test_root.join("destination");
+        let source_file = source_dir.join("notes.txt");
+        let destination_file = destination_dir.join("notes.txt");
+
+        fs::create_dir_all(&source_dir).expect("should create source dir");
+        fs::create_dir_all(&destination_dir).expect("should create destination dir");
+        fs::write(&source_file, "source").expect("should create source file");
+        fs::write(&destination_file, "destination").expect("should create destination file");
+
+        let source = source_file.to_string_lossy().to_string();
+        let destination = destination_dir.to_string_lossy().to_string();
+        let result = import_paths(vec![source], &destination);
 
         assert!(result.is_err());
         assert!(result

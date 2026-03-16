@@ -6,6 +6,7 @@
 }
 
 .entryButton {
+  @include interactive-tile;
   display: flex;
   width: 100%;
   justify-content: space-between;
@@ -13,7 +14,6 @@
   gap: 0.5rem;
   padding: 0 0.5rem;
   text-align: left;
-  @include interactive-tile;
 
   &:hover {
     background: $bg-surface-hover;
@@ -28,6 +28,7 @@
 .entryName {
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: $font-size-small;
 }
 
 .selected {

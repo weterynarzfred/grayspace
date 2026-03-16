@@ -9,6 +9,11 @@
   padding: 1rem;
 }
 
+.externalDropTarget {
+  outline: 1px dashed $accent-active;
+  outline-offset: -1px;
+}
+
 .title {
   margin: 0 0 0.75rem;
   font-size: 1rem;
