@@ -15,6 +15,14 @@ struct FsEntry {
     is_dir: bool,
 }
 
+fn sort_entries(entries: &mut [FsEntry]) {
+    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+}
+
 #[tauri::command]
 fn list_drives() -> Vec<DriveInfo> {
     #[cfg(target_os = "windows")]
@@ -59,11 +67,7 @@ fn list_directory(path: &str) -> Result<Vec<FsEntry>, String> {
         });
     }
 
-    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-        (true, false) => std::cmp::Ordering::Less,
-        (false, true) => std::cmp::Ordering::Greater,
-        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-    });
+    sort_entries(&mut entries);
 
     Ok(entries)
 }
@@ -85,4 +89,85 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{list_directory, parent_path};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn list_directory_sorts_directories_before_files() {
+        let unique_id = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+
+        let test_root = std::env::temp_dir().join(format!("grayspace_test_{unique_id}"));
+        fs::create_dir_all(&test_root).expect("should create temp root");
+        fs::create_dir(test_root.join("b_dir")).expect("should create b_dir");
+        fs::create_dir(test_root.join("A_dir")).expect("should create A_dir");
+        fs::write(test_root.join("b.txt"), "b").expect("should create b.txt");
+        fs::write(test_root.join("A.txt"), "a").expect("should create A.txt");
+
+        let test_root_path = test_root.to_string_lossy().to_string();
+        let entries = list_directory(&test_root_path).expect("list_directory should succeed");
+        let ordered_names: Vec<String> = entries.into_iter().map(|entry| entry.name).collect();
+
+        fs::remove_dir_all(&test_root).expect("should clean up temp root");
+
+        assert_eq!(ordered_names, vec!["A_dir", "b_dir", "A.txt", "b.txt"]);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn parent_path_handles_windows_paths() {
+        assert_eq!(
+            parent_path(r"C:\Users\alice"),
+            Some(r"C:\Users".to_string())
+        );
+        assert_eq!(parent_path(r"C:\"), None);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn parent_path_drive_root_edge_cases() {
+        assert_eq!(parent_path(r"C:\\"), None);
+        assert_eq!(parent_path(r"D:\"), None);
+        assert_eq!(
+            parent_path(r"C:\Users\alice\"),
+            Some(r"C:\Users".to_string())
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn parent_path_handles_unix_paths() {
+        assert_eq!(parent_path("/usr/local"), Some("/usr".to_string()));
+        assert_eq!(parent_path("/"), None);
+    }
+
+    #[test]
+    fn parent_path_handles_relative_paths() {
+        let path = PathBuf::from("foo").join("bar");
+        let path_string = path.to_string_lossy().to_string();
+        assert_eq!(parent_path(&path_string), Some("foo".to_string()));
+    }
+
+    #[test]
+    fn list_directory_returns_error_for_missing_path() {
+        let unique_id = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after unix epoch")
+            .as_nanos();
+        let missing_path = std::env::temp_dir()
+            .join(format!("grayspace_missing_{unique_id}"))
+            .to_string_lossy()
+            .to_string();
+
+        let result = list_directory(&missing_path);
+        assert!(result.is_err());
+    }
 }
