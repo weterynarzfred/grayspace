@@ -1,0 +1,35 @@
+@use "../../styles/variables" as *;
+
+.panelContent {
+  background: $bg-panel;
+  min-height: 100%;
+}
+
+.panelList {
+  padding: 1rem;
+}
+
+.title {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.entryList {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.muted {
+  color: $text-secondary;
+  margin: 0;
+}
+
+.error {
+  color: $text-error;
+  margin: 0;
+}

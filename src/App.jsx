@@ -1,5 +1,6 @@
 import { Group, Panel, Separator } from "react-resizable-panels";
-import FilesystemPanel from "./components/FilesystemPanel";
+import FilesystemPanel from "./components/FilesystemPanel/FilesystemPanel";
+
 import styles from "./App.module.scss";
 
 function App() {

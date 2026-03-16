@@ -85,8 +85,25 @@ describe("FilesystemPanel", () => {
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.click(driveButton);
 
+    expect(driveButton).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Drives")).toBeInTheDocument();
     expect(screen.getByText("Select a drive")).toBeInTheDocument();
+  });
+
+  it("single click selects folders and files", async () => {
+    render(<FilesystemPanel />);
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const folderButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.click(folderButton);
+    expect(folderButton).toHaveAttribute("aria-selected", "true");
+
+    const fileButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(fileButton);
+    expect(fileButton).toHaveAttribute("aria-selected", "true");
+    expect(folderButton).toHaveAttribute("aria-selected", "false");
   });
 
   it("opens a file on double click", async () => {

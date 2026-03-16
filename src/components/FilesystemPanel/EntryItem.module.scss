@@ -1,0 +1,46 @@
+@use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
+
+.entryItem {
+  margin: 0;
+}
+
+.entryButton {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  text-align: left;
+  @include interactive-tile;
+
+  &:hover {
+    background: $bg-surface-hover;
+    border-color: $border-hover;
+  }
+
+  &:focus-visible {
+    @include focus-ring;
+  }
+}
+
+.entryName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.selected {
+  border-color: $accent;
+  background: $bg-selected;
+}
+
+.file {
+  cursor: default;
+}
+
+.entryPath {
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+  color: $text-secondary;
+}
