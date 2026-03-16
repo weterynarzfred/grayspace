@@ -1,0 +1,11 @@
+@use "../styles/variables" as *;
+
+.panelContent {
+  height: 100%;
+  overflow: auto;
+  background: $bg-panel;
+}
+
+.panelBody {
+  padding: 1rem;
+}
