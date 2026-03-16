@@ -6,69 +6,50 @@ import {
 import Breadcrumbs, { buildBreadcrumbs } from "./Breadcrumbs";
 import DraggableFilesystemEntry from "./DraggableFilesystemEntry";
 import EntryItem from "./EntryItem";
+import FilesystemStatusMessages from "./FilesystemStatusMessages";
 import UpEntryDropTarget from "./UpEntryDropTarget";
 import useFilesystemDnd from "./hooks/useFilesystemDnd";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import styles from "./FilesystemPanel.module.scss";
 
+const UP_ENTRY_SELECTION_ID = "__up__";
+
 function FilesystemPanel() {
-  const upEntrySelectionId = "__up__";
-  const {
-    drives,
-    currentDrive,
-    currentPath,
-    selectedPath,
-    entries,
-    isLoadingDrives,
-    isLoadingEntries,
-    isMovingEntry,
-    error,
-    setCurrentPath,
-    setSelectedPath,
-    selectDrive,
-    goUp,
-    selectEntry,
-    openEntry,
-    moveEntry,
-  } = useFilesystemNavigation();
-  const isBrowsing = currentPath !== "";
-  const {
-    sensors,
-    activeDragPath,
-    getBreadcrumbDropId,
-    handleDragStart,
-    handleDragEnd,
-    handleDragCancel,
-  } = useFilesystemDnd({
-    entries,
-    currentPath,
-    isMovingEntry,
-    moveEntry,
+  const nav = useFilesystemNavigation();
+  const isBrowsing = nav.currentPath !== "";
+  const dnd = useFilesystemDnd({
+    entries: nav.entries,
+    currentPath: nav.currentPath,
+    isMovingEntry: nav.isMovingEntry,
+    moveEntry: nav.moveEntry,
   });
-  const activeDragEntry = entries.find((entry) => entry.path === activeDragPath) ?? null;
-  const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
+  const activeDragEntry =
+    nav.entries.find((entry) => entry.path === dnd.activeDragPath) ?? null;
+  const breadcrumbs = buildBreadcrumbs(nav.currentPath, nav.currentDrive);
   const upDestinationPath =
     breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
 
   return (
     <section className={`${styles.panelContent} ${styles.panelList}`} aria-label="Filesystem panel">
       <h2 className={styles.title}>{isBrowsing ? "Files" : "Drives"}</h2>
-      {!isBrowsing && <p className={styles.muted}>Select a drive</p>}
-      {isLoadingDrives && !isBrowsing && <p className={styles.muted}>Loading drives...</p>}
-      {isLoadingEntries && isBrowsing && <p className={styles.muted}>Loading folder contents...</p>}
-      {isMovingEntry && isBrowsing && <p className={styles.muted}>Moving item...</p>}
-      {error && <p className={styles.error}>{error}</p>}
+      <FilesystemStatusMessages
+        isBrowsing={isBrowsing}
+        isLoadingDrives={nav.isLoadingDrives}
+        isLoadingEntries={nav.isLoadingEntries}
+        isMovingEntry={nav.isMovingEntry}
+        error={nav.error}
+      />
 
-      {!isBrowsing && !isLoadingDrives && !error && (
+      {!isBrowsing && !nav.isLoadingDrives && !nav.error && (
         <ul className={styles.entryList}>
-          {drives.map((drive) => (
+          {nav.drives.map((drive) => (
             <EntryItem
               key={drive.path}
               label={drive.name}
               meta={drive.path}
-              isSelected={selectedPath === drive.path}
-              onClick={() => setSelectedPath(drive.path)}
-              onDoubleClick={() => selectDrive(drive.path)}
+              isSelected={nav.selectedPath === drive.path}
+              onClick={() => nav.setSelectedPath(drive.path)}
+              onDoubleClick={() => nav.selectDrive(drive.path)}
             />
           ))}
         </ul>
@@ -76,41 +57,41 @@ function FilesystemPanel() {
 
       {isBrowsing && (
         <DndContext
-          sensors={sensors}
+          sensors={dnd.sensors}
           collisionDetection={pointerWithin}
           autoScroll={false}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-          onDragCancel={handleDragCancel}
+          onDragStart={dnd.handleDragStart}
+          onDragEnd={dnd.handleDragEnd}
+          onDragCancel={dnd.handleDragCancel}
         >
           <Breadcrumbs
-            currentPath={currentPath}
-            currentDrive={currentDrive}
-            onSelect={setCurrentPath}
-            activeDragPath={activeDragPath}
-            isMovingEntry={isMovingEntry}
-            getDropIdForPath={getBreadcrumbDropId}
+            currentPath={nav.currentPath}
+            currentDrive={nav.currentDrive}
+            onSelect={nav.setCurrentPath}
+            activeDragPath={dnd.activeDragPath}
+            isMovingEntry={nav.isMovingEntry}
+            getDropIdForPath={dnd.getBreadcrumbDropId}
           />
 
-          {!isLoadingEntries && !error && (
+          {!nav.isLoadingEntries && !nav.error && (
             <ul className={styles.entryList}>
               <UpEntryDropTarget
                 destinationPath={upDestinationPath}
-                isSelected={selectedPath === upEntrySelectionId}
-                isMovingEntry={isMovingEntry}
-                activeDragPath={activeDragPath}
-                onClick={() => setSelectedPath(upEntrySelectionId)}
-                onDoubleClick={goUp}
+                isSelected={nav.selectedPath === UP_ENTRY_SELECTION_ID}
+                isMovingEntry={nav.isMovingEntry}
+                activeDragPath={dnd.activeDragPath}
+                onClick={() => nav.setSelectedPath(UP_ENTRY_SELECTION_ID)}
+                onDoubleClick={nav.goUp}
               />
-              {entries.map((entry) => (
+              {nav.entries.map((entry) => (
                 <DraggableFilesystemEntry
                   key={entry.path}
                   entry={entry}
-                  isSelected={selectedPath === entry.path}
-                  isMovingEntry={isMovingEntry}
-                  activeDragPath={activeDragPath}
-                  onClick={() => selectEntry(entry.path)}
-                  onDoubleClick={() => openEntry(entry)}
+                  isSelected={nav.selectedPath === entry.path}
+                  isMovingEntry={nav.isMovingEntry}
+                  activeDragPath={dnd.activeDragPath}
+                  onClick={() => nav.selectEntry(entry.path)}
+                  onDoubleClick={() => nav.openEntry(entry)}
                 />
               ))}
             </ul>
