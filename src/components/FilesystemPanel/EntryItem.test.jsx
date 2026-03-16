@@ -34,4 +34,36 @@ describe("EntryItem", () => {
     expect(handleClick).toHaveBeenCalledTimes(1);
     expect(handleDoubleClick).toHaveBeenCalledTimes(1);
   });
+
+  it("supports drag and drop handlers when draggable", () => {
+    const handleDragStart = vi.fn();
+    const handleDragOver = vi.fn();
+    const handleDrop = vi.fn();
+    const handleDragEnd = vi.fn();
+
+    render(
+      <EntryItem
+        label="photos"
+        meta="Folder"
+        isDraggable
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onDragEnd={handleDragEnd}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: /photos/i });
+    expect(button).toHaveAttribute("draggable", "true");
+
+    fireEvent.dragStart(button);
+    fireEvent.dragOver(button);
+    fireEvent.drop(button);
+    fireEvent.dragEnd(button);
+
+    expect(handleDragStart).toHaveBeenCalledTimes(1);
+    expect(handleDragOver).toHaveBeenCalledTimes(1);
+    expect(handleDrop).toHaveBeenCalledTimes(1);
+    expect(handleDragEnd).toHaveBeenCalledTimes(1);
+  });
 });

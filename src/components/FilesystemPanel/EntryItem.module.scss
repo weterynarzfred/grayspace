@@ -39,6 +39,20 @@
   cursor: default;
 }
 
+.draggable {
+  cursor: grab;
+}
+
+.dragging {
+  opacity: 0.6;
+  cursor: grabbing;
+}
+
+.dropTarget {
+  border-color: $accent-active;
+  background: rgba($accent-active, 0.3);
+}
+
 .entryPath {
   font-family: $font-mono;
   font-size: $font-size-mono;

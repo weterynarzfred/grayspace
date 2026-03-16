@@ -9,6 +9,7 @@ function useFilesystemNavigation() {
   const [entries, setEntries] = useState([]);
   const [isLoadingDrives, setIsLoadingDrives] = useState(true);
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
+  const [isMovingEntry, setIsMovingEntry] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -120,6 +121,35 @@ function useFilesystemNavigation() {
     }
   }
 
+  async function moveEntry(sourcePath, destinationDir) {
+    if (!sourcePath || !destinationDir || sourcePath === destinationDir) {
+      return;
+    }
+
+    const activePath = currentPath;
+
+    setIsMovingEntry(true);
+    setError("");
+
+    try {
+      await invoke("move_path", { source: sourcePath, destinationDir });
+
+      if (activePath) {
+        const refreshedEntries = await invoke("list_directory", { path: activePath });
+        setEntries(refreshedEntries);
+      }
+
+      if (selectedPath === sourcePath) {
+        setSelectedPath("");
+      }
+    } catch (moveError) {
+      setError(moveError instanceof Error ? moveError.message : "Failed to move item.");
+      throw moveError;
+    } finally {
+      setIsMovingEntry(false);
+    }
+  }
+
   return {
     drives,
     currentDrive,
@@ -128,6 +158,7 @@ function useFilesystemNavigation() {
     entries,
     isLoadingDrives,
     isLoadingEntries,
+    isMovingEntry,
     error,
     setCurrentPath,
     setSelectedPath,
@@ -135,6 +166,7 @@ function useFilesystemNavigation() {
     goUp,
     selectEntry,
     openEntry,
+    moveEntry,
   };
 }
 

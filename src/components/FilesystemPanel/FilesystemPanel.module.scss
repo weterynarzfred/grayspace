@@ -33,3 +33,28 @@
   color: $text-error;
   margin: 0;
 }
+
+.dragOverlay {
+  display: flex;
+  width: min(100%, 34rem);
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  border: 1px solid $accent-active;
+  background: $bg-surface;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+  opacity: 0.95;
+  pointer-events: none;
+}
+
+.dragOverlayName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dragOverlayMeta {
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+  color: $text-secondary;
+}
