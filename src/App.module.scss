@@ -1,0 +1,28 @@
+@use "./styles/variables" as *;
+
+.appShell {
+  height: 100%;
+}
+
+.panelGroup {
+  height: 100%;
+  width: 100%;
+}
+
+.panelContent {
+  height: 100%;
+  background: $bg-panel;
+}
+
+.resizeHandle {
+  width: 1px;
+  background: #2a323b;
+  transition: background-color 0.2s;
+
+  &[data-separator="active"],
+  &[data-separator="hover"],
+  &:focus-visible {
+    background: $accent-active;
+    outline: none;
+  }
+}

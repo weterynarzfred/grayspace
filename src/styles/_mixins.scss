@@ -1,0 +1,20 @@
+@use "./variables" as *;
+
+@mixin focus-ring {
+  outline: 1px solid $accent-active;
+  outline-offset: 0px;
+}
+
+@mixin interactive-tile {
+  background: $bg-surface;
+  cursor: pointer;
+
+  &:hover {
+    background: $bg-surface-hover;
+    border-color: $border-hover;
+  }
+
+  &:focus-visible {
+    @include focus-ring;
+  }
+}
