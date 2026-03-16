@@ -1,5 +1,5 @@
 import { DragOverlay } from "@dnd-kit/core";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { usePanelsDndHandlers } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
 import Breadcrumbs, { buildBreadcrumbs } from "./Breadcrumbs";
@@ -17,6 +17,7 @@ const UP_ENTRY_SELECTION_ID = "__up__";
 function FilesystemPanel({
   panelType = "Filesystem",
   onPanelTypeChange = undefined,
+  onCurrentPathChange = undefined,
 }) {
   const panelRef = useRef(null);
   const nav = useFilesystemNavigation();
@@ -43,6 +44,12 @@ function FilesystemPanel({
   const breadcrumbs = buildBreadcrumbs(nav.currentPath, nav.currentDrive);
   const upDestinationPath =
     breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
+
+  useEffect(() => {
+    if (typeof onCurrentPathChange === "function" && nav.currentPath) {
+      onCurrentPathChange(nav.currentPath);
+    }
+  }, [nav.currentPath, onCurrentPathChange]);
 
   return (
     <section

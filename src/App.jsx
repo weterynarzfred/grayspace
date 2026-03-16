@@ -25,35 +25,34 @@ const PANEL_COMPONENT_BY_TYPE = {
   "External UI": ExternalUiPanel,
 };
 
-function PanelViewport({ panelType, onPanelTypeChange }) {
-  const PanelComponent = PANEL_COMPONENT_BY_TYPE[panelType] ?? FilesystemPanel;
-
-  return <PanelComponent
-    panelType={panelType}
-    onPanelTypeChange={onPanelTypeChange}
-  />;
-}
-
 function App() {
   const [leftPanelType, setLeftPanelType] = useState(DEFAULT_LEFT_PANEL_TYPE);
   const [rightPanelType, setRightPanelType] = useState(DEFAULT_RIGHT_PANEL_TYPE);
+  const [terminalCwdHint, setTerminalCwdHint] = useState("");
+
+  function renderPanelViewport(panelType, onPanelTypeChange) {
+    const PanelComponent = PANEL_COMPONENT_BY_TYPE[panelType] ?? FilesystemPanel;
+
+    return (
+      <PanelComponent
+        panelType={panelType}
+        onPanelTypeChange={onPanelTypeChange}
+        onCurrentPathChange={setTerminalCwdHint}
+        cwdHint={terminalCwdHint}
+      />
+    );
+  }
 
   return (
     <main className={styles.appShell}>
       <PanelsDndLayer>
         <Group orientation="horizontal" className={styles.panelGroup}>
           <Panel defaultSize={50} minSize={320}>
-            <PanelViewport
-              panelType={leftPanelType}
-              onPanelTypeChange={setLeftPanelType}
-            />
+            {renderPanelViewport(leftPanelType, setLeftPanelType)}
           </Panel>
           <Separator className={styles.resizeHandle} />
           <Panel defaultSize={50} minSize={320} collapsible>
-            <PanelViewport
-              panelType={rightPanelType}
-              onPanelTypeChange={setRightPanelType}
-            />
+            {renderPanelViewport(rightPanelType, setRightPanelType)}
           </Panel>
         </Group>
       </PanelsDndLayer>

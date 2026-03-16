@@ -1,0 +1,48 @@
+@use "../../styles/variables" as *;
+
+.panelContent {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panelBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.status {
+  padding: 0.75rem;
+  margin: 0;
+  color: $text-secondary;
+  font-size: $font-size-small;
+}
+
+.terminalFrame {
+  flex: 1;
+  min-height: 0;
+  padding: 0.5rem;
+}
+
+.terminalHost {
+  width: 100%;
+  height: 100%;
+
+  :global(.xterm .xterm-viewport),
+  :global(.xterm-scrollable-element) {
+    background-color: $bg-panel !important;
+    // background-color: #f001 !important;
+  }
+}
+
+.cwdLabel {
+  max-width: 26rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: $text-secondary;
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+}
