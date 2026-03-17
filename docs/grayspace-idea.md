@@ -1,0 +1,133 @@
+# Grayspace Product Goals
+
+Grayspace is a desktop app for turning folders into configurable workspaces, built with Tauri + React.
+It is not meant to be a full replacement for Windows Explorer.
+
+Each folder can become a configurable workspace via a `.grayspace` subfolder.
+The app should let users split the UI into an arbitrary pane layout and assign each pane a function.
+
+Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and ideas that may evolve.
+
+## Target Pane Types
+
+- Filesystem
+- Terminal
+- Scripts
+- Canvas
+- Properties
+- Preview
+- External UI
+
+## TODO
+
+### Workspace Config
+
+- [ ] `.grayspace` folder per workspace
+- [ ] required config file: `./.grayspace/folder.json` (may switch to `folder.js` later)
+- [ ] config scaffold only; panel-specific feature TODOs should stay in panel sections
+
+### Global functionality
+
+- [x] multiple resizable panels
+- [ ] splitting to create new panels
+- [x] dragging files onto app
+- [ ] dragging files out of app
+- [ ] add a menu bar
+- [ ] use multiple windows
+- [ ] use multiple tabs
+- [ ] drag between tabs and windows
+- [ ] custom context menu
+- [x] panel type switcher
+- [ ] workspace config features
+  - [ ] auto-run commands when user opens the folder
+  - [ ] pane-level display settings (for example custom CSS)
+  - [ ] pane state persistence (last layout/state)
+- QOL
+  - [ ] ctrl + r for folder history with search
+  - [ ] ctrl + shift + n for new folder
+  - [ ] ctrl + shift + t for new plain text file
+  - [ ] `F2` rename selection
+  - [ ] `Delete` move selection to recycle bin
+  - [ ] `Ctrl + C / Ctrl + X / Ctrl + V` copy/cut/paste
+  - [ ] `Ctrl + Z` undo last file operation
+  - [ ] `Alt + Left / Alt + Right` folder back/forward
+  - [ ] `Ctrl + Tab / Ctrl + Shift + Tab` next/previous global tab
+  - [ ] `Ctrl + 1..9` focus pane by index
+  - [ ] switch current panel keyboard shortcuts
+
+### Filesystem Panel (ctrl + shift + e)
+
+- [x] listing drives
+- [x] folder traversal
+- [x] selecting files and folders
+- [x] opening files
+- [x] drag to move file/folder
+- [ ] cut, copy, and paste, hopefully working within the app and with system file explorer
+- [ ] move to recycle bin
+- [ ] rename
+- [ ] select multiple files/folders
+  - [ ] support for ctrl and shift
+  - [ ] bulk drag
+  - [ ] bulk cut, copy, and paste
+  - [ ] bulk recycle bin
+  - [ ] bulk rename with regex
+- [ ] undo for file operations
+- [ ] show in system explorer
+- [ ] keyboard navigation
+- [ ] filesystem watcher for auto-updates
+- [x] breadcrumbs
+- [ ] back/forward history
+- [ ] file/folder icons
+- [ ] thumbnails with customizable display size
+- [ ] filters, including custom js ones defined by user
+- [ ] show files from subfolders with filters (eg ignoring node_modules or .git)
+- [ ] custom rules for displaying folder icons/thumbnails
+- [ ] double click on empty space navigates one folder up (same as "..")
+
+### Terminal Panel (ctrl + shift + `)
+
+- [x] integrate any shell
+- [ ] select a shell
+- [ ] multiple terminals at once with tabs - local to a terminal pane (not the same as global app tabs)
+
+### Scripts Panel (ctrl + shift + c)
+
+- [ ] load scripts from `./.grayspace/folder.json` and display them as buttons that run specified commands
+
+### Canvas Panel (ctrl + shift + g)
+
+- [ ] v1 scope TBD
+- [ ] drawing basic shapes
+- [ ] adding text
+- [ ] displaying files from the folder as object
+  - [ ] file commands triggered from the objects
+- [ ] object list
+- [ ] object properties
+- [ ] a lot of fancy editing tools
+
+### Properties Panel
+
+- [ ] displays properties of files, can include metadata
+  - [ ] editing some properties would be great
+- [ ] editable custom metadata saved in sidecar files `file.ext.grayspace`
+  - [ ] tags that can be then filtered and searched for
+  - [ ] notes
+  - [ ] links to other files
+
+### Preview Panel (ctrl + shift + v)
+
+- [ ] displays image/audio/video/plaintext files using native HTML
+- [ ] slideshow using current filtered files
+
+### External UI Panel
+
+- [ ] v1 scope TBD
+- [ ] load an arbitrary app from localhost or an HTML file
+
+## Things from above that look hard and might be scrapped
+- cross-app file operations (app – system file explorer)
+- undo for file operations
+- multi-window/tab architecture
+- arbitrary pane splitting + persistent workspace state
+- filesystem watcher auto-updates
+- the whole canvas panel
