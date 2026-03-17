@@ -1,0 +1,103 @@
+@use "../styles/variables" as *;
+@use "../styles/mixins" as *;
+
+.tabStrip {
+  border-bottom: 1px solid $border-default;
+  overflow: hidden;
+  display: flex;
+  align-items: start;
+}
+
+.tabList {
+  overflow: auto;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(8rem, 12rem);
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.tabItem {
+  @include interactive-tile;
+  font-size: $font-size-small;
+  border: solid $border-default;
+  border-width: 0 1px 0 0;
+  display: flex;
+  min-width: 0;
+}
+
+.tabItemActive {
+  background-color: $bg-surface-hover;
+}
+
+.tabItemDragging {
+  opacity: 0.5;
+}
+
+.tabItemDropTarget {
+  border-color: $bg-drop-target;
+}
+
+.tabButton,
+.tabOverlay {
+  flex: 1;
+  min-width: 0;
+  padding: 0 0.3rem;
+  text-align: left;
+  color: $text-primary;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+}
+
+.tabOverlay {
+  border: 1px solid $border-default;
+  width: 12rem;
+  font-size: $font-size-small;
+  background-color: $bg-surface-hover;
+}
+
+.tabCloseButton {
+  @include interactive-tile;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.3rem 0.1rem 0.3rem;
+  border-left: 1px solid $border-secondary;
+  color: $text-tertiary;
+  font-size: 1rem;
+  line-height: 0;
+
+  &:hover {
+    color: $text-warning;
+    background: $bg-warning;
+  }
+}
+
+.tabActions {
+  display: flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  height: 100%;
+}
+
+.actionButton {
+  @include interactive-tile;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.5rem 0.15rem 0.5rem;
+  border-right: 1px solid $border-default;
+  color: $text-tertiary;
+  font-size: 1rem;
+  line-height: 0;
+
+  &:hover {
+    color: $accent-active;
+    background: $bg-accent;
+  }
+}

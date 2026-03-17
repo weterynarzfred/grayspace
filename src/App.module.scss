@@ -2,27 +2,34 @@
 
 .appShell {
   height: 100%;
+  background-color: $bg-app;
 }
 
-.panelGroup {
+.workspaceShell {
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  width: 100%;
 }
 
-.panelContent {
+.workspaceContent {
+  flex: 1;
+  min-height: 0;
+}
+
+.loadingShell {
   height: 100%;
-  background: $bg-panel;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
 }
 
-.resizeHandle {
-  width: 1px;
-  background: #2a323b;
-  transition: background-color 0.2s;
+.loadingText {
+  margin: 0;
+  color: $text-secondary;
+}
 
-  &[data-separator="active"],
-  &[data-separator="hover"],
-  &:focus-visible {
-    background: $accent-active;
-    outline: none;
-  }
+.errorText {
+  margin: 0.25rem 0.5rem;
+  color: $text-warning;
+  font-size: $font-size-small;
 }

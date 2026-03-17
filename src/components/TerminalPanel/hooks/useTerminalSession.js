@@ -5,18 +5,12 @@ import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef, useState } from "react";
 
 function getErrorMessage(error) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  if (typeof error === "string") {
-    return error;
-  }
-
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
   return "Unknown terminal error.";
 }
 
-function useTerminalSession(cwdHint = "") {
+function useTerminalSession(cwdHint = "", sessionId = "") {
   const terminalHostRef = useRef(null);
   const terminalRef = useRef(null);
   const fitAddonRef = useRef(null);
@@ -25,7 +19,9 @@ function useTerminalSession(cwdHint = "") {
   const [status, setStatus] = useState("Starting Git Bash...");
 
   useEffect(() => {
-    if (!terminalHostRef.current) {
+    if (!terminalHostRef.current) return undefined;
+    if (!sessionId) {
+      setStatus("Terminal session unavailable.");
       return undefined;
     }
 
@@ -55,14 +51,12 @@ function useTerminalSession(cwdHint = "") {
     let resizeObserver = null;
 
     const syncSize = async () => {
-      if (isDisposed || !terminalRef.current || !fitAddonRef.current) {
-        return;
-      }
+      if (isDisposed || !terminalRef.current || !fitAddonRef.current) return;
 
       fitAddonRef.current.fit();
       const cols = Math.max(terminalRef.current.cols, 2);
       const rows = Math.max(terminalRef.current.rows, 1);
-      await invoke("terminal_resize", { cols, rows }).catch(() => {});
+      await invoke("terminal_resize", { sessionId, cols, rows }).catch(() => { });
     };
 
     const startSession = async () => {
@@ -71,20 +65,19 @@ function useTerminalSession(cwdHint = "") {
         const rows = Math.max(terminal.rows, 1);
 
         await invoke("terminal_start", {
+          sessionId,
           cwd: cwdHint || null,
           cols,
           rows,
         });
 
-        if (cwdHint) {
-          lastSyncedCwdRef.current = cwdHint;
-        }
+        if (cwdHint) lastSyncedCwdRef.current = cwdHint;
 
         setIsConnected(true);
         setStatus("");
 
-        dataSubscription = terminal.onData((data) => {
-          invoke("terminal_write", { data }).catch(() => {});
+        dataSubscription = terminal.onData(data => {
+          invoke("terminal_write", { sessionId, data }).catch(() => { });
         });
 
         await syncSize();
@@ -95,14 +88,15 @@ function useTerminalSession(cwdHint = "") {
     };
 
     const initialize = async () => {
-      unlistenOutput = await listen("terminal-output", (event) => {
+      unlistenOutput = await listen("terminal-output", event => {
+        if (event.payload?.sessionId !== sessionId) return;
         const data = event.payload?.data;
-        if (typeof data === "string" && terminalRef.current) {
+        if (typeof data === "string" && terminalRef.current)
           terminalRef.current.write(data);
-        }
       });
 
-      unlistenExit = await listen("terminal-exit", () => {
+      unlistenExit = await listen("terminal-exit", event => {
+        if (event.payload?.sessionId !== sessionId) return;
         setIsConnected(false);
         setStatus("Terminal session ended.");
       });
@@ -117,13 +111,13 @@ function useTerminalSession(cwdHint = "") {
 
       if (typeof ResizeObserver !== "undefined") {
         resizeObserver = new ResizeObserver(() => {
-          syncSize().catch(() => {});
+          syncSize().catch(() => { });
         });
         resizeObserver.observe(terminalHostRef.current);
       }
     };
 
-    initialize().catch((error) => {
+    initialize().catch(error => {
       setStatus(`Failed to initialize terminal listeners: ${getErrorMessage(error)}`);
     });
 
@@ -131,41 +125,31 @@ function useTerminalSession(cwdHint = "") {
       isDisposed = true;
       setIsConnected(false);
 
-      if (dataSubscription) {
-        dataSubscription.dispose();
-      }
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-      }
-      if (unlistenOutput) {
-        unlistenOutput();
-      }
-      if (unlistenExit) {
-        unlistenExit();
-      }
+      if (dataSubscription) dataSubscription.dispose();
+      if (resizeObserver) resizeObserver.disconnect();
+      if (unlistenOutput) unlistenOutput();
+      if (unlistenExit) unlistenExit();
 
-      invoke("terminal_stop").catch(() => {});
+      invoke("terminal_stop", { sessionId }).catch(() => { });
 
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
       lastSyncedCwdRef.current = "";
     };
-  }, []);
+  }, [sessionId]);
 
   useEffect(() => {
-    if (!isConnected || !cwdHint || cwdHint === lastSyncedCwdRef.current) {
-      return;
-    }
+    if (!isConnected || !cwdHint || cwdHint === lastSyncedCwdRef.current) return;
 
-    invoke("terminal_set_cwd", { path: cwdHint })
+    invoke("terminal_set_cwd", { sessionId, path: cwdHint })
       .then(() => {
         lastSyncedCwdRef.current = cwdHint;
       })
-      .catch((error) => {
+      .catch(error => {
         setStatus(`Failed to sync directory: ${getErrorMessage(error)}`);
       });
-  }, [cwdHint, isConnected]);
+  }, [cwdHint, isConnected, sessionId]);
 
   return { terminalHostRef, status };
 }

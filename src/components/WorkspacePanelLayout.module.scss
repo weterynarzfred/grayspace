@@ -1,0 +1,19 @@
+@use "../styles/variables" as *;
+
+.panelGroup {
+  height: 100%;
+  width: 100%;
+}
+
+.resizeHandle {
+  width: 1px;
+  background: #2a323b;
+  transition: background-color 0.2s;
+
+  &[data-separator="active"],
+  &[data-separator="hover"],
+  &:focus-visible {
+    background: $accent-active;
+    outline: none;
+  }
+}

@@ -29,12 +29,12 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 ### Global functionality
 
 - [x] multiple resizable panels
-- [ ] splitting to create new panels
+- [ ] splitting the viewport to create new panels instead of just having the two
 - [x] dragging files onto app
 - [ ] dragging files out of app
 - [ ] add a menu bar
-- [ ] use multiple windows
-- [ ] use multiple tabs
+- [x] use multiple windows
+- [x] use multiple tabs
 - [ ] drag between tabs and windows
 - [ ] custom context menu
 - [x] panel type switcher
@@ -127,7 +127,6 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 ## Things from above that look hard and might be scrapped
 - cross-app file operations (app – system file explorer)
 - undo for file operations
-- multi-window/tab architecture
 - arbitrary pane splitting + persistent workspace state
 - filesystem watcher auto-updates
 - the whole canvas panel

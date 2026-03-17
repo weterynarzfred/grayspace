@@ -8,27 +8,26 @@ function TerminalPanel({
   panelType = "Terminal",
   onPanelTypeChange = undefined,
   cwdHint = "",
+  terminalSessionId = "",
 }) {
-  const { terminalHostRef, status } = useTerminalSession(cwdHint);
+  const { terminalHostRef, status } = useTerminalSession(cwdHint, terminalSessionId);
 
-  return (
-    <section
-      className={`${shellStyles.panelContent} ${styles.panelContent}`}
-      aria-label="Terminal panel"
-    >
-      <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
-        <span className={styles.cwdLabel} title={cwdHint || "No folder selected"}>
-          {cwdHint || "No folder selected"}
-        </span>
-      </PanelHeader>
-      <div className={styles.panelBody}>
-        {status ? <p className={styles.status}>{status}</p> : null}
-        <div className={styles.terminalFrame}>
-          <div ref={terminalHostRef} className={styles.terminalHost} />
-        </div>
+  return <section
+    className={`${shellStyles.panelContent} ${styles.panelContent}`}
+    aria-label="Terminal panel"
+  >
+    <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
+      <span className={styles.cwdLabel} title={cwdHint || "No folder selected"}>
+        {cwdHint || "No folder selected"}
+      </span>
+    </PanelHeader>
+    <div className={styles.panelBody}>
+      {status ? <p className={styles.status}>{status}</p> : null}
+      <div className={styles.terminalFrame}>
+        <div ref={terminalHostRef} className={styles.terminalHost} />
       </div>
-    </section>
-  );
+    </div>
+  </section>;
 }
 
 export default TerminalPanel;
