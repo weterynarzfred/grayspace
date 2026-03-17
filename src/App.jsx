@@ -14,6 +14,7 @@ import {
   workspaceNewTab,
   workspaceNewWindow,
   workspaceSetActiveTab,
+  workspaceSetTabPaneFilesystemState,
   workspaceSetTabPanelType,
   workspaceSetTabTerminalCwd,
 } from "./workspace/workspaceApi";
@@ -89,17 +90,22 @@ function App() {
     workspaceCloseTab(currentWindow.windowId, tabId).catch(handleWorkspaceCommandError);
   }, [currentWindow, handleWorkspaceCommandError]);
 
-  const handleChangePanelType = useCallback((pane, panelType) => {
-    if (!activeTab) return;
-    workspaceSetTabPanelType(activeTab.tabId, pane, panelType).catch(
+  const handleChangePanelType = useCallback((tabId, pane, panelType) => {
+    if (!tabId) return;
+    workspaceSetTabPanelType(tabId, pane, panelType).catch(handleWorkspaceCommandError);
+  }, [handleWorkspaceCommandError]);
+
+  const handleSetTabCwdHint = useCallback((tabId, _pane, path) => {
+    if (!tabId) return;
+    workspaceSetTabTerminalCwd(tabId, path ?? "").catch(handleWorkspaceCommandError);
+  }, [handleWorkspaceCommandError]);
+
+  const handleSetPaneFilesystemState = useCallback((tabId, pane, filesystemState) => {
+    if (!tabId) return;
+    workspaceSetTabPaneFilesystemState(tabId, pane, filesystemState).catch(
       handleWorkspaceCommandError,
     );
-  }, [activeTab, handleWorkspaceCommandError]);
-
-  const handleSetTabCwdHint = useCallback(path => {
-    if (!activeTab || !path) return;
-    workspaceSetTabTerminalCwd(activeTab.tabId, path).catch(handleWorkspaceCommandError);
-  }, [activeTab, handleWorkspaceCommandError]);
+  }, [handleWorkspaceCommandError]);
 
   const {
     activeDragTabId,
@@ -154,6 +160,7 @@ function App() {
               tab={activeTab}
               cwdHint={activeTab.terminalCwdHint ?? ""}
               onCurrentPathChange={handleSetTabCwdHint}
+              onFilesystemStateChange={handleSetPaneFilesystemState}
               onPanelTypeChange={handleChangePanelType}
             />
           </PanelsDndLayer>

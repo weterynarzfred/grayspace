@@ -1,11 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-function useFilesystemNavigation() {
+function normalizeInitialFilesystemState(initialState) {
+  const state = initialState ?? {};
+  return {
+    currentDrive: typeof state.currentDrive === "string" ? state.currentDrive : "",
+    currentPath: typeof state.currentPath === "string" ? state.currentPath : "",
+    selectedPath: typeof state.selectedPath === "string" ? state.selectedPath : "",
+  };
+}
+
+function useFilesystemNavigation(initialFilesystemState = undefined) {
+  const initialStateRef = useRef(
+    normalizeInitialFilesystemState(initialFilesystemState),
+  );
   const [drives, setDrives] = useState([]);
-  const [currentDrive, setCurrentDrive] = useState("");
-  const [currentPath, setCurrentPath] = useState("");
-  const [selectedPath, setSelectedPath] = useState("");
+  const [currentDrive, setCurrentDrive] = useState(initialStateRef.current.currentDrive);
+  const [currentPath, setCurrentPath] = useState(initialStateRef.current.currentPath);
+  const [selectedPath, setSelectedPath] = useState(initialStateRef.current.selectedPath);
   const [entries, setEntries] = useState([]);
   const [isLoadingDrives, setIsLoadingDrives] = useState(true);
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);

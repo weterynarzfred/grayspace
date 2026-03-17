@@ -9,7 +9,7 @@ import ScriptsPanel from "./ScriptsPanel/ScriptsPanel";
 import TerminalPanel from "./TerminalPanel/TerminalPanel";
 import styles from "./WorkspacePanelLayout.module.scss";
 
-const PANEL_COMPONENT_BY_TYPE = {
+const PANEL_COMPONENTS = {
   Filesystem: FilesystemPanel,
   Terminal: TerminalPanel,
   Scripts: ScriptsPanel,
@@ -29,27 +29,42 @@ function WorkspacePanelLayout({
   tab,
   cwdHint = "",
   onCurrentPathChange = undefined,
+  onFilesystemStateChange = undefined,
   onPanelTypeChange = undefined,
 }) {
   const splitPercent = clampSplitPercent(tab?.layout?.split);
   const leftDefaultSize = splitPercent;
   const rightDefaultSize = 100 - splitPercent;
   const paneStates = tab?.paneStates ?? {};
+  const tabId = tab?.tabId ?? "";
 
   const renderPaneViewport = useCallback((pane, paneState) => {
     const panelType = paneState?.panelType ?? "Filesystem";
-    const PanelComponent = PANEL_COMPONENT_BY_TYPE[panelType] ?? FilesystemPanel;
+    const PanelComponent = PANEL_COMPONENTS[panelType] ?? FilesystemPanel;
 
-    return (
-      <PanelComponent
-        panelType={panelType}
-        onPanelTypeChange={(nextPanelType) => onPanelTypeChange?.(pane, nextPanelType)}
-        onCurrentPathChange={onCurrentPathChange}
-        cwdHint={cwdHint}
-        terminalSessionId={paneState?.terminalSessionId ?? ""}
-      />
-    );
-  }, [cwdHint, onCurrentPathChange, onPanelTypeChange]);
+    return <PanelComponent
+      key={paneState?.paneId ?? `${tabId || "tab"}-${pane}`}
+      tabId={tabId}
+      pane={pane}
+      panelType={panelType}
+      onPanelTypeChange={nextPanelType =>
+        onPanelTypeChange?.(tabId, pane, nextPanelType)
+      }
+      onCurrentPathChange={path => onCurrentPathChange?.(tabId, pane, path)}
+      onFilesystemStateChange={filesystemState =>
+        onFilesystemStateChange?.(tabId, pane, filesystemState)
+      }
+      filesystemState={paneState?.filesystemState}
+      cwdHint={cwdHint}
+      terminalSessionId={paneState?.terminalSessionId ?? ""}
+    />;
+  }, [
+    cwdHint,
+    onCurrentPathChange,
+    onFilesystemStateChange,
+    onPanelTypeChange,
+    tabId,
+  ]);
 
   return <Group orientation="horizontal" className={styles.panelGroup}>
     <Panel defaultSize={leftDefaultSize} minSize={320}>

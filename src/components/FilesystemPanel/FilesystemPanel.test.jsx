@@ -51,10 +51,10 @@ vi.mock("@dnd-kit/core", () => ({
   })),
 }));
 
-function renderFilesystemPanel() {
+function renderFilesystemPanel(props = {}) {
   return render(
     <PanelsDndLayer>
-      <FilesystemPanel />
+      <FilesystemPanel {...props} />
     </PanelsDndLayer>,
   );
 }
@@ -368,6 +368,57 @@ describe("FilesystemPanel", () => {
 
     expect(await screen.findByText("Select a drive")).toBeInTheDocument();
     expect(screen.getByText("Drives")).toBeInTheDocument();
+  });
+
+  it("hydrates filesystem state and restores scroll per pane", async () => {
+    const onFilesystemStateChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-1",
+      pane: "left",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\Users",
+        selectedPath: "C:\\Users\\todo.txt",
+        scrollTop: 37,
+      },
+      onFilesystemStateChange,
+    });
+
+    const todoButton = await screen.findByRole("button", { name: /todo\.txt/i });
+    expect(todoButton).toHaveAttribute("aria-selected", "true");
+
+    const panelList = screen.getByTestId("filesystem-panel-list");
+    expect(panelList.scrollTop).toBe(37);
+  });
+
+  it("persists throttled scroll updates", async () => {
+    const onFilesystemStateChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-2",
+      pane: "left",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\",
+        selectedPath: "",
+        scrollTop: 0,
+      },
+      onFilesystemStateChange,
+    });
+
+    await screen.findByRole("button", { name: /Users/i });
+    const panelList = screen.getByTestId("filesystem-panel-list");
+    panelList.scrollTop = 91;
+    fireEvent.scroll(panelList);
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 180);
+    });
+
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenCalledWith(
+        expect.objectContaining({ scrollTop: 91 }),
+      );
+    });
   });
 
   it("imports external files dropped over the filesystem panel", async () => {

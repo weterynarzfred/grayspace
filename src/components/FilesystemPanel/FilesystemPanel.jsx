@@ -1,5 +1,5 @@
 import { DragOverlay } from "@dnd-kit/core";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { usePanelsDndHandlers } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
 import Breadcrumbs, { buildBreadcrumbs } from "./Breadcrumbs";
@@ -13,14 +13,34 @@ import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import styles from "./FilesystemPanel.module.scss";
 
 const UP_ENTRY_SELECTION_ID = "__up__";
+const SCROLL_PERSIST_DEBOUNCE_MS = 120;
+
+function normalizeFilesystemState(filesystemState) {
+  const state = filesystemState ?? {};
+  return {
+    currentDrive: typeof state.currentDrive === "string" ? state.currentDrive : "",
+    currentPath: typeof state.currentPath === "string" ? state.currentPath : "",
+    selectedPath: typeof state.selectedPath === "string" ? state.selectedPath : "",
+    scrollTop: Number.isFinite(state.scrollTop) ? Math.max(0, Math.round(state.scrollTop)) : 0,
+  };
+}
 
 function FilesystemPanel({
+  tabId = "",
+  pane = "",
   panelType = "Filesystem",
   onPanelTypeChange = undefined,
   onCurrentPathChange = undefined,
+  onFilesystemStateChange = undefined,
+  filesystemState = undefined,
 }) {
   const panelRef = useRef(null);
-  const nav = useFilesystemNavigation();
+  const panelListRef = useRef(null);
+  const initialFilesystemStateRef = useRef(normalizeFilesystemState(filesystemState));
+  const lastPersistedStateRef = useRef(initialFilesystemStateRef.current);
+  const latestScrollTopRef = useRef(initialFilesystemStateRef.current.scrollTop);
+  const scrollPersistTimeoutRef = useRef(null);
+  const nav = useFilesystemNavigation(initialFilesystemStateRef.current);
   const isBrowsing = nav.currentPath !== "";
   const isEntryOperationInProgress = nav.isMovingEntry || nav.isImportingExternal;
   const dnd = useFilesystemDnd({
@@ -45,11 +65,71 @@ function FilesystemPanel({
   const upDestinationPath =
     breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
 
+  const persistFilesystemState = useCallback((nextState) => {
+    if (typeof onFilesystemStateChange !== "function" || !tabId || !pane) return;
+
+    const normalizedState = normalizeFilesystemState(nextState);
+    const lastState = lastPersistedStateRef.current;
+    const hasChanged = normalizedState.currentDrive !== lastState.currentDrive
+      || normalizedState.currentPath !== lastState.currentPath
+      || normalizedState.selectedPath !== lastState.selectedPath
+      || normalizedState.scrollTop !== lastState.scrollTop;
+
+    if (!hasChanged) return;
+
+    lastPersistedStateRef.current = normalizedState;
+    onFilesystemStateChange(normalizedState);
+  }, [onFilesystemStateChange, pane, tabId]);
+
+  const persistCurrentFilesystemState = useCallback(() => {
+    persistFilesystemState({
+      currentDrive: nav.currentDrive,
+      currentPath: nav.currentPath,
+      selectedPath: nav.selectedPath,
+      scrollTop: latestScrollTopRef.current,
+    });
+  }, [
+    nav.currentDrive,
+    nav.currentPath,
+    nav.selectedPath,
+    persistFilesystemState,
+  ]);
+
   useEffect(() => {
-    if (typeof onCurrentPathChange === "function" && nav.currentPath) {
+    if (typeof onCurrentPathChange === "function")
       onCurrentPathChange(nav.currentPath);
-    }
   }, [nav.currentPath, onCurrentPathChange]);
+
+  useEffect(() => {
+    if (!panelListRef.current) return;
+    panelListRef.current.scrollTop = initialFilesystemStateRef.current.scrollTop;
+    latestScrollTopRef.current = panelListRef.current.scrollTop;
+  }, []);
+
+  useEffect(() => {
+    persistCurrentFilesystemState();
+  }, [persistCurrentFilesystemState]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollPersistTimeoutRef.current) {
+        clearTimeout(scrollPersistTimeoutRef.current);
+        scrollPersistTimeoutRef.current = null;
+      }
+      persistCurrentFilesystemState();
+    };
+  }, [persistCurrentFilesystemState]);
+
+  const handlePanelListScroll = useCallback((event) => {
+    const nextScrollTop = Math.max(0, Math.round(event.currentTarget.scrollTop));
+    latestScrollTopRef.current = nextScrollTop;
+
+    if (scrollPersistTimeoutRef.current) return;
+    scrollPersistTimeoutRef.current = setTimeout(() => {
+      scrollPersistTimeoutRef.current = null;
+      persistCurrentFilesystemState();
+    }, SCROLL_PERSIST_DEBOUNCE_MS);
+  }, [persistCurrentFilesystemState]);
 
   return (
     <section
@@ -63,7 +143,12 @@ function FilesystemPanel({
       >
         <h2 className={styles.title}>{isBrowsing ? "Files" : "Drives"}</h2>
       </PanelHeader>
-      <div className={styles.panelList}>
+      <div
+        ref={panelListRef}
+        className={styles.panelList}
+        onScroll={handlePanelListScroll}
+        data-testid="filesystem-panel-list"
+      >
         <FilesystemStatusMessages
           isBrowsing={isBrowsing}
           isLoadingDrives={nav.isLoadingDrives}

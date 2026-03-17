@@ -17,12 +17,7 @@ function WorkspaceTabItem({ tab, isActive, onActivate, onClose }) {
 
   return <div
     ref={setNodeRef}
-    className={`
-      ${styles.tabItem}
-      ${isActive ? styles.tabItemActive : ""}
-      ${isDragging ? styles.tabItemDragging : ""}
-      ${isOver ? styles.tabItemDropTarget : ""}
-    `}
+    className={`${styles.tabItem} ${isActive ? styles.tabItemActive : ""} ${isDragging ? styles.tabItemDragging : ""} ${isOver ? styles.tabItemDropTarget : ""}`}
   >
     <button
       type="button"

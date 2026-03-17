@@ -35,6 +35,18 @@ export function workspaceSetTabTerminalCwd(tabId, cwdHint) {
   });
 }
 
+export function workspaceSetTabPaneFilesystemState(tabId, pane, filesystemState) {
+  return invoke("workspace_set_tab_pane_filesystem_state", {
+    payload: { tabId, pane, filesystemState },
+  });
+}
+
+export function workspaceSetTabWorkspaceRoot(tabId, workspaceRoot) {
+  return invoke("workspace_set_tab_workspace_root", {
+    payload: { tabId, workspaceRoot },
+  });
+}
+
 export function workspaceMoveTab(sourceWindowId, targetWindowId, tabId, targetIndex = null) {
   return invoke("workspace_move_tab", {
     payload: { sourceWindowId, targetWindowId, tabId, targetIndex },

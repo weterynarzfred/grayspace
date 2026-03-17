@@ -55,6 +55,7 @@ pub struct TabState {
   pub layout: TabLayout,
   pub pane_states: PaneStateGroup,
   pub terminal_cwd_hint: String,
+  pub workspace_root: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -70,6 +71,16 @@ pub struct PaneStateDto {
   pub pane_id: String,
   pub panel_type: String,
   pub terminal_session_id: String,
+  pub filesystem_state: FilesystemPaneState,
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FilesystemPaneState {
+  pub current_drive: String,
+  pub current_path: String,
+  pub selected_path: String,
+  pub scroll_top: f64,
 }
 
 #[derive(Clone, Serialize)]
@@ -133,6 +144,32 @@ pub struct TabPanelTypePayload {
 pub struct TabCwdPayload {
   pub tab_id: String,
   pub cwd_hint: String,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TabPaneFilesystemStatePayload {
+  pub tab_id: String,
+  pub pane: String,
+  pub filesystem_state: FilesystemPaneState,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TabWorkspaceRootPayload {
+  pub tab_id: String,
+  pub workspace_root: Option<String>,
+}
+
+impl Default for FilesystemPaneState {
+  fn default() -> Self {
+    Self {
+      current_drive: String::new(),
+      current_path: String::new(),
+      selected_path: String::new(),
+      scroll_top: 0.0,
+    }
+  }
 }
 
 impl Default for WindowBounds {

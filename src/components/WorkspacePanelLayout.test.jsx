@@ -1,0 +1,89 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { vi } from "vitest";
+
+vi.mock("react-resizable-panels", () => ({
+  Group: ({ children }) => <div>{children}</div>,
+  Panel: ({ children }) => <div>{children}</div>,
+  Separator: (props) => <div {...props} />,
+}));
+
+vi.mock("./FilesystemPanel/FilesystemPanel", () => ({
+  default: ({
+    onCurrentPathChange,
+    onFilesystemStateChange,
+    onPanelTypeChange,
+  }) => (
+    <button
+      type="button"
+      onClick={() => {
+        onCurrentPathChange?.("C:\\Mock");
+        onFilesystemStateChange?.({
+          currentDrive: "C:\\",
+          currentPath: "C:\\Mock",
+          selectedPath: "C:\\Mock\\test.txt",
+          scrollTop: 25,
+        });
+        onPanelTypeChange?.("Terminal");
+      }}
+    >
+      FilesystemMock
+    </button>
+  ),
+}));
+
+import WorkspacePanelLayout from "./WorkspacePanelLayout";
+
+describe("WorkspacePanelLayout", () => {
+  it("forwards callbacks with explicit tabId and pane identifiers", () => {
+    const onCurrentPathChange = vi.fn();
+    const onFilesystemStateChange = vi.fn();
+    const onPanelTypeChange = vi.fn();
+
+    render(
+      <WorkspacePanelLayout
+        tab={{
+          tabId: "tab-1",
+          layout: { split: 50 },
+          paneStates: {
+            left: {
+              paneId: "tab-1-left",
+              panelType: "Filesystem",
+              terminalSessionId: "term-1",
+              filesystemState: {
+                currentDrive: "",
+                currentPath: "",
+                selectedPath: "",
+                scrollTop: 0,
+              },
+            },
+            right: {
+              paneId: "tab-1-right",
+              panelType: "Preview",
+              terminalSessionId: "term-2",
+              filesystemState: {
+                currentDrive: "",
+                currentPath: "",
+                selectedPath: "",
+                scrollTop: 0,
+              },
+            },
+          },
+        }}
+        onCurrentPathChange={onCurrentPathChange}
+        onFilesystemStateChange={onFilesystemStateChange}
+        onPanelTypeChange={onPanelTypeChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "FilesystemMock" }));
+
+    expect(onCurrentPathChange).toHaveBeenCalledWith("tab-1", "left", "C:\\Mock");
+    expect(onFilesystemStateChange).toHaveBeenCalledWith("tab-1", "left", {
+      currentDrive: "C:\\",
+      currentPath: "C:\\Mock",
+      selectedPath: "C:\\Mock\\test.txt",
+      scrollTop: 25,
+    });
+    expect(onPanelTypeChange).toHaveBeenCalledWith("tab-1", "left", "Terminal");
+  });
+});

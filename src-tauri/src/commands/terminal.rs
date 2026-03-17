@@ -142,7 +142,22 @@ pub fn terminal_start(
   cols: u16,
   rows: u16,
 ) -> Result<(), String> {
-  stop_terminal_session_by_id(&state, &session_id)?;
+  let should_restart = {
+    let mut guard = state.sessions.lock().map_err(|_| terminal_lock_error())?;
+    if let Some(existing_session) = guard.get_mut(&session_id) {
+      match existing_session.child.try_wait() {
+        Ok(None) => return Ok(()),
+        Ok(Some(_)) => true,
+        Err(_) => true,
+      }
+    } else {
+      false
+    }
+  };
+
+  if should_restart {
+    stop_terminal_session_by_id(&state, &session_id)?;
+  }
 
   let pty_system = native_pty_system();
   let pty_pair = pty_system

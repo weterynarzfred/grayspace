@@ -130,8 +130,6 @@ function useTerminalSession(cwdHint = "", sessionId = "") {
       if (unlistenOutput) unlistenOutput();
       if (unlistenExit) unlistenExit();
 
-      invoke("terminal_stop", { sessionId }).catch(() => { });
-
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;

@@ -1,6 +1,6 @@
 use super::types::{
-  PaneStateDto, PaneStateGroup, TabLayout, TabState, WindowBounds, WindowState, WorkspaceSnapshot,
-  DEFAULT_LEFT_PANEL_TYPE, DEFAULT_RIGHT_PANEL_TYPE,
+  FilesystemPaneState, PaneStateDto, PaneStateGroup, TabLayout, TabState, WindowBounds,
+  WindowState, WorkspaceSnapshot, DEFAULT_LEFT_PANEL_TYPE, DEFAULT_RIGHT_PANEL_TYPE,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
@@ -37,6 +37,7 @@ pub(crate) struct WorkspaceTab {
   pub(crate) layout: TabLayout,
   pub(crate) pane_states: PaneStates,
   pub(crate) terminal_cwd_hint: String,
+  pub(crate) workspace_root: Option<String>,
 }
 
 #[derive(Clone)]
@@ -50,6 +51,7 @@ pub(crate) struct PaneState {
   pub(crate) pane_id: String,
   pub(crate) panel_type: String,
   pub(crate) terminal_session_id: String,
+  pub(crate) filesystem_state: FilesystemPaneState,
 }
 
 impl WorkspaceModel {
@@ -96,14 +98,17 @@ impl WorkspaceModel {
             pane_id: tab.pane_states.left.pane_id.clone(),
             panel_type: tab.pane_states.left.panel_type.clone(),
             terminal_session_id: tab.pane_states.left.terminal_session_id.clone(),
+            filesystem_state: tab.pane_states.left.filesystem_state.clone(),
           },
           right: PaneStateDto {
             pane_id: tab.pane_states.right.pane_id.clone(),
             panel_type: tab.pane_states.right.panel_type.clone(),
             terminal_session_id: tab.pane_states.right.terminal_session_id.clone(),
+            filesystem_state: tab.pane_states.right.filesystem_state.clone(),
           },
         },
         terminal_cwd_hint: tab.terminal_cwd_hint.clone(),
+        workspace_root: tab.workspace_root.clone(),
       })
       .collect();
 
@@ -133,14 +138,17 @@ impl WorkspaceModel {
           pane_id: left_pane_id,
           panel_type: DEFAULT_LEFT_PANEL_TYPE.to_string(),
           terminal_session_id: left_terminal_session_id,
+          filesystem_state: FilesystemPaneState::default(),
         },
         right: PaneState {
           pane_id: right_pane_id,
           panel_type: DEFAULT_RIGHT_PANEL_TYPE.to_string(),
           terminal_session_id: right_terminal_session_id,
+          filesystem_state: FilesystemPaneState::default(),
         },
       },
       terminal_cwd_hint: String::new(),
+      workspace_root: None,
     }
   }
 
@@ -260,6 +268,16 @@ mod tests {
     assert_eq!(window.tab_order.len(), 1);
     assert_eq!(window.active_tab_id, window.tab_order[0]);
     assert_eq!(model.tabs.len(), 1);
+
+    let tab = model
+      .tabs
+      .get(&window.active_tab_id)
+      .expect("default tab should exist");
+    assert_eq!(tab.workspace_root, None);
+    assert_eq!(tab.pane_states.left.filesystem_state.current_drive, "");
+    assert_eq!(tab.pane_states.left.filesystem_state.current_path, "");
+    assert_eq!(tab.pane_states.left.filesystem_state.selected_path, "");
+    assert_eq!(tab.pane_states.left.filesystem_state.scroll_top, 0.0);
   }
 
   #[test]
