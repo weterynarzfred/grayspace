@@ -6,7 +6,7 @@
 }
 
 @mixin interactive-tile {
-  background: $bg-surface;
+  background-color: $bg-surface;
   cursor: pointer;
 
   &:hover {

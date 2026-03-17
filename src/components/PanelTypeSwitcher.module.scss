@@ -1,52 +1,54 @@
 @use "../styles/variables" as *;
+@use "../styles/mixins" as *;
 
 .trigger {
+  @include interactive-tile;
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
   min-width: 9.5rem;
-  border: 1px solid $border-default;
-  background: $bg-surface;
+  border-right: 1px solid $border-default;
   color: $text-primary;
   font-family: $font-mono;
   font-size: $font-size-small;
   line-height: 1;
-  padding: 0.375rem 0.5rem;
-
-  &:hover {
-    border-color: $border-hover;
-  }
-
-  &:focus-visible {
-    outline: 1px solid $accent-active;
-    outline-offset: 1px;
-  }
+  padding: 0.4rem 0.5rem;
 }
 
 .icon {
-  color: $text-secondary;
+  svg {
+    width: 0.7rem;
+    height: auto;
+
+    path {
+      stroke: $text-secondary;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linecap: round;
+      fill: none;
+    }
+  }
 }
 
 .content {
   min-width: var(--radix-select-trigger-width);
   z-index: 20;
   border: 1px solid $border-default;
-  background: $bg-surface;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  background-color: $bg-surface;
 }
 
 .viewport {
-  padding: 0.25rem;
+  padding: 0;
 }
 
 .item {
+  @include interactive-tile;
   font-family: $font-mono;
   font-size: $font-size-small;
   color: $text-primary;
   padding: 0.375rem 0.5rem;
   user-select: none;
-  cursor: pointer;
 
   &[data-highlighted] {
     outline: none;
