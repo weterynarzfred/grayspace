@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   getBreadcrumbDndId,
   parseDestinationTarget,
@@ -14,6 +14,7 @@ function useFilesystemDnd({
   moveEntries,
 }) {
   const [activeDragPaths, setActiveDragPaths] = useState([]);
+  const externalDragStartedRef = useRef(false);
 
   function resolveDragSourcePaths(sourcePath) {
     const entryPathSet = new Set(entries.map((entry) => entry.path));
@@ -37,6 +38,7 @@ function useFilesystemDnd({
 
   function handleDragStart(event) {
     const sourcePath = parseEntryPath(event.active?.id);
+    externalDragStartedRef.current = false;
     setActiveDragPaths(resolveDragSourcePaths(sourcePath));
   }
 
@@ -49,6 +51,10 @@ function useFilesystemDnd({
     const destinationDir = destinationTarget.path;
 
     setActiveDragPaths([]);
+    if (externalDragStartedRef.current) {
+      externalDragStartedRef.current = false;
+      return;
+    }
 
     if (
       isMovingEntry ||
@@ -76,6 +82,17 @@ function useFilesystemDnd({
 
   function handleDragCancel() {
     setActiveDragPaths([]);
+    externalDragStartedRef.current = false;
+  }
+
+  function markExternalDragStart() {
+    externalDragStartedRef.current = true;
+    setActiveDragPaths([]);
+  }
+
+  function clearExternalDragStart() {
+    externalDragStartedRef.current = false;
+    setActiveDragPaths([]);
   }
 
   return {
@@ -84,6 +101,8 @@ function useFilesystemDnd({
     handleDragStart,
     handleDragEnd,
     handleDragCancel,
+    markExternalDragStart,
+    clearExternalDragStart,
   };
 }
 

@@ -22,3 +22,4 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 portable-pty = "0.8"
+drag = "2.1.0"

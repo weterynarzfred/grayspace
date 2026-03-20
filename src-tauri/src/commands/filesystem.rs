@@ -227,6 +227,45 @@ pub fn import_paths(paths: Vec<String>, destination_dir: &str) -> Result<(), Str
   Ok(())
 }
 
+#[tauri::command]
+pub fn start_external_drag(window: tauri::Window, paths: Vec<String>) -> Result<(), String> {
+  let normalized_paths: Vec<PathBuf> = paths
+    .into_iter()
+    .filter_map(|path| (!path.is_empty()).then_some(PathBuf::from(path)))
+    .collect();
+
+  if normalized_paths.is_empty() {
+    return Err("No paths were provided for drag.".to_string());
+  }
+
+  let mut drag_paths = Vec::with_capacity(normalized_paths.len());
+  for path in normalized_paths {
+    if !path.exists() {
+      return Err(format!(
+        "The path '{}' does not exist.",
+        path.to_string_lossy()
+      ));
+    }
+
+    drag_paths.push(fs::canonicalize(path).map_err(|error| error.to_string())?);
+  }
+
+  let drag_item = drag::DragItem::Files(drag_paths);
+  let preview_icon = drag::Image::Raw(include_bytes!("../../icons/32x32.png").to_vec());
+
+  drag::start_drag(
+    #[cfg(target_os = "linux")]
+    &window.gtk_window().map_err(|error| error.to_string())?,
+    #[cfg(not(target_os = "linux"))]
+    &window,
+    drag_item,
+    preview_icon,
+    |_drag_result, _cursor_position| {},
+    drag::Options::default(),
+  )
+  .map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
   use super::{import_paths, list_directory, move_path, parent_path};

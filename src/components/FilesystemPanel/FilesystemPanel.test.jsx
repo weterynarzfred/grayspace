@@ -16,6 +16,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
+  cursorPosition: vi.fn(async () => ({ x: 100, y: 100 })),
   getCurrentWindow: () => ({
     onDragDropEvent: vi.fn(async (handler) => {
       externalDropCallback = handler;
@@ -23,6 +24,8 @@ vi.mock("@tauri-apps/api/window", () => ({
         externalDropCallback = undefined;
       };
     }),
+    innerPosition: vi.fn(async () => ({ x: 0, y: 0 })),
+    innerSize: vi.fn(async () => ({ width: 500, height: 500 })),
   }),
 }));
 
@@ -144,6 +147,10 @@ describe("FilesystemPanel", () => {
             is_dir: false,
           });
         });
+        return null;
+      }
+
+      if (command === "start_external_drag") {
         return null;
       }
 
@@ -334,6 +341,40 @@ describe("FilesystemPanel", () => {
       expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /draft\.md/i })).not.toBeInTheDocument();
     });
+  });
+
+  it("starts an external drag when the pointer leaves the app window", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof dndCallbacks.onDragEnd).toBe("function");
+    });
+
+    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    fireEvent.mouseOut(document, { relatedTarget: null });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("start_external_drag", {
+        paths: ["C:\\notes.txt"],
+      });
+    });
+
+    await dndCallbacks.onDragEnd?.({
+      active: { id: "entry:C:\\notes.txt" },
+      over: { id: "entry:C:\\Users" },
+    });
+
+    expect(invoke).not.toHaveBeenCalledWith("move_path", {
+      source: "C:\\notes.txt",
+      destinationDir: "C:\\Users",
+    });
+    expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 
   it("does not move an entry when dropped onto itself", async () => {

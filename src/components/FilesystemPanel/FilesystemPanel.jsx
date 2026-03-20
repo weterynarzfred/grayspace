@@ -9,6 +9,7 @@ import FilesystemStatusMessages from "./FilesystemStatusMessages";
 import UpEntryDropTarget from "./UpEntryDropTarget";
 import useFilesystemDnd from "./hooks/useFilesystemDnd";
 import useExternalFilesystemDrop from "./hooks/useExternalFilesystemDrop";
+import useExternalFilesystemDrag from "./hooks/useExternalFilesystemDrag";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import { getSelectedPathsFromState } from "./pathSelection";
 import styles from "./FilesystemPanel.module.scss";
@@ -58,6 +59,7 @@ function FilesystemPanel({
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current);
   const isBrowsing = nav.currentPath !== "";
   const isEntryOperationInProgress = nav.isMovingEntry || nav.isImportingExternal;
+  const isExternalDragEnabled = isBrowsing && !isEntryOperationInProgress;
   const dnd = useFilesystemDnd({
     entries: nav.entries,
     selectedPaths: nav.selectedEntryPaths,
@@ -67,8 +69,14 @@ function FilesystemPanel({
   });
   const { isExternalDragOver } = useExternalFilesystemDrop({
     panelRef,
-    isEnabled: isBrowsing && !isEntryOperationInProgress,
+    isEnabled: isExternalDragEnabled,
     onDropPaths: nav.importExternalPaths,
+  });
+  useExternalFilesystemDrag({
+    dragPaths: dnd.activeDragPaths,
+    isEnabled: isExternalDragEnabled,
+    onExternalDragStart: dnd.markExternalDragStart,
+    onExternalDragError: dnd.clearExternalDragStart,
   });
   usePanelsDndHandlers({
     onDragStart: dnd.handleDragStart,
