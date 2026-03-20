@@ -6,6 +6,18 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+function createDeferred() {
+  let resolve;
+  let reject;
+
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, resolve, reject };
+}
+
 function mockFilesystemInvoke({
   parentPathForUsers = "C:\\",
 } = {}) {
@@ -109,5 +121,158 @@ describe("useFilesystemNavigation", () => {
     expect(invoke).toHaveBeenCalledWith("parent_path", { path: "C:\\Users" });
     expect(result.current.selectedPaths).toEqual([]);
     expect(result.current.selectedPath).toBe("");
+  });
+
+  it("ignores stale move refresh results after navigating to a different folder", async () => {
+    const staleRefresh = createDeferred();
+    const listDirectoryCallCount = new Map();
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") {
+        return [{ name: "C:", path: "C:\\" }];
+      }
+
+      if (command === "list_directory") {
+        const path = payload?.path ?? "";
+        const nextCount = (listDirectoryCallCount.get(path) ?? 0) + 1;
+        listDirectoryCallCount.set(path, nextCount);
+
+        if (path === "C:\\Users") {
+          if (nextCount === 1) {
+            return [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }];
+          }
+          return staleRefresh.promise;
+        }
+
+        if (path === "C:\\Projects") {
+          return [{ name: "readme.md", path: "C:\\Projects\\readme.md", is_dir: false }];
+        }
+
+        return [];
+      }
+
+      if (command === "move_path") {
+        return null;
+      }
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useFilesystemNavigation({
+      currentDrive: "C:\\",
+      currentPath: "C:\\Users",
+    }));
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual([
+        "C:\\Users\\todo.txt",
+      ]);
+    });
+
+    let movePromise;
+    act(() => {
+      movePromise = result.current.moveEntries(
+        ["C:\\Users\\todo.txt"],
+        "C:\\Archive",
+      );
+    });
+
+    act(() => {
+      result.current.navigateToPath("C:\\Projects");
+    });
+
+    await waitFor(() => {
+      expect(result.current.currentPath).toBe("C:\\Projects");
+      expect(result.current.entries.map((entry) => entry.path)).toEqual([
+        "C:\\Projects\\readme.md",
+      ]);
+    });
+
+    await act(async () => {
+      staleRefresh.resolve([
+        { name: "stale.txt", path: "C:\\Users\\stale.txt", is_dir: false },
+      ]);
+      await movePromise;
+    });
+
+    expect(result.current.currentPath).toBe("C:\\Projects");
+    expect(result.current.entries.map((entry) => entry.path)).toEqual([
+      "C:\\Projects\\readme.md",
+    ]);
+  });
+
+  it("ignores stale import refresh results after navigating to a different folder", async () => {
+    const staleRefresh = createDeferred();
+    const listDirectoryCallCount = new Map();
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") {
+        return [{ name: "C:", path: "C:\\" }];
+      }
+
+      if (command === "list_directory") {
+        const path = payload?.path ?? "";
+        const nextCount = (listDirectoryCallCount.get(path) ?? 0) + 1;
+        listDirectoryCallCount.set(path, nextCount);
+
+        if (path === "C:\\Users") {
+          if (nextCount === 1) {
+            return [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }];
+          }
+          return staleRefresh.promise;
+        }
+
+        if (path === "C:\\Projects") {
+          return [{ name: "readme.md", path: "C:\\Projects\\readme.md", is_dir: false }];
+        }
+
+        return [];
+      }
+
+      if (command === "import_paths") {
+        return null;
+      }
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useFilesystemNavigation({
+      currentDrive: "C:\\",
+      currentPath: "C:\\Users",
+    }));
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual([
+        "C:\\Users\\todo.txt",
+      ]);
+    });
+
+    let importPromise;
+    act(() => {
+      importPromise = result.current.importExternalPaths(["D:\\Downloads\\clip.mp4"]);
+    });
+
+    act(() => {
+      result.current.navigateToPath("C:\\Projects");
+    });
+
+    await waitFor(() => {
+      expect(result.current.currentPath).toBe("C:\\Projects");
+      expect(result.current.entries.map((entry) => entry.path)).toEqual([
+        "C:\\Projects\\readme.md",
+      ]);
+    });
+
+    await act(async () => {
+      staleRefresh.resolve([
+        { name: "clip.mp4", path: "C:\\Users\\clip.mp4", is_dir: false },
+      ]);
+      await importPromise;
+    });
+
+    expect(result.current.currentPath).toBe("C:\\Projects");
+    expect(result.current.entries.map((entry) => entry.path)).toEqual([
+      "C:\\Projects\\readme.md",
+    ]);
   });
 });

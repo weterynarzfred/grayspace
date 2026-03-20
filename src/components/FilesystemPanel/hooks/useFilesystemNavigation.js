@@ -11,7 +11,7 @@ function sortPathsByEntryOrder(paths, entryPaths) {
   );
   return uniqueNonEmptyPaths(paths).sort((leftPath, rightPath) => (
     (entryPathIndex.get(leftPath) ?? Number.MAX_SAFE_INTEGER)
-      - (entryPathIndex.get(rightPath) ?? Number.MAX_SAFE_INTEGER)
+    - (entryPathIndex.get(rightPath) ?? Number.MAX_SAFE_INTEGER)
   ));
 }
 
@@ -46,6 +46,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   const [drives, setDrives] = useState([]);
   const [currentDrive, setCurrentDrive] = useState(initialStateRef.current.currentDrive);
   const [currentPath, setCurrentPath] = useState(initialStateRef.current.currentPath);
+  const currentPathRef = useRef(initialStateRef.current.currentPath);
   const [selectedPaths, setSelectedPaths] = useState(initialStateRef.current.selectedPaths);
   const [selectionAnchorPath, setSelectionAnchorPath] = useState(
     initialStateRef.current.selectionAnchorPath,
@@ -56,6 +57,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   const [isMovingEntry, setIsMovingEntry] = useState(false);
   const [isImportingExternal, setIsImportingExternal] = useState(false);
   const [error, setError] = useState("");
+  currentPathRef.current = currentPath;
   const selectedPath = selectedPaths.includes(selectionAnchorPath)
     ? selectionAnchorPath
     : (selectedPaths[selectedPaths.length - 1] ?? "");
@@ -117,13 +119,10 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
           ));
         }
       } catch (loadError) {
-        if (!cancelled) {
+        if (!cancelled)
           setError(loadError instanceof Error ? loadError.message : "Failed to load folder contents.");
-        }
       } finally {
-        if (!cancelled) {
-          setIsLoadingEntries(false);
-        }
+        if (!cancelled) setIsLoadingEntries(false);
       }
     }
 
@@ -165,10 +164,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   }
 
   async function goUp() {
-    if (!currentPath) {
-      return;
-    }
-
+    if (!currentPath) return;
     if (currentPath === currentDrive) {
       clearBrowsingState();
       return;
@@ -195,14 +191,10 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
 
   function selectEntry(entryPath, options = {}) {
     const { additive = false, range = false } = options;
-    if (typeof entryPath !== "string" || !entryPath) {
-      return;
-    }
+    if (typeof entryPath !== "string" || !entryPath) return;
 
     const entryPaths = entries.map((entry) => entry.path);
-    if (!entryPaths.includes(entryPath)) {
-      return;
-    }
+    if (!entryPaths.includes(entryPath)) return;
 
     if (range) {
       const anchorPath = entryPaths.includes(selectionAnchorPath)
@@ -248,9 +240,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
 
   async function moveEntries(sourcePaths, destinationDir) {
     const normalizedSourcePaths = uniqueNonEmptyPaths(sourcePaths);
-    if (!destinationDir || normalizedSourcePaths.length === 0) {
-      return;
-    }
+    if (!destinationDir || normalizedSourcePaths.length === 0) return;
 
     const activePath = currentPath;
     const movedPaths = [];
@@ -261,9 +251,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
 
     try {
       for (const sourcePath of normalizedSourcePaths) {
-        if (!sourcePath || sourcePath === destinationDir) {
-          continue;
-        }
+        if (!sourcePath || sourcePath === destinationDir) continue;
         await invoke("move_path", { source: sourcePath, destinationDir });
         movedPaths.push(sourcePath);
       }
@@ -274,7 +262,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
       if (activePath && movedPaths.length > 0) {
         try {
           const refreshedEntries = await invoke("list_directory", { path: activePath });
-          setEntries(refreshedEntries);
+          if (currentPathRef.current === activePath) setEntries(refreshedEntries);
         } catch (refreshError) {
           if (!moveErrorToThrow) {
             setError(refreshError instanceof Error ? refreshError.message : "Failed to refresh folder.");
@@ -296,9 +284,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
       setIsMovingEntry(false);
     }
 
-    if (moveErrorToThrow) {
-      throw moveErrorToThrow;
-    }
+    if (moveErrorToThrow) throw moveErrorToThrow;
   }
 
   async function moveEntry(sourcePath, destinationDir) {
@@ -306,9 +292,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   }
 
   async function importExternalPaths(paths) {
-    if (!currentPath || !Array.isArray(paths) || paths.length === 0) {
-      return;
-    }
+    if (!currentPath || !Array.isArray(paths) || paths.length === 0) return;
 
     const activePath = currentPath;
 
@@ -319,8 +303,10 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
       await invoke("import_paths", { paths, destinationDir: activePath });
 
       const refreshedEntries = await invoke("list_directory", { path: activePath });
-      setEntries(refreshedEntries);
-      clearSelection();
+      if (currentPathRef.current === activePath) {
+        setEntries(refreshedEntries);
+        clearSelection();
+      }
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "Failed to import dropped items.");
       throw importError;
