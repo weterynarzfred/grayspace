@@ -1,9 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getSelectedPathsFromState,
   uniqueNonEmptyPaths,
 } from "../pathSelection";
+import useFilesystemDirectoryWatcher from "./useFilesystemDirectoryWatcher";
 
 function sortPathsByEntryOrder(paths, entryPaths) {
   const entryPathIndex = new Map(
@@ -66,6 +67,31 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     return selectedPaths.filter((path) => entryPathSet.has(path));
   }, [entries, selectedPaths]);
 
+  const applyLoadedEntries = useCallback((nextEntries) => {
+    setEntries(nextEntries);
+    const visibleEntryPathSet = new Set(nextEntries.map((entry) => entry.path));
+    setSelectedPaths((previousSelection) => (
+      previousSelection.filter((path) => visibleEntryPathSet.has(path))
+    ));
+    setSelectionAnchorPath((previousAnchorPath) => (
+      visibleEntryPathSet.has(previousAnchorPath) ? previousAnchorPath : ""
+    ));
+  }, []);
+
+  const refreshEntriesForPath = useCallback(async (pathToRefresh) => {
+    const normalizedPath = typeof pathToRefresh === "string" ? pathToRefresh : "";
+    if (!normalizedPath) return;
+
+    const refreshedEntries = await invoke("list_directory", { path: normalizedPath });
+    if (currentPathRef.current === normalizedPath)
+      applyLoadedEntries(refreshedEntries);
+  }, [applyLoadedEntries]);
+
+  const handleWatcherError = useCallback((watchError, watchedPath) => {
+    if (currentPathRef.current !== watchedPath) return;
+    setError(watchError instanceof Error ? watchError.message : "Failed to refresh folder.");
+  }, []);
+
   function clearSelection() {
     setSelectedPaths([]);
     setSelectionAnchorPath("");
@@ -97,6 +123,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     if (!currentPath) {
       setEntries([]);
       clearSelection();
+      setIsLoadingEntries(false);
       return;
     }
 
@@ -109,14 +136,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
       try {
         const nextEntries = await invoke("list_directory", { path: currentPath });
         if (!cancelled) {
-          setEntries(nextEntries);
-          const visibleEntryPathSet = new Set(nextEntries.map((entry) => entry.path));
-          setSelectedPaths((previousSelection) => (
-            previousSelection.filter((path) => visibleEntryPathSet.has(path))
-          ));
-          setSelectionAnchorPath((previousAnchorPath) => (
-            visibleEntryPathSet.has(previousAnchorPath) ? previousAnchorPath : ""
-          ));
+          applyLoadedEntries(nextEntries);
         }
       } catch (loadError) {
         if (!cancelled)
@@ -131,7 +151,13 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     return () => {
       cancelled = true;
     };
-  }, [currentPath]);
+  }, [applyLoadedEntries, currentPath]);
+
+  useFilesystemDirectoryWatcher({
+    currentPath,
+    onDirectoryChange: refreshEntriesForPath,
+    onWatcherError: handleWatcherError,
+  });
 
   function setSelectedPath(path) {
     const nextPath = typeof path === "string" ? path : "";
@@ -264,8 +290,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     } finally {
       if (activePath && movedPaths.length > 0) {
         try {
-          const refreshedEntries = await invoke("list_directory", { path: activePath });
-          if (currentPathRef.current === activePath) setEntries(refreshedEntries);
+          await refreshEntriesForPath(activePath);
         } catch (refreshError) {
           if (!moveErrorToThrow) {
             setError(refreshError instanceof Error ? refreshError.message : "Failed to refresh folder.");
@@ -305,9 +330,8 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     try {
       await invoke("import_paths", { paths, destinationDir: activePath });
 
-      const refreshedEntries = await invoke("list_directory", { path: activePath });
+      await refreshEntriesForPath(activePath);
       if (currentPathRef.current === activePath) {
-        setEntries(refreshedEntries);
         clearSelection();
       }
     } catch (importError) {

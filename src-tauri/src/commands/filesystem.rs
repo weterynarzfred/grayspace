@@ -1,7 +1,11 @@
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Mutex;
+use tauri::{Emitter, Manager, State};
 
 #[derive(Serialize)]
 pub struct DriveInfo {
@@ -14,6 +18,27 @@ pub struct FsEntry {
   name: String,
   path: String,
   is_dir: bool,
+}
+
+const FILESYSTEM_WATCH_EVENT: &str = "filesystem-watch-event";
+
+#[derive(Default)]
+pub struct FilesystemWatchState {
+  watchers: Mutex<HashMap<String, RecommendedWatcher>>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FilesystemWatchEventPayload {
+  watch_id: String,
+  changed_path: String,
+}
+
+fn is_watch_event_relevant(kind: &EventKind) -> bool {
+  matches!(
+    kind,
+    EventKind::Any | EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+  )
 }
 
 fn sort_entries(entries: &mut [FsEntry]) {
@@ -224,6 +249,85 @@ pub fn import_paths(paths: Vec<String>, destination_dir: &str) -> Result<(), Str
     import_single_path(&source_path, &destination_dir_path)?;
   }
 
+  Ok(())
+}
+
+#[tauri::command]
+pub fn filesystem_watch_start(
+  window: tauri::Window,
+  state: State<FilesystemWatchState>,
+  watch_id: &str,
+  path: &str,
+) -> Result<(), String> {
+  let normalized_watch_id = watch_id.trim();
+  if normalized_watch_id.is_empty() {
+    return Err("A watcher id is required.".to_string());
+  }
+
+  let watch_path = PathBuf::from(path);
+  if !watch_path.is_dir() {
+    return Err("The watcher path must be an existing folder.".to_string());
+  }
+
+  let canonical_watch_path = fs::canonicalize(&watch_path).map_err(|error| error.to_string())?;
+  let app_handle = window.app_handle().clone();
+  let window_label = window.label().to_string();
+  let watched_id = normalized_watch_id.to_string();
+
+  let mut watcher = notify::recommended_watcher(move |event_result: notify::Result<notify::Event>| {
+    let event = match event_result {
+      Ok(event) => event,
+      Err(_) => return,
+    };
+
+    if !is_watch_event_relevant(&event.kind) {
+      return;
+    }
+
+    let changed_path = event
+      .paths
+      .first()
+      .map(|entry_path| entry_path.to_string_lossy().to_string())
+      .unwrap_or_default();
+
+    let _ = app_handle.emit_to(
+      &window_label,
+      FILESYSTEM_WATCH_EVENT,
+      FilesystemWatchEventPayload {
+        watch_id: watched_id.clone(),
+        changed_path,
+      },
+    );
+  })
+  .map_err(|error| error.to_string())?;
+
+  watcher
+    .watch(&canonical_watch_path, RecursiveMode::NonRecursive)
+    .map_err(|error| error.to_string())?;
+
+  let mut watchers = state
+    .watchers
+    .lock()
+    .map_err(|_| "Failed to access filesystem watcher state.".to_string())?;
+  watchers.insert(normalized_watch_id.to_string(), watcher);
+  Ok(())
+}
+
+#[tauri::command]
+pub fn filesystem_watch_stop(
+  state: State<FilesystemWatchState>,
+  watch_id: &str,
+) -> Result<(), String> {
+  let normalized_watch_id = watch_id.trim();
+  if normalized_watch_id.is_empty() {
+    return Ok(());
+  }
+
+  let mut watchers = state
+    .watchers
+    .lock()
+    .map_err(|_| "Failed to access filesystem watcher state.".to_string())?;
+  watchers.remove(normalized_watch_id);
   Ok(())
 }
 

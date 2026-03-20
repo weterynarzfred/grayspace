@@ -75,7 +75,7 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - [ ] undo for file operations
 - [ ] show in system explorer
 - [ ] keyboard navigation
-- [ ] filesystem watcher for auto-updates
+- [x] filesystem watcher for auto-updates
 - [x] breadcrumbs
 - [ ] back/forward history
 - [ ] file/folder icons

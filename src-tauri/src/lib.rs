@@ -3,8 +3,8 @@ mod commands;
 use tauri::Manager;
 
 use commands::filesystem::{
-  import_paths, list_directory, list_drives, move_path, open_path, parent_path,
-  start_external_drag,
+  filesystem_watch_start, filesystem_watch_stop, import_paths, list_directory, list_drives,
+  move_path, open_path, parent_path, start_external_drag, FilesystemWatchState,
 };
 use commands::terminal::{
   terminal_resize, terminal_set_cwd, terminal_start, terminal_stop, terminal_write, TerminalState,
@@ -24,6 +24,7 @@ pub fn run() {
   tauri::Builder::default()
     .manage(TerminalState::default())
     .manage(WorkspaceState::default())
+    .manage(FilesystemWatchState::default())
     .on_window_event(|window, event| {
       if let tauri::WindowEvent::Destroyed = event {
         let app_handle = window.app_handle();
@@ -44,6 +45,8 @@ pub fn run() {
       open_path,
       move_path,
       import_paths,
+      filesystem_watch_start,
+      filesystem_watch_stop,
       start_external_drag,
       terminal_start,
       terminal_write,

@@ -1,9 +1,23 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import useFilesystemNavigation from "./useFilesystemNavigation";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+}));
+
+let filesystemWatchHandler;
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (eventName, handler) => {
+    if (eventName === "filesystem-watch-event") {
+      filesystemWatchHandler = handler;
+    }
+    return () => {
+      if (filesystemWatchHandler === handler) filesystemWatchHandler = undefined;
+    };
+  }),
 }));
 
 function createDeferred() {
@@ -50,6 +64,10 @@ function mockFilesystemInvoke({
       return null;
     }
 
+    if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+      return null;
+    }
+
     throw new Error(`Unhandled invoke: ${command}`);
   });
 }
@@ -57,6 +75,99 @@ function mockFilesystemInvoke({
 describe("useFilesystemNavigation", () => {
   beforeEach(() => {
     invoke.mockReset();
+    listen.mockClear();
+    filesystemWatchHandler = undefined;
+  });
+
+  it("starts and stops a watcher as browsing state changes", async () => {
+    mockFilesystemInvoke();
+
+    const { result } = renderHook(() => useFilesystemNavigation({
+      currentDrive: "C:\\",
+      currentPath: "C:\\",
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("filesystem_watch_start", {
+        watchId: expect.any(String),
+        path: "C:\\",
+      });
+    });
+
+    act(() => {
+      result.current.navigateToPath("");
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("filesystem_watch_stop", {
+        watchId: expect.any(String),
+      });
+    });
+  });
+
+  it("refreshes entries when the active watcher emits a change", async () => {
+    const listDirectoryCallCount = new Map();
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") {
+        return [{ name: "C:", path: "C:\\" }];
+      }
+
+      if (command === "list_directory") {
+        const currentCount = (listDirectoryCallCount.get(payload?.path ?? "") ?? 0) + 1;
+        listDirectoryCallCount.set(payload?.path ?? "", currentCount);
+
+        if (payload?.path === "C:\\") {
+          if (currentCount === 1) {
+            return [{ name: "Users", path: "C:\\Users", is_dir: true }];
+          }
+          return [
+            { name: "Users", path: "C:\\Users", is_dir: true },
+            { name: "new.txt", path: "C:\\new.txt", is_dir: false },
+          ];
+        }
+
+        return [];
+      }
+
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+        return null;
+      }
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useFilesystemNavigation({
+      currentDrive: "C:\\",
+      currentPath: "C:\\",
+    }));
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users"]);
+      expect(filesystemWatchHandler).toBeTypeOf("function");
+    });
+
+    const watchStartCall = invoke.mock.calls.find(([command]) => command === "filesystem_watch_start");
+    const watchId = watchStartCall?.[1]?.watchId;
+
+    await act(async () => {
+      filesystemWatchHandler?.({
+        payload: {
+          watchId,
+          changedPath: "C:\\new.txt",
+        },
+      });
+      await new Promise((resolve) => {
+        setTimeout(resolve, 150);
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual([
+        "C:\\Users",
+        "C:\\new.txt",
+      ]);
+    });
   });
 
   it("clears browsing state when going up from drive root", async () => {
@@ -155,6 +266,10 @@ describe("useFilesystemNavigation", () => {
         return null;
       }
 
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+        return null;
+      }
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
@@ -230,6 +345,10 @@ describe("useFilesystemNavigation", () => {
       }
 
       if (command === "import_paths") {
+        return null;
+      }
+
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
         return null;
       }
 

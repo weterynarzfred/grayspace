@@ -10,9 +10,21 @@ const dndCallbacks = {
   onDragCancel: undefined,
 };
 let externalDropCallback;
+let filesystemWatchCallback;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (eventName, handler) => {
+    if (eventName === "filesystem-watch-event") {
+      filesystemWatchCallback = handler;
+    }
+    return () => {
+      if (filesystemWatchCallback === handler) filesystemWatchCallback = undefined;
+    };
+  }),
 }));
 
 vi.mock("@tauri-apps/api/window", () => ({
@@ -65,6 +77,7 @@ function renderFilesystemPanel(props = {}) {
 describe("FilesystemPanel", () => {
   beforeEach(() => {
     externalDropCallback = undefined;
+    filesystemWatchCallback = undefined;
     dndCallbacks.onDragStart = undefined;
     dndCallbacks.onDragEnd = undefined;
     dndCallbacks.onDragCancel = undefined;
@@ -151,6 +164,10 @@ describe("FilesystemPanel", () => {
       }
 
       if (command === "start_external_drag") {
+        return null;
+      }
+
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
         return null;
       }
 
