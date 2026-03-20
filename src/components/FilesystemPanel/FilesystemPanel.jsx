@@ -11,7 +11,7 @@ import useFilesystemDnd from "./hooks/useFilesystemDnd";
 import useExternalFilesystemDrop from "./hooks/useExternalFilesystemDrop";
 import useExternalFilesystemDrag from "./hooks/useExternalFilesystemDrag";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
-import { getSelectedPathsFromState } from "./pathSelection";
+import { getSelectedPathsFromState, uniqueNonEmptyPaths } from "./pathSelection";
 import styles from "./FilesystemPanel.module.scss";
 
 const UP_ENTRY_SELECTION_ID = "__up__";
@@ -48,6 +48,7 @@ function FilesystemPanel({
   onPanelTypeChange = undefined,
   onCurrentPathChange = undefined,
   onFilesystemStateChange = undefined,
+  onTabSelectedFilesChange = undefined,
   filesystemState = undefined,
 }) {
   const panelRef = useRef(null);
@@ -90,6 +91,16 @@ function FilesystemPanel({
   const breadcrumbs = buildBreadcrumbs(nav.currentPath, nav.currentDrive);
   const upDestinationPath =
     breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
+
+  const emitTabSelectedFiles = useCallback((nextSelectedPaths) => {
+    if (typeof onTabSelectedFilesChange !== "function" || !tabId) return;
+
+    const normalizedPaths = uniqueNonEmptyPaths(nextSelectedPaths);
+    onTabSelectedFilesChange({
+      selectedPath: normalizedPaths[normalizedPaths.length - 1] ?? "",
+      selectedPaths: normalizedPaths,
+    });
+  }, [onTabSelectedFilesChange, tabId]);
 
   const persistFilesystemState = useCallback((nextState) => {
     if (typeof onFilesystemStateChange !== "function" || !tabId || !pane) return;
@@ -230,10 +241,13 @@ function FilesystemPanel({
                     isSelected={nav.selectedPaths.includes(entry.path)}
                     isMovingEntry={isEntryOperationInProgress}
                     activeDragPaths={dnd.activeDragPaths}
-                    onClick={(event) => nav.selectEntry(entry.path, {
-                      additive: event.metaKey || event.ctrlKey,
-                      range: event.shiftKey,
-                    })}
+                    onClick={(event) => {
+                      const selectedEntryPaths = nav.selectEntry(entry.path, {
+                        additive: event.metaKey || event.ctrlKey,
+                        range: event.shiftKey,
+                      });
+                      emitTabSelectedFiles(selectedEntryPaths);
+                    }}
                     onDoubleClick={() => nav.openEntry(entry)}
                   />
                 ))}

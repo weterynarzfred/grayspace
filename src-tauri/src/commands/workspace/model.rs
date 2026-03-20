@@ -1,6 +1,7 @@
 use super::types::{
-  FilesystemPaneState, PaneStateDto, PaneStateGroup, TabLayout, TabState, WindowBounds,
-  WindowState, WorkspaceSnapshot, DEFAULT_LEFT_PANEL_TYPE, DEFAULT_RIGHT_PANEL_TYPE,
+  FilesystemPaneState, PaneStateDto, PaneStateGroup, TabLayout, TabSelectedFilesState, TabState,
+  WindowBounds, WindowState, WorkspaceSnapshot, DEFAULT_LEFT_PANEL_TYPE,
+  DEFAULT_RIGHT_PANEL_TYPE,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
@@ -36,6 +37,7 @@ pub(crate) struct WorkspaceTab {
   pub(crate) title: String,
   pub(crate) layout: TabLayout,
   pub(crate) pane_states: PaneStates,
+  pub(crate) selected_files: TabSelectedFilesState,
   pub(crate) terminal_cwd_hint: String,
   pub(crate) workspace_root: Option<String>,
 }
@@ -107,6 +109,7 @@ impl WorkspaceModel {
             filesystem_state: tab.pane_states.right.filesystem_state.clone(),
           },
         },
+        selected_files: tab.selected_files.clone(),
         terminal_cwd_hint: tab.terminal_cwd_hint.clone(),
         workspace_root: tab.workspace_root.clone(),
       })
@@ -147,6 +150,7 @@ impl WorkspaceModel {
           filesystem_state: FilesystemPaneState::default(),
         },
       },
+      selected_files: TabSelectedFilesState::default(),
       terminal_cwd_hint: String::new(),
       workspace_root: None,
     }
@@ -279,6 +283,8 @@ mod tests {
     assert_eq!(tab.pane_states.left.filesystem_state.selected_path, "");
     assert!(tab.pane_states.left.filesystem_state.selected_paths.is_empty());
     assert_eq!(tab.pane_states.left.filesystem_state.scroll_top, 0.0);
+    assert_eq!(tab.selected_files.selected_path, "");
+    assert!(tab.selected_files.selected_paths.is_empty());
   }
 
   #[test]

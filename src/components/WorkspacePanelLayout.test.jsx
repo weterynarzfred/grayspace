@@ -11,6 +11,7 @@ vi.mock("./FilesystemPanel/FilesystemPanel", () => ({
   default: ({
     onCurrentPathChange,
     onFilesystemStateChange,
+    onTabSelectedFilesChange,
     onPanelTypeChange,
   }) => (
     <button
@@ -22,6 +23,10 @@ vi.mock("./FilesystemPanel/FilesystemPanel", () => ({
           currentPath: "C:\\Mock",
           selectedPath: "C:\\Mock\\test.txt",
           scrollTop: 25,
+        });
+        onTabSelectedFilesChange?.({
+          selectedPath: "C:\\Mock\\test.txt",
+          selectedPaths: ["C:\\Mock\\test.txt"],
         });
         onPanelTypeChange?.("Terminal");
       }}
@@ -37,6 +42,7 @@ describe("WorkspacePanelLayout", () => {
   it("forwards callbacks with explicit tabId and pane identifiers", () => {
     const onCurrentPathChange = vi.fn();
     const onFilesystemStateChange = vi.fn();
+    const onTabSelectedFilesChange = vi.fn();
     const onPanelTypeChange = vi.fn();
 
     render(
@@ -44,6 +50,10 @@ describe("WorkspacePanelLayout", () => {
         tab={{
           tabId: "tab-1",
           layout: { split: 50 },
+          selectedFiles: {
+            selectedPath: "",
+            selectedPaths: [],
+          },
           paneStates: {
             left: {
               paneId: "tab-1-left",
@@ -71,6 +81,7 @@ describe("WorkspacePanelLayout", () => {
         }}
         onCurrentPathChange={onCurrentPathChange}
         onFilesystemStateChange={onFilesystemStateChange}
+        onTabSelectedFilesChange={onTabSelectedFilesChange}
         onPanelTypeChange={onPanelTypeChange}
       />,
     );
@@ -83,6 +94,10 @@ describe("WorkspacePanelLayout", () => {
       currentPath: "C:\\Mock",
       selectedPath: "C:\\Mock\\test.txt",
       scrollTop: 25,
+    });
+    expect(onTabSelectedFilesChange).toHaveBeenCalledWith("tab-1", {
+      selectedPath: "C:\\Mock\\test.txt",
+      selectedPaths: ["C:\\Mock\\test.txt"],
     });
     expect(onPanelTypeChange).toHaveBeenCalledWith("tab-1", "left", "Terminal");
   });

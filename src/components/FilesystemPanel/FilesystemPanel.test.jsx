@@ -227,6 +227,33 @@ describe("FilesystemPanel", () => {
     expect(folderButton).toHaveAttribute("aria-selected", "false");
   });
 
+  it("reports tab-level selection only for explicit entry clicks", async () => {
+    const onTabSelectedFilesChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-1",
+      pane: "left",
+      onTabSelectedFilesChange,
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const fileButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    expect(onTabSelectedFilesChange).not.toHaveBeenCalled();
+
+    fireEvent.click(fileButton);
+    expect(onTabSelectedFilesChange).toHaveBeenCalledWith({
+      selectedPath: "C:\\notes.txt",
+      selectedPaths: ["C:\\notes.txt"],
+    });
+
+    fireEvent.click(fileButton, { ctrlKey: true });
+    expect(onTabSelectedFilesChange).toHaveBeenLastCalledWith({
+      selectedPath: "",
+      selectedPaths: [],
+    });
+  });
+
   it("supports ctrl-click toggling for multi-selection", async () => {
     renderFilesystemPanel();
 

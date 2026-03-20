@@ -16,6 +16,7 @@ import {
   workspaceSetActiveTab,
   workspaceSetTabPaneFilesystemState,
   workspaceSetTabPanelType,
+  workspaceSetTabSelectedFiles,
   workspaceSetTabTerminalCwd,
 } from "./workspace/workspaceApi";
 import {
@@ -107,6 +108,11 @@ function App() {
     );
   }, [handleWorkspaceCommandError]);
 
+  const handleSetTabSelectedFiles = useCallback((tabId, selectedFiles) => {
+    if (!tabId) return;
+    workspaceSetTabSelectedFiles(tabId, selectedFiles).catch(handleWorkspaceCommandError);
+  }, [handleWorkspaceCommandError]);
+
   const {
     activeDragTabId,
     handleTabDragStart,
@@ -161,6 +167,7 @@ function App() {
               cwdHint={activeTab.terminalCwdHint ?? ""}
               onCurrentPathChange={handleSetTabCwdHint}
               onFilesystemStateChange={handleSetPaneFilesystemState}
+              onTabSelectedFilesChange={handleSetTabSelectedFiles}
               onPanelTypeChange={handleChangePanelType}
             />
           </PanelsDndLayer>

@@ -30,6 +30,7 @@ function WorkspacePanelLayout({
   cwdHint = "",
   onCurrentPathChange = undefined,
   onFilesystemStateChange = undefined,
+  onTabSelectedFilesChange = undefined,
   onPanelTypeChange = undefined,
 }) {
   const splitPercent = clampSplitPercent(tab?.layout?.split);
@@ -54,7 +55,11 @@ function WorkspacePanelLayout({
       onFilesystemStateChange={filesystemState =>
         onFilesystemStateChange?.(tabId, pane, filesystemState)
       }
+      onTabSelectedFilesChange={selectedFiles =>
+        onTabSelectedFilesChange?.(tabId, selectedFiles)
+      }
       filesystemState={paneState?.filesystemState}
+      tabSelectedFiles={tab?.selectedFiles}
       cwdHint={cwdHint}
       terminalSessionId={paneState?.terminalSessionId ?? ""}
     />;
@@ -63,7 +68,9 @@ function WorkspacePanelLayout({
     onCurrentPathChange,
     onFilesystemStateChange,
     onPanelTypeChange,
+    onTabSelectedFilesChange,
     tabId,
+    tab?.selectedFiles,
   ]);
 
   return <Group orientation="horizontal" className={styles.panelGroup}>

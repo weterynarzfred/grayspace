@@ -41,6 +41,12 @@ export function workspaceSetTabPaneFilesystemState(tabId, pane, filesystemState)
   });
 }
 
+export function workspaceSetTabSelectedFiles(tabId, selectedFiles) {
+  return invoke("workspace_set_tab_selected_files", {
+    payload: { tabId, selectedFiles },
+  });
+}
+
 export function workspaceSetTabWorkspaceRoot(tabId, workspaceRoot) {
   return invoke("workspace_set_tab_workspace_root", {
     payload: { tabId, workspaceRoot },

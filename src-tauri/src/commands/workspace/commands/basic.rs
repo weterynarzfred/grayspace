@@ -2,8 +2,8 @@ use super::super::model::{PaneState, WorkspaceState, WorkspaceTab};
 use super::super::runtime_effects::{emit_workspace_updated, publish_snapshot};
 use super::super::types::{
   FilesystemPaneState, NewWindowOptions, TabCwdPayload, TabPaneFilesystemStatePayload,
-  TabPanelTypePayload, TabWorkspaceRootPayload, WindowBounds, WorkspaceBootstrapPayload,
-  WorkspaceSnapshot, WorkspaceWindowCreationPayload,
+  TabPanelTypePayload, TabSelectedFilesPayload, TabSelectedFilesState, TabWorkspaceRootPayload,
+  WindowBounds, WorkspaceBootstrapPayload, WorkspaceSnapshot, WorkspaceWindowCreationPayload,
 };
 use crate::commands::terminal::{stop_terminal_session_by_id, TerminalState};
 use std::collections::HashSet;
@@ -40,14 +40,10 @@ fn update_pane_panel_type(target_pane: &mut PaneState, next_panel_type: String) 
   }
 }
 
-fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState {
-  let FilesystemPaneState {
-    current_drive,
-    current_path,
-    selected_path,
-    selected_paths,
-    scroll_top,
-  } = state;
+fn normalize_selected_paths(
+  selected_path: String,
+  selected_paths: Vec<String>,
+) -> (String, Vec<String>) {
   let mut seen_paths = HashSet::new();
   let mut normalized_selected_paths = Vec::new();
 
@@ -70,6 +66,20 @@ fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState
     selected_path
   };
 
+  (normalized_selected_path, normalized_selected_paths)
+}
+
+fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState {
+  let FilesystemPaneState {
+    current_drive,
+    current_path,
+    selected_path,
+    selected_paths,
+    scroll_top,
+  } = state;
+  let (normalized_selected_path, normalized_selected_paths) =
+    normalize_selected_paths(selected_path, selected_paths);
+
   FilesystemPaneState {
     current_drive,
     current_path,
@@ -89,6 +99,27 @@ fn update_pane_filesystem_state(target_pane: &mut PaneState, next_state: Filesys
     return false;
   }
   target_pane.filesystem_state = normalized_state;
+  true
+}
+
+fn normalize_tab_selected_files_state(state: TabSelectedFilesState) -> TabSelectedFilesState {
+  let TabSelectedFilesState {
+    selected_path,
+    selected_paths,
+  } = state;
+  let (selected_path, selected_paths) = normalize_selected_paths(selected_path, selected_paths);
+  TabSelectedFilesState {
+    selected_path,
+    selected_paths,
+  }
+}
+
+fn update_tab_selected_files(tab: &mut WorkspaceTab, next_state: TabSelectedFilesState) -> bool {
+  let normalized_state = normalize_tab_selected_files_state(next_state);
+  if tab.selected_files == normalized_state {
+    return false;
+  }
+  tab.selected_files = normalized_state;
   true
 }
 
@@ -323,6 +354,31 @@ pub fn workspace_set_tab_pane_filesystem_state(
 }
 
 #[tauri::command]
+pub fn workspace_set_tab_selected_files(
+  app_handle: AppHandle,
+  state: State<WorkspaceState>,
+  payload: TabSelectedFilesPayload,
+) -> Result<WorkspaceSnapshot, String> {
+  let snapshot = {
+    let mut model = state
+      .inner
+      .lock()
+      .map_err(|_| "Workspace state is unavailable.".to_string())?;
+    let tab = model
+      .tabs
+      .get_mut(&payload.tab_id)
+      .ok_or_else(|| "Tab not found.".to_string())?;
+
+    if update_tab_selected_files(tab, payload.selected_files) {
+      model.bump_revision();
+    }
+    model.snapshot()
+  };
+  publish_snapshot(&app_handle, &snapshot, false);
+  Ok(snapshot)
+}
+
+#[tauri::command]
 pub fn workspace_set_tab_workspace_root(
   app_handle: AppHandle,
   state: State<WorkspaceState>,
@@ -386,10 +442,11 @@ pub fn workspace_set_window_bounds(
 #[cfg(test)]
 mod tests {
   use super::{
-    update_pane_filesystem_state, update_pane_panel_type, update_tab_workspace_root,
+    update_pane_filesystem_state, update_pane_panel_type, update_tab_selected_files,
+    update_tab_workspace_root,
   };
   use crate::commands::workspace::model::WorkspaceModel;
-  use crate::commands::workspace::types::FilesystemPaneState;
+  use crate::commands::workspace::types::{FilesystemPaneState, TabSelectedFilesState};
 
   #[test]
   fn update_pane_filesystem_state_detects_real_changes() {
@@ -491,5 +548,57 @@ mod tests {
       &mut tab,
       Some("C:\\Projects\\grayspace".to_string())
     ));
+  }
+
+  #[test]
+  fn update_tab_selected_files_normalizes_and_detects_changes() {
+    let mut model = WorkspaceModel::default();
+    let mut tab = model.create_default_tab();
+
+    assert!(!update_tab_selected_files(
+      &mut tab,
+      TabSelectedFilesState::default()
+    ));
+
+    assert!(update_tab_selected_files(
+      &mut tab,
+      TabSelectedFilesState {
+        selected_path: String::new(),
+        selected_paths: vec![
+          "C:\\Users\\todo.txt".to_string(),
+          "C:\\Users\\todo.txt".to_string(),
+          "C:\\Users\\draft.md".to_string(),
+        ],
+      },
+    ));
+    assert_eq!(
+      tab.selected_files.selected_paths,
+      vec![
+        "C:\\Users\\todo.txt".to_string(),
+        "C:\\Users\\draft.md".to_string(),
+      ]
+    );
+    assert_eq!(tab.selected_files.selected_path, "C:\\Users\\draft.md");
+
+    assert!(!update_tab_selected_files(
+      &mut tab,
+      TabSelectedFilesState {
+        selected_path: "C:\\Users\\draft.md".to_string(),
+        selected_paths: vec![
+          "C:\\Users\\todo.txt".to_string(),
+          "C:\\Users\\draft.md".to_string(),
+        ],
+      },
+    ));
+
+    assert!(update_tab_selected_files(
+      &mut tab,
+      TabSelectedFilesState {
+        selected_path: String::new(),
+        selected_paths: Vec::new(),
+      },
+    ));
+    assert_eq!(tab.selected_files.selected_path, "");
+    assert!(tab.selected_files.selected_paths.is_empty());
   }
 }

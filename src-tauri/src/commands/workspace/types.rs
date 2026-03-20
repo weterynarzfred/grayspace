@@ -54,6 +54,7 @@ pub struct TabState {
   pub title: String,
   pub layout: TabLayout,
   pub pane_states: PaneStateGroup,
+  pub selected_files: TabSelectedFilesState,
   pub terminal_cwd_hint: String,
   pub workspace_root: Option<String>,
 }
@@ -83,6 +84,14 @@ pub struct FilesystemPaneState {
   #[serde(default)]
   pub selected_paths: Vec<String>,
   pub scroll_top: f64,
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TabSelectedFilesState {
+  pub selected_path: String,
+  #[serde(default)]
+  pub selected_paths: Vec<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -158,6 +167,13 @@ pub struct TabPaneFilesystemStatePayload {
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TabSelectedFilesPayload {
+  pub tab_id: String,
+  pub selected_files: TabSelectedFilesState,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TabWorkspaceRootPayload {
   pub tab_id: String,
   pub workspace_root: Option<String>,
@@ -171,6 +187,15 @@ impl Default for FilesystemPaneState {
       selected_path: String::new(),
       selected_paths: Vec::new(),
       scroll_top: 0.0,
+    }
+  }
+}
+
+impl Default for TabSelectedFilesState {
+  fn default() -> Self {
+    Self {
+      selected_path: String::new(),
+      selected_paths: Vec::new(),
     }
   }
 }

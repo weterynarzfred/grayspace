@@ -137,11 +137,12 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     const nextPath = typeof path === "string" ? path : "";
     if (!nextPath) {
       clearSelection();
-      return;
+      return [];
     }
 
     setSelectedPaths([nextPath]);
     setSelectionAnchorPath(nextPath);
+    return [nextPath];
   }
 
   function navigateToPath(path) {
@@ -191,10 +192,10 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
 
   function selectEntry(entryPath, options = {}) {
     const { additive = false, range = false } = options;
-    if (typeof entryPath !== "string" || !entryPath) return;
+    if (typeof entryPath !== "string" || !entryPath) return selectedEntryPaths;
 
     const entryPaths = entries.map((entry) => entry.path);
-    if (!entryPaths.includes(entryPath)) return;
+    if (!entryPaths.includes(entryPath)) return selectedEntryPaths;
 
     if (range) {
       const anchorPath = entryPaths.includes(selectionAnchorPath)
@@ -206,7 +207,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
         : rangePaths;
       setSelectedPaths(nextSelection);
       setSelectionAnchorPath(anchorPath);
-      return;
+      return nextSelection;
     }
 
     if (additive) {
@@ -216,11 +217,13 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
         : sortPathsByEntryOrder([...selectedEntryPaths, entryPath], entryPaths);
       setSelectedPaths(nextSelection);
       setSelectionAnchorPath(entryPath);
-      return;
+      return nextSelection;
     }
 
-    setSelectedPaths([entryPath]);
+    const nextSelection = [entryPath];
+    setSelectedPaths(nextSelection);
     setSelectionAnchorPath(entryPath);
+    return nextSelection;
   }
 
   async function openEntry(entry) {
