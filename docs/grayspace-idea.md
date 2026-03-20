@@ -62,7 +62,8 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - [x] selecting files and folders
 - [x] opening files
 - [x] drag to move file/folder
-- [ ] cut, copy, and paste, hopefully working within the app and with system file explorer
+- [ ] cut, copy, and paste
+- [ ] make cut, copy, and paste work between the app and with system file explorer
 - [ ] move to recycle bin
 - [ ] rename
 - [x] select multiple files/folders
