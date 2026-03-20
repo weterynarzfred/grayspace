@@ -10,26 +10,11 @@ import UpEntryDropTarget from "./UpEntryDropTarget";
 import useFilesystemDnd from "./hooks/useFilesystemDnd";
 import useExternalFilesystemDrop from "./hooks/useExternalFilesystemDrop";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
+import { getSelectedPathsFromState } from "./pathSelection";
 import styles from "./FilesystemPanel.module.scss";
 
 const UP_ENTRY_SELECTION_ID = "__up__";
 const SCROLL_PERSIST_DEBOUNCE_MS = 120;
-
-function normalizeSelectedPaths(state) {
-  const rawSelectedPaths = Array.isArray(state.selectedPaths) ? state.selectedPaths : [];
-  const rawSelectedPath = typeof state.selectedPath === "string" ? state.selectedPath : "";
-  const seen = new Set();
-  const selectedPaths = [];
-
-  [...rawSelectedPaths, rawSelectedPath].forEach((path) => {
-    if (typeof path !== "string" || !path) return;
-    if (seen.has(path)) return;
-    seen.add(path);
-    selectedPaths.push(path);
-  });
-
-  return selectedPaths;
-}
 
 function arePathArraysEqual(leftPaths, rightPaths) {
   if (leftPaths.length !== rightPaths.length) {
@@ -41,9 +26,10 @@ function arePathArraysEqual(leftPaths, rightPaths) {
 
 function normalizeFilesystemState(filesystemState) {
   const state = filesystemState ?? {};
-  const selectedPaths = normalizeSelectedPaths(state);
-  const selectedPath = selectedPaths.includes(state.selectedPath)
-    ? state.selectedPath
+  const selectedPaths = getSelectedPathsFromState(state);
+  const selectedPathFromState = typeof state.selectedPath === "string" ? state.selectedPath : "";
+  const selectedPath = selectedPaths.includes(selectedPathFromState)
+    ? selectedPathFromState
     : (selectedPaths[selectedPaths.length - 1] ?? "");
   return {
     currentDrive: typeof state.currentDrive === "string" ? state.currentDrive : "",

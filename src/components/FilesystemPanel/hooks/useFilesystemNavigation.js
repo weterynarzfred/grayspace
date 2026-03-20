@@ -1,25 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useRef, useState } from "react";
-
-function uniqueNonEmptyPaths(paths) {
-  const seen = new Set();
-  const normalizedPaths = [];
-
-  paths.forEach((path) => {
-    if (typeof path !== "string" || !path) return;
-    if (seen.has(path)) return;
-    seen.add(path);
-    normalizedPaths.push(path);
-  });
-
-  return normalizedPaths;
-}
-
-function buildInitialSelectedPaths(state) {
-  const selectedPath = typeof state.selectedPath === "string" ? state.selectedPath : "";
-  const selectedPathsFromState = Array.isArray(state.selectedPaths) ? state.selectedPaths : [];
-  return uniqueNonEmptyPaths([...selectedPathsFromState, selectedPath]);
-}
+import {
+  getSelectedPathsFromState,
+  uniqueNonEmptyPaths,
+} from "../pathSelection";
 
 function sortPathsByEntryOrder(paths, entryPaths) {
   const entryPathIndex = new Map(
@@ -46,7 +30,7 @@ function getRangeSelectionPaths(entryPaths, startPath, endPath) {
 
 function normalizeInitialFilesystemState(initialState) {
   const state = initialState ?? {};
-  const selectedPaths = buildInitialSelectedPaths(state);
+  const selectedPaths = getSelectedPathsFromState(state);
   return {
     currentDrive: typeof state.currentDrive === "string" ? state.currentDrive : "",
     currentPath: typeof state.currentPath === "string" ? state.currentPath : "",
@@ -80,6 +64,18 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     return selectedPaths.filter((path) => entryPathSet.has(path));
   }, [entries, selectedPaths]);
 
+  function clearSelection() {
+    setSelectedPaths([]);
+    setSelectionAnchorPath("");
+  }
+
+  function clearBrowsingState() {
+    setCurrentPath("");
+    setCurrentDrive("");
+    clearSelection();
+    setError("");
+  }
+
   useEffect(() => {
     async function loadDrives() {
       try {
@@ -98,8 +94,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   useEffect(() => {
     if (!currentPath) {
       setEntries([]);
-      setSelectedPaths([]);
-      setSelectionAnchorPath("");
+      clearSelection();
       return;
     }
 
@@ -142,8 +137,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   function setSelectedPath(path) {
     const nextPath = typeof path === "string" ? path : "";
     if (!nextPath) {
-      setSelectedPaths([]);
-      setSelectionAnchorPath("");
+      clearSelection();
       return;
     }
 
@@ -154,25 +148,19 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   function navigateToPath(path) {
     const nextPath = typeof path === "string" ? path : "";
     if (!nextPath) {
-      setCurrentPath("");
-      setCurrentDrive("");
-      setSelectedPaths([]);
-      setSelectionAnchorPath("");
-      setError("");
+      clearBrowsingState();
       return;
     }
 
     setCurrentPath(nextPath);
-    setSelectedPaths([]);
-    setSelectionAnchorPath("");
+    clearSelection();
     setError("");
   }
 
   function selectDrive(path) {
     setCurrentDrive(path);
     setCurrentPath(path);
-    setSelectedPaths([]);
-    setSelectionAnchorPath("");
+    clearSelection();
     setError("");
   }
 
@@ -182,11 +170,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     }
 
     if (currentPath === currentDrive) {
-      setCurrentPath("");
-      setCurrentDrive("");
-      setSelectedPaths([]);
-      setSelectionAnchorPath("");
-      setError("");
+      clearBrowsingState();
       return;
     }
 
@@ -197,16 +181,13 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
         !currentDrive ||
         !parent.toLowerCase().startsWith(currentDrive.toLowerCase())
       ) {
-        setCurrentPath("");
-        setCurrentDrive("");
-        setSelectedPaths([]);
-        setSelectionAnchorPath("");
+        clearBrowsingState();
         return;
       }
 
       setCurrentPath(parent);
-      setSelectedPaths([]);
-      setSelectionAnchorPath("");
+      clearSelection();
+      setError("");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to navigate to parent folder.");
     }
@@ -253,8 +234,8 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   async function openEntry(entry) {
     if (entry.is_dir) {
       setCurrentPath(entry.path);
-      setSelectedPaths([]);
-      setSelectionAnchorPath("");
+      clearSelection();
+      setError("");
       return;
     }
 
@@ -339,8 +320,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
 
       const refreshedEntries = await invoke("list_directory", { path: activePath });
       setEntries(refreshedEntries);
-      setSelectedPaths([]);
-      setSelectionAnchorPath("");
+      clearSelection();
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "Failed to import dropped items.");
       throw importError;

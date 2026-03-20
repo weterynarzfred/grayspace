@@ -4,20 +4,7 @@ import {
   parseDestinationTarget,
   parseEntryPath,
 } from "../dndIds";
-
-function uniqueNonEmptyPaths(paths) {
-  const seen = new Set();
-  const normalizedPaths = [];
-
-  paths.forEach((path) => {
-    if (typeof path !== "string" || !path) return;
-    if (seen.has(path)) return;
-    seen.add(path);
-    normalizedPaths.push(path);
-  });
-
-  return normalizedPaths;
-}
+import { uniqueNonEmptyPaths } from "../pathSelection";
 
 function useFilesystemDnd({
   entries,
