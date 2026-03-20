@@ -13,6 +13,7 @@ const TERMINAL_EXIT_EVENT: &str = "terminal-exit";
 #[derive(Default)]
 pub struct TerminalState {
   sessions: Mutex<HashMap<String, TerminalSession>>,
+  queued_commands: Mutex<HashMap<String, Vec<String>>>,
 }
 
 struct TerminalSession {
@@ -51,6 +52,22 @@ fn terminal_lock_error() -> String {
 
 fn terminal_not_running_error() -> String {
   "Terminal session is not running.".to_string()
+}
+
+fn empty_terminal_command_error() -> String {
+  "Terminal command cannot be empty.".to_string()
+}
+
+fn normalize_terminal_command(command: String) -> Result<String, String> {
+  if command.trim().is_empty() {
+    return Err(empty_terminal_command_error());
+  }
+
+  if command.ends_with('\n') {
+    return Ok(command);
+  }
+
+  Ok(format!("{command}\n"))
 }
 
 fn escape_single_quotes(value: &str) -> String {
@@ -116,10 +133,78 @@ fn emit_terminal_exit(app_handle: &AppHandle, session_id: String, code: i32) {
   );
 }
 
+fn session_writer(
+  state: &State<TerminalState>,
+  session_id: &str,
+) -> Result<Arc<Mutex<Box<dyn Write + Send>>>, String> {
+  let guard = state.sessions.lock().map_err(|_| terminal_lock_error())?;
+  guard
+    .get(session_id)
+    .map(|session| Arc::clone(&session.writer))
+    .ok_or_else(terminal_not_running_error)
+}
+
+fn write_to_writer(
+  writer: Arc<Mutex<Box<dyn Write + Send>>>,
+  data: &str,
+) -> Result<(), String> {
+  let mut writer_guard = writer
+    .lock()
+    .map_err(|_| "Terminal input stream is unavailable.".to_string())?;
+  writer_guard
+    .write_all(data.as_bytes())
+    .map_err(|error| error.to_string())?;
+  writer_guard.flush().map_err(|error| error.to_string())
+}
+
+fn write_to_session(
+  state: &State<TerminalState>,
+  session_id: &str,
+  data: &str,
+) -> Result<(), String> {
+  let writer = session_writer(state, session_id)?;
+  write_to_writer(writer, data)
+}
+
+fn queue_session_command(
+  state: &State<TerminalState>,
+  session_id: &str,
+  command: String,
+) -> Result<(), String> {
+  let mut queued_commands = state
+    .queued_commands
+    .lock()
+    .map_err(|_| terminal_lock_error())?;
+  queued_commands
+    .entry(session_id.to_string())
+    .or_default()
+    .push(command);
+  Ok(())
+}
+
+fn drain_queued_commands(
+  state: &State<TerminalState>,
+  session_id: &str,
+) -> Result<Vec<String>, String> {
+  let mut queued_commands = state
+    .queued_commands
+    .lock()
+    .map_err(|_| terminal_lock_error())?;
+  Ok(queued_commands.remove(session_id).unwrap_or_default())
+}
+
 pub fn stop_terminal_session_by_id(
   state: &State<TerminalState>,
   session_id: &str,
 ) -> Result<(), String> {
+  {
+    let mut queued_commands = state
+      .queued_commands
+      .lock()
+      .map_err(|_| terminal_lock_error())?;
+    queued_commands.remove(session_id);
+  }
+
   let mut maybe_session = {
     let mut guard = state.sessions.lock().map_err(|_| terminal_lock_error())?;
     guard.remove(session_id)
@@ -219,7 +304,15 @@ pub fn terminal_start(
   };
 
   let mut guard = state.sessions.lock().map_err(|_| terminal_lock_error())?;
-  guard.insert(session_id, new_session);
+  guard.insert(session_id.clone(), new_session);
+  drop(guard);
+
+  let queued_commands = drain_queued_commands(&state, &session_id)?;
+
+  for queued_command in queued_commands {
+    write_to_session(&state, &session_id, &queued_command)?;
+  }
+
   Ok(())
 }
 
@@ -229,21 +322,24 @@ pub fn terminal_write(
   session_id: String,
   data: String,
 ) -> Result<(), String> {
-  let writer = {
-    let guard = state.sessions.lock().map_err(|_| terminal_lock_error())?;
-    guard
-      .get(&session_id)
-      .map(|session| Arc::clone(&session.writer))
-      .ok_or_else(terminal_not_running_error)?
-  };
+  write_to_session(&state, &session_id, &data)
+}
 
-  let mut writer_guard = writer
-    .lock()
-    .map_err(|_| "Terminal input stream is unavailable.".to_string())?;
-  writer_guard
-    .write_all(data.as_bytes())
-    .map_err(|error| error.to_string())?;
-  writer_guard.flush().map_err(|error| error.to_string())
+#[tauri::command]
+pub fn terminal_run_command(
+  state: State<TerminalState>,
+  session_id: String,
+  command: String,
+) -> Result<(), String> {
+  let normalized_command = normalize_terminal_command(command)?;
+
+  match write_to_session(&state, &session_id, &normalized_command) {
+    Ok(()) => Ok(()),
+    Err(error) if error == terminal_not_running_error() => {
+      queue_session_command(&state, &session_id, normalized_command)
+    }
+    Err(error) => Err(error),
+  }
 }
 
 #[tauri::command]
@@ -290,14 +386,7 @@ pub fn terminal_set_cwd(
 
   let shell_path = path_for_shell(&path_buf);
   let command = format!("cd -- '{}'\n", escape_single_quotes(&shell_path));
-
-  let mut writer_guard = writer
-    .lock()
-    .map_err(|_| "Terminal input stream is unavailable.".to_string())?;
-  writer_guard
-    .write_all(command.as_bytes())
-    .map_err(|error| error.to_string())?;
-  writer_guard.flush().map_err(|error| error.to_string())
+  write_to_writer(writer, &command)
 }
 
 #[tauri::command]
@@ -308,7 +397,8 @@ pub fn terminal_stop(state: State<TerminalState>, session_id: String) -> Result<
 #[cfg(test)]
 mod tests {
   use super::{
-    escape_single_quotes, maybe_existing_dir, path_for_shell, shell_command_path, terminal_size,
+    escape_single_quotes, maybe_existing_dir, normalize_terminal_command, path_for_shell,
+    shell_command_path, terminal_size,
   };
   use std::fs;
   use std::path::Path;
@@ -337,6 +427,25 @@ mod tests {
   fn escape_single_quotes_handles_embedded_quotes() {
     assert_eq!(escape_single_quotes("plain"), "plain");
     assert_eq!(escape_single_quotes("a'b'c"), "a'\\''b'\\''c");
+  }
+
+  #[test]
+  fn normalize_terminal_command_appends_newline_when_missing() {
+    assert_eq!(
+      normalize_terminal_command("npm test".to_string()).expect("command should normalize"),
+      "npm test\n"
+    );
+    assert_eq!(
+      normalize_terminal_command("npm test\n".to_string()).expect("command should normalize"),
+      "npm test\n"
+    );
+  }
+
+  #[test]
+  fn normalize_terminal_command_rejects_empty_commands() {
+    let error = normalize_terminal_command("   ".to_string())
+      .expect_err("empty command should be rejected");
+    assert_eq!(error, "Terminal command cannot be empty.");
   }
 
   #[test]

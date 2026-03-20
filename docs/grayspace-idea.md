@@ -93,7 +93,7 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 
 ### Scripts Panel (ctrl + shift + c)
 
-- [ ] load scripts from `./.grayspace/folder.json` and display them as buttons that run specified commands
+- [x] load scripts from `./.grayspace/folder.json` and display them as buttons that run specified commands
 
 ### Canvas Panel (ctrl + shift + g)
 

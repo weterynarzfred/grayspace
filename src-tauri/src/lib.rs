@@ -7,7 +7,8 @@ use commands::filesystem::{
   move_path, open_path, parent_path, start_external_drag, FilesystemWatchState,
 };
 use commands::terminal::{
-  terminal_resize, terminal_set_cwd, terminal_start, terminal_stop, terminal_write, TerminalState,
+  terminal_resize, terminal_run_command, terminal_set_cwd, terminal_start, terminal_stop,
+  terminal_write, TerminalState,
 };
 use commands::workspace::{
   handle_runtime_window_destroyed, workspace_bootstrap, workspace_close_tab,
@@ -15,7 +16,7 @@ use commands::workspace::{
   workspace_move_tab, workspace_new_tab, workspace_new_window, workspace_set_active_tab,
   workspace_set_tab_pane_filesystem_state, workspace_set_tab_panel_type,
   workspace_set_tab_selected_files, workspace_set_tab_terminal_cwd, workspace_set_tab_workspace_root,
-  workspace_set_window_bounds,
+  workspace_set_window_bounds, workspace_read_folder_config,
   WorkspaceState,
 };
 
@@ -50,6 +51,7 @@ pub fn run() {
       start_external_drag,
       terminal_start,
       terminal_write,
+      terminal_run_command,
       terminal_resize,
       terminal_set_cwd,
       terminal_stop,
@@ -63,6 +65,7 @@ pub fn run() {
       workspace_set_tab_pane_filesystem_state,
       workspace_set_tab_selected_files,
       workspace_set_tab_workspace_root,
+      workspace_read_folder_config,
       workspace_move_tab,
       workspace_detach_tab_to_new_window,
       workspace_close_tab,

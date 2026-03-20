@@ -8,6 +8,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async () => () => {}),
+}));
+
 vi.mock("@tauri-apps/api/window", () => ({
   cursorPosition: vi.fn(async () => ({ x: 100, y: 100 })),
   getCurrentWindow: () => ({
@@ -179,6 +183,14 @@ describe("WorkspacePanelLayout integration", () => {
         return null;
       }
 
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+        return null;
+      }
+
+      if (command === "workspace_read_folder_config" || command === "terminal_run_command") {
+        return null;
+      }
+
       if (command === "move_path" || command === "import_paths") {
         return null;
       }
@@ -220,4 +232,3 @@ describe("WorkspacePanelLayout integration", () => {
     expect(await screen.findByText("Preview panel: notes.txt")).toBeInTheDocument();
   });
 });
-

@@ -10,6 +10,8 @@ use super::basic_support::{
   update_tab_selected_files, update_tab_workspace_root,
 };
 use crate::commands::terminal::{stop_terminal_session_by_id, TerminalState};
+use std::fs;
+use std::path::PathBuf;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
@@ -281,6 +283,30 @@ pub fn workspace_set_tab_workspace_root(
   };
   publish_snapshot(&app_handle, &snapshot, false);
   Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn workspace_read_folder_config(workspace_root: String) -> Result<Option<String>, String> {
+  let trimmed_workspace_root = workspace_root.trim();
+  if trimmed_workspace_root.is_empty() {
+    return Ok(None);
+  }
+
+  let workspace_root_path = PathBuf::from(trimmed_workspace_root);
+  if !workspace_root_path.is_dir() {
+    return Ok(None);
+  }
+
+  let folder_config_path = workspace_root_path
+    .join(".grayspace")
+    .join("folder.json");
+  if !folder_config_path.is_file() {
+    return Ok(None);
+  }
+
+  fs::read_to_string(&folder_config_path)
+    .map(Some)
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
