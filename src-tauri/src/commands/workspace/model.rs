@@ -277,6 +277,7 @@ mod tests {
     assert_eq!(tab.pane_states.left.filesystem_state.current_drive, "");
     assert_eq!(tab.pane_states.left.filesystem_state.current_path, "");
     assert_eq!(tab.pane_states.left.filesystem_state.selected_path, "");
+    assert!(tab.pane_states.left.filesystem_state.selected_paths.is_empty());
     assert_eq!(tab.pane_states.left.filesystem_state.scroll_top, 0.0);
   }
 

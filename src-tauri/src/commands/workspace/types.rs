@@ -80,6 +80,8 @@ pub struct FilesystemPaneState {
   pub current_drive: String,
   pub current_path: String,
   pub selected_path: String,
+  #[serde(default)]
+  pub selected_paths: Vec<String>,
   pub scroll_top: f64,
 }
 
@@ -167,6 +169,7 @@ impl Default for FilesystemPaneState {
       current_drive: String::new(),
       current_path: String::new(),
       selected_path: String::new(),
+      selected_paths: Vec::new(),
       scroll_top: 0.0,
     }
   }

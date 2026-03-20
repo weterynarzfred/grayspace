@@ -1,12 +1,57 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+function uniqueNonEmptyPaths(paths) {
+  const seen = new Set();
+  const normalizedPaths = [];
+
+  paths.forEach((path) => {
+    if (typeof path !== "string" || !path) return;
+    if (seen.has(path)) return;
+    seen.add(path);
+    normalizedPaths.push(path);
+  });
+
+  return normalizedPaths;
+}
+
+function buildInitialSelectedPaths(state) {
+  const selectedPath = typeof state.selectedPath === "string" ? state.selectedPath : "";
+  const selectedPathsFromState = Array.isArray(state.selectedPaths) ? state.selectedPaths : [];
+  return uniqueNonEmptyPaths([...selectedPathsFromState, selectedPath]);
+}
+
+function sortPathsByEntryOrder(paths, entryPaths) {
+  const entryPathIndex = new Map(
+    entryPaths.map((path, index) => [path, index]),
+  );
+  return uniqueNonEmptyPaths(paths).sort((leftPath, rightPath) => (
+    (entryPathIndex.get(leftPath) ?? Number.MAX_SAFE_INTEGER)
+      - (entryPathIndex.get(rightPath) ?? Number.MAX_SAFE_INTEGER)
+  ));
+}
+
+function getRangeSelectionPaths(entryPaths, startPath, endPath) {
+  const startIndex = entryPaths.indexOf(startPath);
+  const endIndex = entryPaths.indexOf(endPath);
+  if (startIndex === -1 || endIndex === -1) {
+    return [];
+  }
+
+  const [fromIndex, toIndex] = startIndex <= endIndex
+    ? [startIndex, endIndex]
+    : [endIndex, startIndex];
+  return entryPaths.slice(fromIndex, toIndex + 1);
+}
 
 function normalizeInitialFilesystemState(initialState) {
   const state = initialState ?? {};
+  const selectedPaths = buildInitialSelectedPaths(state);
   return {
     currentDrive: typeof state.currentDrive === "string" ? state.currentDrive : "",
     currentPath: typeof state.currentPath === "string" ? state.currentPath : "",
-    selectedPath: typeof state.selectedPath === "string" ? state.selectedPath : "",
+    selectedPaths,
+    selectionAnchorPath: selectedPaths[selectedPaths.length - 1] ?? "",
   };
 }
 
@@ -17,13 +62,23 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   const [drives, setDrives] = useState([]);
   const [currentDrive, setCurrentDrive] = useState(initialStateRef.current.currentDrive);
   const [currentPath, setCurrentPath] = useState(initialStateRef.current.currentPath);
-  const [selectedPath, setSelectedPath] = useState(initialStateRef.current.selectedPath);
+  const [selectedPaths, setSelectedPaths] = useState(initialStateRef.current.selectedPaths);
+  const [selectionAnchorPath, setSelectionAnchorPath] = useState(
+    initialStateRef.current.selectionAnchorPath,
+  );
   const [entries, setEntries] = useState([]);
   const [isLoadingDrives, setIsLoadingDrives] = useState(true);
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
   const [isMovingEntry, setIsMovingEntry] = useState(false);
   const [isImportingExternal, setIsImportingExternal] = useState(false);
   const [error, setError] = useState("");
+  const selectedPath = selectedPaths.includes(selectionAnchorPath)
+    ? selectionAnchorPath
+    : (selectedPaths[selectedPaths.length - 1] ?? "");
+  const selectedEntryPaths = useMemo(() => {
+    const entryPathSet = new Set(entries.map((entry) => entry.path));
+    return selectedPaths.filter((path) => entryPathSet.has(path));
+  }, [entries, selectedPaths]);
 
   useEffect(() => {
     async function loadDrives() {
@@ -43,7 +98,8 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   useEffect(() => {
     if (!currentPath) {
       setEntries([]);
-      setSelectedPath("");
+      setSelectedPaths([]);
+      setSelectionAnchorPath("");
       return;
     }
 
@@ -57,6 +113,13 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
         const nextEntries = await invoke("list_directory", { path: currentPath });
         if (!cancelled) {
           setEntries(nextEntries);
+          const visibleEntryPathSet = new Set(nextEntries.map((entry) => entry.path));
+          setSelectedPaths((previousSelection) => (
+            previousSelection.filter((path) => visibleEntryPathSet.has(path))
+          ));
+          setSelectionAnchorPath((previousAnchorPath) => (
+            visibleEntryPathSet.has(previousAnchorPath) ? previousAnchorPath : ""
+          ));
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -76,10 +139,40 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     };
   }, [currentPath]);
 
+  function setSelectedPath(path) {
+    const nextPath = typeof path === "string" ? path : "";
+    if (!nextPath) {
+      setSelectedPaths([]);
+      setSelectionAnchorPath("");
+      return;
+    }
+
+    setSelectedPaths([nextPath]);
+    setSelectionAnchorPath(nextPath);
+  }
+
+  function navigateToPath(path) {
+    const nextPath = typeof path === "string" ? path : "";
+    if (!nextPath) {
+      setCurrentPath("");
+      setCurrentDrive("");
+      setSelectedPaths([]);
+      setSelectionAnchorPath("");
+      setError("");
+      return;
+    }
+
+    setCurrentPath(nextPath);
+    setSelectedPaths([]);
+    setSelectionAnchorPath("");
+    setError("");
+  }
+
   function selectDrive(path) {
     setCurrentDrive(path);
     setCurrentPath(path);
-    setSelectedPath("");
+    setSelectedPaths([]);
+    setSelectionAnchorPath("");
     setError("");
   }
 
@@ -91,7 +184,8 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     if (currentPath === currentDrive) {
       setCurrentPath("");
       setCurrentDrive("");
-      setSelectedPath("");
+      setSelectedPaths([]);
+      setSelectionAnchorPath("");
       setError("");
       return;
     }
@@ -105,25 +199,62 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
       ) {
         setCurrentPath("");
         setCurrentDrive("");
-        setSelectedPath("");
+        setSelectedPaths([]);
+        setSelectionAnchorPath("");
         return;
       }
 
       setCurrentPath(parent);
-      setSelectedPath("");
+      setSelectedPaths([]);
+      setSelectionAnchorPath("");
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to navigate to parent folder.");
     }
   }
 
-  function selectEntry(entryPath) {
-    setSelectedPath(entryPath);
+  function selectEntry(entryPath, options = {}) {
+    const { additive = false, range = false } = options;
+    if (typeof entryPath !== "string" || !entryPath) {
+      return;
+    }
+
+    const entryPaths = entries.map((entry) => entry.path);
+    if (!entryPaths.includes(entryPath)) {
+      return;
+    }
+
+    if (range) {
+      const anchorPath = entryPaths.includes(selectionAnchorPath)
+        ? selectionAnchorPath
+        : entryPath;
+      const rangePaths = getRangeSelectionPaths(entryPaths, anchorPath, entryPath);
+      const nextSelection = additive
+        ? sortPathsByEntryOrder([...selectedEntryPaths, ...rangePaths], entryPaths)
+        : rangePaths;
+      setSelectedPaths(nextSelection);
+      setSelectionAnchorPath(anchorPath);
+      return;
+    }
+
+    if (additive) {
+      const isAlreadySelected = selectedEntryPaths.includes(entryPath);
+      const nextSelection = isAlreadySelected
+        ? selectedEntryPaths.filter((path) => path !== entryPath)
+        : sortPathsByEntryOrder([...selectedEntryPaths, entryPath], entryPaths);
+      setSelectedPaths(nextSelection);
+      setSelectionAnchorPath(entryPath);
+      return;
+    }
+
+    setSelectedPaths([entryPath]);
+    setSelectionAnchorPath(entryPath);
   }
 
   async function openEntry(entry) {
     if (entry.is_dir) {
       setCurrentPath(entry.path);
-      setSelectedPath("");
+      setSelectedPaths([]);
+      setSelectionAnchorPath("");
       return;
     }
 
@@ -134,33 +265,63 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     }
   }
 
-  async function moveEntry(sourcePath, destinationDir) {
-    if (!sourcePath || !destinationDir || sourcePath === destinationDir) {
+  async function moveEntries(sourcePaths, destinationDir) {
+    const normalizedSourcePaths = uniqueNonEmptyPaths(sourcePaths);
+    if (!destinationDir || normalizedSourcePaths.length === 0) {
       return;
     }
 
     const activePath = currentPath;
+    const movedPaths = [];
+    let moveErrorToThrow = null;
 
     setIsMovingEntry(true);
     setError("");
 
     try {
-      await invoke("move_path", { source: sourcePath, destinationDir });
-
-      if (activePath) {
-        const refreshedEntries = await invoke("list_directory", { path: activePath });
-        setEntries(refreshedEntries);
-      }
-
-      if (selectedPath === sourcePath) {
-        setSelectedPath("");
+      for (const sourcePath of normalizedSourcePaths) {
+        if (!sourcePath || sourcePath === destinationDir) {
+          continue;
+        }
+        await invoke("move_path", { source: sourcePath, destinationDir });
+        movedPaths.push(sourcePath);
       }
     } catch (moveError) {
       setError(moveError instanceof Error ? moveError.message : "Failed to move item.");
-      throw moveError;
+      moveErrorToThrow = moveError;
     } finally {
+      if (activePath && movedPaths.length > 0) {
+        try {
+          const refreshedEntries = await invoke("list_directory", { path: activePath });
+          setEntries(refreshedEntries);
+        } catch (refreshError) {
+          if (!moveErrorToThrow) {
+            setError(refreshError instanceof Error ? refreshError.message : "Failed to refresh folder.");
+            moveErrorToThrow = refreshError;
+          }
+        }
+      }
+
+      if (movedPaths.length > 0) {
+        const movedPathSet = new Set(movedPaths);
+        setSelectedPaths((previousSelection) => (
+          previousSelection.filter((path) => !movedPathSet.has(path))
+        ));
+        setSelectionAnchorPath((previousAnchorPath) => (
+          movedPathSet.has(previousAnchorPath) ? "" : previousAnchorPath
+        ));
+      }
+
       setIsMovingEntry(false);
     }
+
+    if (moveErrorToThrow) {
+      throw moveErrorToThrow;
+    }
+  }
+
+  async function moveEntry(sourcePath, destinationDir) {
+    await moveEntries([sourcePath], destinationDir);
   }
 
   async function importExternalPaths(paths) {
@@ -178,7 +339,8 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
 
       const refreshedEntries = await invoke("list_directory", { path: activePath });
       setEntries(refreshedEntries);
-      setSelectedPath("");
+      setSelectedPaths([]);
+      setSelectionAnchorPath("");
     } catch (importError) {
       setError(importError instanceof Error ? importError.message : "Failed to import dropped items.");
       throw importError;
@@ -191,20 +353,23 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     drives,
     currentDrive,
     currentPath,
+    selectedPaths,
     selectedPath,
+    selectedEntryPaths,
     entries,
     isLoadingDrives,
     isLoadingEntries,
     isMovingEntry,
     isImportingExternal,
     error,
-    setCurrentPath,
+    navigateToPath,
     setSelectedPath,
     selectDrive,
     goUp,
     selectEntry,
     openEntry,
     moveEntry,
+    moveEntries,
     importExternalPaths,
   };
 }

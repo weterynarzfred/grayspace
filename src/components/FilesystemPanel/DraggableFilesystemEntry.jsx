@@ -6,7 +6,7 @@ function DraggableFilesystemEntry({
   entry,
   isSelected,
   isMovingEntry,
-  activeDragPath,
+  activeDragPaths = [],
   onClick,
   onDoubleClick,
 }) {
@@ -31,7 +31,10 @@ function DraggableFilesystemEntry({
   }
 
   const isDropTarget =
-    entry.is_dir && isOver && Boolean(activeDragPath) && activeDragPath !== entry.path;
+    entry.is_dir
+    && isOver
+    && activeDragPaths.length > 0
+    && !activeDragPaths.includes(entry.path);
 
   return (
     <EntryItem

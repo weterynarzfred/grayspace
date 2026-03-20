@@ -5,29 +5,69 @@ import {
   parseEntryPath,
 } from "../dndIds";
 
-function useFilesystemDnd({ entries, currentPath, isMovingEntry, moveEntry }) {
-  const [activeDragPath, setActiveDragPath] = useState("");
+function uniqueNonEmptyPaths(paths) {
+  const seen = new Set();
+  const normalizedPaths = [];
+
+  paths.forEach((path) => {
+    if (typeof path !== "string" || !path) return;
+    if (seen.has(path)) return;
+    seen.add(path);
+    normalizedPaths.push(path);
+  });
+
+  return normalizedPaths;
+}
+
+function useFilesystemDnd({
+  entries,
+  selectedPaths,
+  currentPath,
+  isMovingEntry,
+  moveEntries,
+}) {
+  const [activeDragPaths, setActiveDragPaths] = useState([]);
+
+  function resolveDragSourcePaths(sourcePath) {
+    const entryPathSet = new Set(entries.map((entry) => entry.path));
+    if (!sourcePath || !entryPathSet.has(sourcePath)) {
+      return [];
+    }
+
+    const normalizedSelection = uniqueNonEmptyPaths(selectedPaths).filter(
+      (path) => entryPathSet.has(path),
+    );
+    if (!normalizedSelection.includes(sourcePath)) {
+      return [sourcePath];
+    }
+
+    return normalizedSelection;
+  }
 
   function getBreadcrumbDropId(path) {
     return getBreadcrumbDndId(path);
   }
 
   function handleDragStart(event) {
-    setActiveDragPath(parseEntryPath(event.active?.id));
+    const sourcePath = parseEntryPath(event.active?.id);
+    setActiveDragPaths(resolveDragSourcePaths(sourcePath));
   }
 
   async function handleDragEnd(event) {
     const sourcePath = parseEntryPath(event.active?.id);
+    const sourcePaths = activeDragPaths.length > 0
+      ? activeDragPaths
+      : resolveDragSourcePaths(sourcePath);
     const destinationTarget = parseDestinationTarget(event.over?.id);
     const destinationDir = destinationTarget.path;
 
-    setActiveDragPath("");
+    setActiveDragPaths([]);
 
     if (
       isMovingEntry ||
-      !sourcePath ||
+      sourcePaths.length === 0 ||
       !destinationDir ||
-      sourcePath === destinationDir ||
+      sourcePaths.includes(destinationDir) ||
       destinationDir === currentPath
     ) {
       return;
@@ -41,18 +81,18 @@ function useFilesystemDnd({ entries, currentPath, isMovingEntry, moveEntry }) {
     }
 
     try {
-      await moveEntry(sourcePath, destinationDir);
+      await moveEntries(sourcePaths, destinationDir);
     } catch {
-      // moveEntry already sets user-facing error state
+      // moveEntries already sets user-facing error state.
     }
   }
 
   function handleDragCancel() {
-    setActiveDragPath("");
+    setActiveDragPaths([]);
   }
 
   return {
-    activeDragPath,
+    activeDragPaths,
     getBreadcrumbDropId,
     handleDragStart,
     handleDragEnd,

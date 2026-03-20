@@ -15,12 +15,41 @@ import styles from "./FilesystemPanel.module.scss";
 const UP_ENTRY_SELECTION_ID = "__up__";
 const SCROLL_PERSIST_DEBOUNCE_MS = 120;
 
+function normalizeSelectedPaths(state) {
+  const rawSelectedPaths = Array.isArray(state.selectedPaths) ? state.selectedPaths : [];
+  const rawSelectedPath = typeof state.selectedPath === "string" ? state.selectedPath : "";
+  const seen = new Set();
+  const selectedPaths = [];
+
+  [...rawSelectedPaths, rawSelectedPath].forEach((path) => {
+    if (typeof path !== "string" || !path) return;
+    if (seen.has(path)) return;
+    seen.add(path);
+    selectedPaths.push(path);
+  });
+
+  return selectedPaths;
+}
+
+function arePathArraysEqual(leftPaths, rightPaths) {
+  if (leftPaths.length !== rightPaths.length) {
+    return false;
+  }
+
+  return leftPaths.every((path, index) => path === rightPaths[index]);
+}
+
 function normalizeFilesystemState(filesystemState) {
   const state = filesystemState ?? {};
+  const selectedPaths = normalizeSelectedPaths(state);
+  const selectedPath = selectedPaths.includes(state.selectedPath)
+    ? state.selectedPath
+    : (selectedPaths[selectedPaths.length - 1] ?? "");
   return {
     currentDrive: typeof state.currentDrive === "string" ? state.currentDrive : "",
     currentPath: typeof state.currentPath === "string" ? state.currentPath : "",
-    selectedPath: typeof state.selectedPath === "string" ? state.selectedPath : "",
+    selectedPath: typeof selectedPath === "string" ? selectedPath : "",
+    selectedPaths,
     scrollTop: Number.isFinite(state.scrollTop) ? Math.max(0, Math.round(state.scrollTop)) : 0,
   };
 }
@@ -45,9 +74,10 @@ function FilesystemPanel({
   const isEntryOperationInProgress = nav.isMovingEntry || nav.isImportingExternal;
   const dnd = useFilesystemDnd({
     entries: nav.entries,
+    selectedPaths: nav.selectedEntryPaths,
     currentPath: nav.currentPath,
     isMovingEntry: isEntryOperationInProgress,
-    moveEntry: nav.moveEntry,
+    moveEntries: nav.moveEntries,
   });
   const { isExternalDragOver } = useExternalFilesystemDrop({
     panelRef,
@@ -59,8 +89,10 @@ function FilesystemPanel({
     onDragEnd: dnd.handleDragEnd,
     onDragCancel: dnd.handleDragCancel,
   });
-  const activeDragEntry =
-    nav.entries.find((entry) => entry.path === dnd.activeDragPath) ?? null;
+  const activeDragEntries = nav.entries.filter(
+    (entry) => dnd.activeDragPaths.includes(entry.path),
+  );
+  const activeDragEntry = activeDragEntries[0] ?? null;
   const breadcrumbs = buildBreadcrumbs(nav.currentPath, nav.currentDrive);
   const upDestinationPath =
     breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
@@ -73,6 +105,7 @@ function FilesystemPanel({
     const hasChanged = normalizedState.currentDrive !== lastState.currentDrive
       || normalizedState.currentPath !== lastState.currentPath
       || normalizedState.selectedPath !== lastState.selectedPath
+      || !arePathArraysEqual(normalizedState.selectedPaths, lastState.selectedPaths)
       || normalizedState.scrollTop !== lastState.scrollTop;
 
     if (!hasChanged) return;
@@ -86,12 +119,14 @@ function FilesystemPanel({
       currentDrive: nav.currentDrive,
       currentPath: nav.currentPath,
       selectedPath: nav.selectedPath,
+      selectedPaths: nav.selectedPaths,
       scrollTop: latestScrollTopRef.current,
     });
   }, [
     nav.currentDrive,
     nav.currentPath,
     nav.selectedPath,
+    nav.selectedPaths,
     persistFilesystemState,
   ]);
 
@@ -165,7 +200,7 @@ function FilesystemPanel({
                 key={drive.path}
                 label={drive.name}
                 meta={drive.path}
-                isSelected={nav.selectedPath === drive.path}
+                isSelected={nav.selectedPaths.includes(drive.path)}
                 onClick={() => nav.setSelectedPath(drive.path)}
                 onDoubleClick={() => nav.selectDrive(drive.path)}
               />
@@ -178,8 +213,8 @@ function FilesystemPanel({
             <Breadcrumbs
               currentPath={nav.currentPath}
               currentDrive={nav.currentDrive}
-              onSelect={nav.setCurrentPath}
-              activeDragPath={dnd.activeDragPath}
+              onSelect={nav.navigateToPath}
+              activeDragPaths={dnd.activeDragPaths}
               isMovingEntry={nav.isMovingEntry}
               getDropIdForPath={dnd.getBreadcrumbDropId}
             />
@@ -188,9 +223,9 @@ function FilesystemPanel({
               <ul className={styles.entryList}>
                 <UpEntryDropTarget
                   destinationPath={upDestinationPath}
-                  isSelected={nav.selectedPath === UP_ENTRY_SELECTION_ID}
+                  isSelected={nav.selectedPaths.includes(UP_ENTRY_SELECTION_ID)}
                   isMovingEntry={isEntryOperationInProgress}
-                  activeDragPath={dnd.activeDragPath}
+                  activeDragPaths={dnd.activeDragPaths}
                   onClick={() => nav.setSelectedPath(UP_ENTRY_SELECTION_ID)}
                   onDoubleClick={nav.goUp}
                 />
@@ -198,10 +233,13 @@ function FilesystemPanel({
                   <DraggableFilesystemEntry
                     key={entry.path}
                     entry={entry}
-                    isSelected={nav.selectedPath === entry.path}
+                    isSelected={nav.selectedPaths.includes(entry.path)}
                     isMovingEntry={isEntryOperationInProgress}
-                    activeDragPath={dnd.activeDragPath}
-                    onClick={() => nav.selectEntry(entry.path)}
+                    activeDragPaths={dnd.activeDragPaths}
+                    onClick={(event) => nav.selectEntry(entry.path, {
+                      additive: event.metaKey || event.ctrlKey,
+                      range: event.shiftKey,
+                    })}
                     onDoubleClick={() => nav.openEntry(entry)}
                   />
                 ))}
@@ -210,9 +248,15 @@ function FilesystemPanel({
             <DragOverlay dropAnimation={null}>
               {activeDragEntry && (
                 <div className={styles.dragOverlay}>
-                  <span className={styles.dragOverlayName}>{activeDragEntry.name}</span>
+                  <span className={styles.dragOverlayName}>
+                    {activeDragEntries.length > 1
+                      ? `${activeDragEntries.length} items`
+                      : activeDragEntry.name}
+                  </span>
                   <span className={styles.dragOverlayMeta}>
-                    {activeDragEntry.is_dir ? "Folder" : "File"}
+                    {activeDragEntries.length > 1
+                      ? "Move selection"
+                      : (activeDragEntry.is_dir ? "Folder" : "File")}
                   </span>
                 </div>
               )}

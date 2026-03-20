@@ -70,6 +70,7 @@ describe("FilesystemPanel", () => {
       "C:\\": [
         { name: "Users", path: "C:\\Users", is_dir: true },
         { name: "notes.txt", path: "C:\\notes.txt", is_dir: false },
+        { name: "draft.md", path: "C:\\draft.md", is_dir: false },
       ],
       "C:\\Users": [
         { name: "Projects", path: "C:\\Users\\Projects", is_dir: true },
@@ -219,6 +220,44 @@ describe("FilesystemPanel", () => {
     expect(folderButton).toHaveAttribute("aria-selected", "false");
   });
 
+  it("supports ctrl-click toggling for multi-selection", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const folderButton = await screen.findByRole("button", { name: /Users/i });
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(folderButton);
+    fireEvent.click(notesButton, { ctrlKey: true });
+
+    expect(folderButton).toHaveAttribute("aria-selected", "true");
+    expect(notesButton).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(folderButton, { ctrlKey: true });
+
+    expect(folderButton).toHaveAttribute("aria-selected", "false");
+    expect(notesButton).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("supports shift-click range selection", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const folderButton = await screen.findByRole("button", { name: /Users/i });
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    const draftButton = await screen.findByRole("button", { name: /draft\.md/i });
+
+    fireEvent.click(folderButton);
+    fireEvent.click(draftButton, { shiftKey: true });
+
+    expect(folderButton).toHaveAttribute("aria-selected", "true");
+    expect(notesButton).toHaveAttribute("aria-selected", "true");
+    expect(draftButton).toHaveAttribute("aria-selected", "true");
+  });
+
   it("opens a file on double click", async () => {
     renderFilesystemPanel();
 
@@ -256,6 +295,44 @@ describe("FilesystemPanel", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("moves all selected entries when dragging one selected item", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    const draftButton = await screen.findByRole("button", { name: /draft\.md/i });
+    fireEvent.click(notesButton);
+    fireEvent.click(draftButton, { ctrlKey: true });
+
+    await waitFor(() => {
+      expect(typeof dndCallbacks.onDragEnd).toBe("function");
+    });
+
+    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+    await dndCallbacks.onDragEnd?.({
+      active: { id: "entry:C:\\notes.txt" },
+      over: { id: "entry:C:\\Users" },
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("move_path", {
+        source: "C:\\notes.txt",
+        destinationDir: "C:\\Users",
+      });
+      expect(invoke).toHaveBeenCalledWith("move_path", {
+        source: "C:\\draft.md",
+        destinationDir: "C:\\Users",
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /draft\.md/i })).not.toBeInTheDocument();
     });
   });
 
@@ -379,13 +456,19 @@ describe("FilesystemPanel", () => {
         currentDrive: "C:\\",
         currentPath: "C:\\Users",
         selectedPath: "C:\\Users\\todo.txt",
+        selectedPaths: [
+          "C:\\Users\\Projects",
+          "C:\\Users\\todo.txt",
+        ],
         scrollTop: 37,
       },
       onFilesystemStateChange,
     });
 
     const todoButton = await screen.findByRole("button", { name: /todo\.txt/i });
+    const projectsButton = await screen.findByRole("button", { name: /Projects/i });
     expect(todoButton).toHaveAttribute("aria-selected", "true");
+    expect(projectsButton).toHaveAttribute("aria-selected", "true");
 
     const panelList = screen.getByTestId("filesystem-panel-list");
     expect(panelList.scrollTop).toBe(37);

@@ -6,6 +6,7 @@ use super::super::types::{
   WorkspaceSnapshot, WorkspaceWindowCreationPayload,
 };
 use crate::commands::terminal::{stop_terminal_session_by_id, TerminalState};
+use std::collections::HashSet;
 use tauri::{AppHandle, State};
 
 struct PanePanelTypeUpdate {
@@ -40,12 +41,42 @@ fn update_pane_panel_type(target_pane: &mut PaneState, next_panel_type: String) 
 }
 
 fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState {
+  let FilesystemPaneState {
+    current_drive,
+    current_path,
+    selected_path,
+    selected_paths,
+    scroll_top,
+  } = state;
+  let mut seen_paths = HashSet::new();
+  let mut normalized_selected_paths = Vec::new();
+
+  for path in selected_paths {
+    if path.is_empty() {
+      continue;
+    }
+    if seen_paths.insert(path.clone()) {
+      normalized_selected_paths.push(path);
+    }
+  }
+
+  if !selected_path.is_empty() && seen_paths.insert(selected_path.clone()) {
+    normalized_selected_paths.push(selected_path.clone());
+  }
+
+  let normalized_selected_path = if selected_path.is_empty() {
+    normalized_selected_paths.last().cloned().unwrap_or_default()
+  } else {
+    selected_path
+  };
+
   FilesystemPaneState {
-    current_drive: state.current_drive,
-    current_path: state.current_path,
-    selected_path: state.selected_path,
-    scroll_top: if state.scroll_top.is_finite() {
-      state.scroll_top.max(0.0)
+    current_drive,
+    current_path,
+    selected_path: normalized_selected_path,
+    selected_paths: normalized_selected_paths,
+    scroll_top: if scroll_top.is_finite() {
+      scroll_top.max(0.0)
     } else {
       0.0
     },
@@ -377,6 +408,7 @@ mod tests {
         current_drive: "C:\\".to_string(),
         current_path: "C:\\Users".to_string(),
         selected_path: "C:\\Users\\todo.txt".to_string(),
+        selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
         scroll_top: 125.7,
       },
     ));
@@ -389,10 +421,42 @@ mod tests {
         current_drive: "C:\\".to_string(),
         current_path: "C:\\Users".to_string(),
         selected_path: "C:\\Users\\todo.txt".to_string(),
+        selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
         scroll_top: f64::NAN,
       },
     ));
     assert_eq!(left_pane.filesystem_state.scroll_top, 0.0);
+  }
+
+  #[test]
+  fn update_pane_filesystem_state_normalizes_multi_selection() {
+    let mut model = WorkspaceModel::default();
+    let mut tab = model.create_default_tab();
+    let left_pane = &mut tab.pane_states.left;
+
+    assert!(update_pane_filesystem_state(
+      left_pane,
+      FilesystemPaneState {
+        current_drive: "C:\\".to_string(),
+        current_path: "C:\\Users".to_string(),
+        selected_path: String::new(),
+        selected_paths: vec![
+          "C:\\Users\\alpha.txt".to_string(),
+          "C:\\Users\\alpha.txt".to_string(),
+          "C:\\Users\\beta.txt".to_string(),
+        ],
+        scroll_top: 1.0,
+      },
+    ));
+
+    assert_eq!(
+      left_pane.filesystem_state.selected_paths,
+      vec![
+        "C:\\Users\\alpha.txt".to_string(),
+        "C:\\Users\\beta.txt".to_string(),
+      ]
+    );
+    assert_eq!(left_pane.filesystem_state.selected_path, "C:\\Users\\beta.txt");
   }
 
   #[test]

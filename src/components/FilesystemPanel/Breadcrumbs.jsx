@@ -49,7 +49,7 @@ function DroppableCrumbButton({
   index,
   onSelect,
   isMovingEntry,
-  activeDragPath,
+  activeDragPaths,
   dropId,
 }) {
   const hasDestinationPath = Boolean(crumb.path);
@@ -60,8 +60,8 @@ function DroppableCrumbButton({
   const isDropTarget =
     hasDestinationPath &&
     isOver &&
-    Boolean(activeDragPath) &&
-    activeDragPath !== crumb.path;
+    activeDragPaths.length > 0 &&
+    !activeDragPaths.includes(crumb.path);
 
   return (
     <button
@@ -80,7 +80,7 @@ function Breadcrumbs({
   currentPath,
   currentDrive,
   onSelect,
-  activeDragPath = "",
+  activeDragPaths = [],
   isMovingEntry = false,
   getDropIdForPath,
 }) {
@@ -97,7 +97,7 @@ function Breadcrumbs({
             index={index}
             onSelect={onSelect}
             isMovingEntry={isMovingEntry}
-            activeDragPath={activeDragPath}
+            activeDragPaths={activeDragPaths}
             dropId={getDropIdForPath(crumb.path)}
           />
         ) : (

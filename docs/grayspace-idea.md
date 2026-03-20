@@ -65,9 +65,9 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - [ ] cut, copy, and paste, hopefully working within the app and with system file explorer
 - [ ] move to recycle bin
 - [ ] rename
-- [ ] select multiple files/folders
-  - [ ] support for ctrl and shift
-  - [ ] bulk drag
+- [x] select multiple files/folders
+  - [x] support for ctrl and shift
+  - [x] bulk drag
   - [ ] bulk cut, copy, and paste
   - [ ] bulk recycle bin
   - [ ] bulk rename with regex

@@ -6,7 +6,7 @@ function UpEntryDropTarget({
   destinationPath,
   isSelected,
   isMovingEntry,
-  activeDragPath,
+  activeDragPaths = [],
   onClick,
   onDoubleClick,
 }) {
@@ -17,8 +17,8 @@ function UpEntryDropTarget({
   const isDropTarget =
     Boolean(destinationPath) &&
     isOver &&
-    Boolean(activeDragPath) &&
-    activeDragPath !== destinationPath;
+    activeDragPaths.length > 0 &&
+    !activeDragPaths.includes(destinationPath);
 
   return (
     <EntryItem
