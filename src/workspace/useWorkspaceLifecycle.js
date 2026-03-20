@@ -17,6 +17,7 @@ export default function useWorkspaceLifecycle({
     let unlistenWorkspaceUpdated = null;
     let unlistenMoved = null;
     let unlistenResized = null;
+    const ignoreSyncBoundsError = () => {};
 
     const syncBounds = async (appWindow, windowId) => {
       if (!windowId) return;
@@ -40,12 +41,12 @@ export default function useWorkspaceLifecycle({
       dispatch({ type: "workspace/bootstrap", payload: bootstrap });
       await syncBounds(appWindow, bootstrap.windowId);
 
-      unlistenMoved = await appWindow.onMoved(() => {
-        syncBounds(appWindow, currentWindowIdRef.current).catch(() => { });
-      });
-      unlistenResized = await appWindow.onResized(() => {
-        syncBounds(appWindow, currentWindowIdRef.current).catch(() => { });
-      });
+      const syncCurrentWindowBounds = () => {
+        syncBounds(appWindow, currentWindowIdRef.current).catch(ignoreSyncBoundsError);
+      };
+
+      unlistenMoved = await appWindow.onMoved(syncCurrentWindowBounds);
+      unlistenResized = await appWindow.onResized(syncCurrentWindowBounds);
 
       unlistenWorkspaceUpdated = await listenWorkspaceUpdated(snapshot => {
         if (snapshot) dispatch({

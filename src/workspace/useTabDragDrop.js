@@ -47,6 +47,27 @@ export default function useTabDragDrop({ snapshot, currentWindow, onError }) {
     };
   }, []);
 
+  const closeWindowSilently = useCallback(async windowId => {
+    if (!windowId) return;
+    await workspaceCloseWindow(windowId).catch(() => { });
+  }, []);
+
+  const detachTabToNewWindow = useCallback(async (dropAction) => {
+    const createdWindow = await workspaceDetachTabToNewWindow(
+      dropAction.sourceWindowId,
+      dropAction.tabId,
+      dropAction.point?.x ?? null,
+      dropAction.point?.y ?? null,
+    );
+
+    try {
+      await ensureWorkspaceWindowCreated(createdWindow);
+    } catch (error) {
+      await closeWindowSilently(createdWindow?.windowId);
+      throw error;
+    }
+  }, [closeWindowSilently]);
+
   const handleTabDrop = useCallback(async event => {
     if (!currentWindow || !snapshot) {
       resetDragState();
@@ -77,26 +98,14 @@ export default function useTabDragDrop({ snapshot, currentWindow, onError }) {
           dropAction.targetIndex,
         );
       } else if (dropAction.kind === "detach") {
-        const createdWindow = await workspaceDetachTabToNewWindow(
-          dropAction.sourceWindowId,
-          dropAction.tabId,
-          dropAction.point?.x ?? null,
-          dropAction.point?.y ?? null,
-        );
-        try {
-          await ensureWorkspaceWindowCreated(createdWindow);
-        } catch (error) {
-          if (createdWindow?.windowId)
-            await workspaceCloseWindow(createdWindow.windowId).catch(() => { });
-          throw error;
-        }
+        await detachTabToNewWindow(dropAction);
       }
     } catch (error) {
       onError(error);
     } finally {
       resetDragState();
     }
-  }, [currentWindow, onError, resetDragState, snapshot]);
+  }, [currentWindow, detachTabToNewWindow, onError, resetDragState, snapshot]);
 
   const handleTabDragCancel = useCallback(() => {
     resetDragState();
