@@ -1,5 +1,5 @@
 import path from "node:path";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import PanelsDndLayer from "../PanelsDndLayer";
 import FilesystemPanel from "./FilesystemPanel";
@@ -87,6 +87,7 @@ describe("FilesystemPanel", () => {
         { name: "Users", path: "C:\\Users", is_dir: true },
         { name: "notes.txt", path: "C:\\notes.txt", is_dir: false },
         { name: "draft.md", path: "C:\\draft.md", is_dir: false },
+        { name: ".grayspace", path: "C:\\.grayspace", is_dir: true },
       ],
       "C:\\Users": [
         { name: "Projects", path: "C:\\Users\\Projects", is_dir: true },
@@ -195,6 +196,16 @@ describe("FilesystemPanel", () => {
     expect(await screen.findByText("Users")).toBeInTheDocument();
     expect(await screen.findByText("notes.txt")).toBeInTheDocument();
     expect(screen.getByText("..")).toBeInTheDocument();
+  });
+
+  it("marks .grayspace folders as config entries", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const configButton = await screen.findByRole("button", { name: /\.grayspace/i });
+    expect(within(configButton).getByText("config")).toBeInTheDocument();
   });
 
   it("uses breadcrumbs to jump back to a parent path", async () => {

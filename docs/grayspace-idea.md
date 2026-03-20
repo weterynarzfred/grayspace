@@ -131,5 +131,4 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - cross-app file operations (app – system file explorer)
 - undo for file operations
 - arbitrary pane splitting + persistent workspace state
-- filesystem watcher auto-updates
 - the whole canvas panel

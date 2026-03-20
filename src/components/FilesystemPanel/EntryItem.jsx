@@ -5,6 +5,7 @@ function EntryItem({
   meta,
   isSelected = false,
   isFile = false,
+  isConfig = false,
   isDraggable = false,
   isDragging = false,
   isDropTarget = false,
@@ -22,17 +23,24 @@ function EntryItem({
   onDrop,
 }) {
   const hasDndListeners = Boolean(dndListeners && Object.keys(dndListeners).length > 0);
+  const buttonClassName = [
+    styles.entryButton,
+    isSelected ? styles.selected : "",
+    isFile ? styles.file : "",
+    isConfig ? styles.configEntry : "",
+    isDraggable ? styles.draggable : "",
+    isDragging ? styles.dragging : "",
+    isDropTarget ? styles.dropTarget : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <li className={styles.entryItem}>
       <button
         ref={buttonRef}
         type="button"
-        className={`${styles.entryButton} ${isSelected ? styles.selected : ""} ${
-          isFile ? styles.file : ""
-        } ${isDraggable ? styles.draggable : ""} ${isDragging ? styles.dragging : ""} ${
-          isDropTarget ? styles.dropTarget : ""
-        }`}
+        className={buttonClassName}
         aria-selected={isSelected}
         draggable={isDraggable && !hasDndListeners}
         style={buttonStyle}

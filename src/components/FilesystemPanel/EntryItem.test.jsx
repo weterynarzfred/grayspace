@@ -66,4 +66,12 @@ describe("EntryItem", () => {
     expect(handleDrop).toHaveBeenCalledTimes(1);
     expect(handleDragEnd).toHaveBeenCalledTimes(1);
   });
+
+  it("applies config styling class for workspace config entries", () => {
+    render(<EntryItem label=".grayspace" meta="config" isConfig />);
+
+    const button = screen.getByRole("button", { name: /\.grayspace/i });
+    expect(button.className).toMatch(/configEntry/i);
+    expect(screen.getByText("config")).toBeInTheDocument();
+  });
 });

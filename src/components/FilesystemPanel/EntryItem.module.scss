@@ -36,6 +36,21 @@
   background: $bg-selected;
 }
 
+.configEntry {
+  background: $bg-accent;
+  color: $text-accent;
+
+  &:hover,
+  &.selected {
+    background: $bg-accent-2;
+    border-color: $accent;
+  }
+
+  .entryPath {
+    color: $text-accent;
+  }
+}
+
 .file {
   cursor: default;
 }

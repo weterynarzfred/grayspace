@@ -35,13 +35,17 @@ function DraggableFilesystemEntry({
     && isOver
     && activeDragPaths.length > 0
     && !activeDragPaths.includes(entry.path);
+  const isConfigEntry =
+    entry.is_dir && (entry.name ?? "").toLowerCase() === ".grayspace";
+  const metaLabel = isConfigEntry ? "config" : (entry.is_dir ? "Folder" : "File");
 
   return (
     <EntryItem
       label={entry.name}
-      meta={entry.is_dir ? "Folder" : "File"}
+      meta={metaLabel}
       isSelected={isSelected}
       isFile={!entry.is_dir}
+      isConfig={isConfigEntry}
       isDraggable={!isMovingEntry}
       isDragging={isDragging}
       isDropTarget={isDropTarget}
