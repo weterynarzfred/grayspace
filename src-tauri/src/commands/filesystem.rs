@@ -34,6 +34,10 @@ struct FilesystemWatchEventPayload {
   changed_path: String,
 }
 
+fn watch_state_key(window_label: &str, watch_id: &str) -> String {
+  format!("{window_label}::{watch_id}")
+}
+
 fn is_watch_event_relevant(kind: &EventKind) -> bool {
   matches!(
     kind,
@@ -272,6 +276,7 @@ pub fn filesystem_watch_start(
   let canonical_watch_path = fs::canonicalize(&watch_path).map_err(|error| error.to_string())?;
   let app_handle = window.app_handle().clone();
   let window_label = window.label().to_string();
+  let watcher_key = watch_state_key(&window_label, normalized_watch_id);
   let watched_id = normalized_watch_id.to_string();
 
   let mut watcher = notify::recommended_watcher(move |event_result: notify::Result<notify::Event>| {
@@ -290,8 +295,7 @@ pub fn filesystem_watch_start(
       .map(|entry_path| entry_path.to_string_lossy().to_string())
       .unwrap_or_default();
 
-    let _ = app_handle.emit_to(
-      &window_label,
+    let _ = app_handle.emit(
       FILESYSTEM_WATCH_EVENT,
       FilesystemWatchEventPayload {
         watch_id: watched_id.clone(),
@@ -309,12 +313,13 @@ pub fn filesystem_watch_start(
     .watchers
     .lock()
     .map_err(|_| "Failed to access filesystem watcher state.".to_string())?;
-  watchers.insert(normalized_watch_id.to_string(), watcher);
+  watchers.insert(watcher_key, watcher);
   Ok(())
 }
 
 #[tauri::command]
 pub fn filesystem_watch_stop(
+  window: tauri::Window,
   state: State<FilesystemWatchState>,
   watch_id: &str,
 ) -> Result<(), String> {
@@ -327,8 +332,19 @@ pub fn filesystem_watch_stop(
     .watchers
     .lock()
     .map_err(|_| "Failed to access filesystem watcher state.".to_string())?;
-  watchers.remove(normalized_watch_id);
+  let watcher_key = watch_state_key(window.label(), normalized_watch_id);
+  watchers.remove(&watcher_key);
   Ok(())
+}
+
+pub fn handle_filesystem_window_destroyed(state: &State<FilesystemWatchState>, window_label: &str) {
+  let window_prefix = format!("{window_label}::");
+  let mut watchers = match state.watchers.lock() {
+    Ok(watchers) => watchers,
+    Err(_) => return,
+  };
+
+  watchers.retain(|watcher_key, _| !watcher_key.starts_with(&window_prefix));
 }
 
 #[tauri::command]

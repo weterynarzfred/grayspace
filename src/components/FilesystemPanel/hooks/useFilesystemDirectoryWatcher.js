@@ -12,7 +12,8 @@ function createFilesystemWatchId() {
     return `filesystem-watch-${crypto.randomUUID()}`;
 
   filesystemWatchCounter += 1;
-  return `filesystem-watch-${Date.now()}-${filesystemWatchCounter}`;
+  const randomToken = Math.random().toString(36).slice(2, 10);
+  return `filesystem-watch-${Date.now()}-${filesystemWatchCounter}-${randomToken}`;
 }
 
 export default function useFilesystemDirectoryWatcher({
@@ -20,16 +21,12 @@ export default function useFilesystemDirectoryWatcher({
   onDirectoryChange = undefined,
   onWatcherError = undefined,
 }) {
-  const watchIdRef = useRef(createFilesystemWatchId());
   const watchRefreshTimeoutRef = useRef(null);
 
   useEffect(() => {
-    const watchId = watchIdRef.current;
+    if (!currentPath) return undefined;
 
-    if (!currentPath) {
-      invoke("filesystem_watch_stop", { watchId }).catch(() => { });
-      return undefined;
-    }
+    const watchId = createFilesystemWatchId();
 
     let isDisposed = false;
     let unlistenWatch = null;
