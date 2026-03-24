@@ -7,7 +7,7 @@ use commands::filesystem::{
   import_paths, list_directory, list_drives, move_path, open_path, parent_path, start_external_drag,
   FilesystemWatchState,
 };
-use commands::preview::preview_read_file;
+use commands::preview::{preview_read_file, preview_write_text_file};
 use commands::terminal::{
   terminal_resize, terminal_run_command, terminal_set_cwd, terminal_start, terminal_stop,
   terminal_write, TerminalState,
@@ -52,6 +52,7 @@ pub fn run() {
       delete_paths,
       import_paths,
       preview_read_file,
+      preview_write_text_file,
       filesystem_watch_start,
       filesystem_watch_stop,
       start_external_drag,

@@ -1,4 +1,5 @@
 @use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
 
 .previewLabel {
   margin: 0;
@@ -7,19 +8,29 @@
   text-overflow: ellipsis;
 }
 
+.panelContent {
+  display: flex;
+  flex-direction: column;
+}
+
 .panelBody {
   padding: 0;
+  flex: 0 1 auto;
+  min-height: 0;
 }
 
 .textPreview {
-  background-color: #eee;
-  color: #111;
   overflow: hidden;
+  border-radius: 0.35rem;
 }
 
 .textPreview :global(.cm-editor) {
-  background: transparent;
+  background: $bg-panel;
   font-size: $font-size-mono;
+}
+
+.textPreview :global(.cm-lineNumbers) {
+  background: $bg-panel;
 }
 
 .textPreview :global(.cm-focused) {
@@ -34,13 +45,10 @@
 
 .imagePreview {
   display: block;
-  max-width: 100%;
-  max-height: 60vh;
-  margin: 0 0 0.75rem;
-  border: 1px solid $border-secondary;
-  border-radius: 0.5rem;
-  background: rgba($bg-surface, 0.7);
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  padding: 0.5rem;
 }
 
 .muted {
@@ -51,4 +59,17 @@
 .error {
   margin: 0;
   color: $text-warning;
+}
+
+.saveButton {
+  @include interactive-tile;
+  height: 100%;
+  border: solid $border-default;
+  border-width: 0 1px;
+  padding: 0 0.5rem;
+}
+
+.saveButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

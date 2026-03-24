@@ -59,6 +59,19 @@ describe("CodeTextPreview", () => {
     expect(codeMirrorPropsRef.current.className).toBe("preview-class");
   });
 
+  it("can be switched into editable mode", () => {
+    render(
+      <CodeTextPreview
+        filePath="C:\\notes.txt"
+        content="editable text"
+        readOnly={false}
+      />,
+    );
+
+    expect(codeMirrorPropsRef.current.readOnly).toBe(false);
+    expect(codeMirrorPropsRef.current.editable).toBe(true);
+  });
+
   it("loads language support based on filename", async () => {
     render(
       <CodeTextPreview

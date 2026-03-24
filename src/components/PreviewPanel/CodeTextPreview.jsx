@@ -1,12 +1,14 @@
 import CodeMirror from "@uiw/react-codemirror";
 import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
-import { EditorView } from "@codemirror/view";
+import { EditorView, keymap } from "@codemirror/view";
+import { gruvboxDark } from "@uiw/codemirror-theme-gruvbox-dark";
 import { useEffect, useMemo, useState } from "react";
 
 const previewEditorTheme = EditorView.theme({
-  "&": {
-    backgroundColor: "transparent",
+  "&.cm-editor": {
+    backgroundColor: "#282828",
+    color: "#ebdbb2",
   },
   ".cm-scroller": {
     fontFamily: "\"Fira Code\", \"Cascadia Mono\", \"Consolas\", monospace",
@@ -15,13 +17,23 @@ const previewEditorTheme = EditorView.theme({
   ".cm-content": {
     padding: "0.75rem",
     minHeight: "3rem",
+    caretColor: "#fe8019",
   },
   ".cm-lineNumbers": {
-    color: "#777",
+    color: "#7c6f64",
   },
   ".cm-gutters": {
-    backgroundColor: "transparent",
-    borderRight: "1px solid #444",
+    backgroundColor: "#282828",
+    borderRight: "1px solid #504945",
+  },
+  ".cm-cursor, .cm-dropCursor": {
+    borderLeftColor: "#fe8019",
+  },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
+    backgroundColor: "#504945",
+  },
+  ".cm-activeLine": {
+    backgroundColor: "#32302f",
   },
 }, { dark: true });
 
@@ -37,6 +49,9 @@ function CodeTextPreview({
   filePath = "",
   content = "",
   className = "",
+  readOnly = true,
+  onChange = undefined,
+  onSave = undefined,
 }) {
   const [languageSupport, setLanguageSupport] = useState(null);
 
@@ -66,13 +81,25 @@ function CodeTextPreview({
   }, [filePath]);
 
   const extensions = useMemo(() => {
+    const saveKeymap = typeof onSave === "function"
+      ? keymap.of([{
+        key: "Mod-s",
+        preventDefault: true,
+        run: () => {
+          onSave();
+          return true;
+        },
+      }])
+      : null;
     const nextExtensions = [
+      gruvboxDark,
       previewEditorTheme,
       EditorView.lineWrapping,
     ];
     if (languageSupport) nextExtensions.push(languageSupport);
+    if (saveKeymap) nextExtensions.push(saveKeymap);
     return nextExtensions;
-  }, [languageSupport]);
+  }, [languageSupport, onSave]);
 
   return (
     <CodeMirror
@@ -80,8 +107,8 @@ function CodeTextPreview({
       value={content}
       className={className}
       data-testid="preview-text-content"
-      readOnly
-      editable={false}
+      readOnly={readOnly}
+      editable={!readOnly}
       basicSetup={{
         foldGutter: false,
         dropCursor: false,
@@ -89,6 +116,9 @@ function CodeTextPreview({
         highlightActiveLineGutter: false,
       }}
       extensions={extensions}
+      onChange={(nextContent) => {
+        if (typeof onChange === "function") onChange(nextContent);
+      }}
     />
   );
 }

@@ -41,13 +41,20 @@ function getPathDisplayName(path) {
 }
 
 export function getPanelSelectedFilesLabel(baseLabel, selectedFiles = {}) {
+  const normalizedBaseLabel = typeof baseLabel === "string" ? baseLabel : "";
+  const joinLabel = (value) => {
+    if (typeof value !== "string" || !value) return normalizedBaseLabel;
+    if (!normalizedBaseLabel) return value;
+    return `${normalizedBaseLabel}: ${value}`;
+  };
+
   const normalizedSelection = normalizeSelectedFilesState(selectedFiles);
   const selectedCount = normalizedSelection.selectedPaths.length;
-  if (selectedCount === 0) return baseLabel;
-  if (selectedCount > 1) return `${baseLabel}${selectedCount}`;
+  if (selectedCount === 0) return normalizedBaseLabel;
+  if (selectedCount > 1) return joinLabel(String(selectedCount));
 
   const selectedFilePath =
     normalizedSelection.selectedPath || normalizedSelection.selectedPaths[0] || "";
   const fileName = getPathDisplayName(selectedFilePath);
-  return fileName ? `${baseLabel}${fileName}` : baseLabel;
+  return joinLabel(fileName);
 }

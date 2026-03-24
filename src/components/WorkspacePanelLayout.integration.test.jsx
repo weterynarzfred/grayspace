@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import PanelsDndLayer from "./PanelsDndLayer";
@@ -46,6 +46,10 @@ vi.mock("react-resizable-panels", () => ({
   Group: ({ children }) => <div>{children}</div>,
   Panel: ({ children }) => <div>{children}</div>,
   Separator: (props) => <div {...props} />,
+}));
+
+vi.mock("./PreviewPanel/CodeTextPreview", () => ({
+  default: ({ content }) => <div data-testid="preview-text-content">{content}</div>,
 }));
 
 function createInitialTabState() {
@@ -200,6 +204,10 @@ describe("WorkspacePanelLayout integration", () => {
         };
       }
 
+      if (command === "preview_write_text_file") {
+        return null;
+      }
+
       if (command === "move_path" || command === "import_paths") {
         return null;
       }
@@ -221,16 +229,26 @@ describe("WorkspacePanelLayout integration", () => {
     const fileButton = await screen.findByRole("button", { name: /notes\.txt/i });
     fireEvent.click(fileButton);
 
-    expect(await screen.findByText("Preview panel: notes.txt")).toBeInTheDocument();
+    await waitFor(() => {
+      const previewPanels = screen.getAllByLabelText("Preview panel");
+      expect(previewPanels).toHaveLength(1);
+      expect(within(previewPanels[0]).getByText("notes.txt")).toBeInTheDocument();
+    });
 
     fireEvent.click(screen.getByRole("button", { name: "set-left-preview" }));
     await waitFor(() => {
-      expect(screen.getAllByText("Preview panel: notes.txt")).toHaveLength(2);
+      const previewPanels = screen.getAllByLabelText("Preview panel");
+      expect(previewPanels).toHaveLength(2);
+      previewPanels.forEach((panel) => {
+        expect(within(panel).getByText("notes.txt")).toBeInTheDocument();
+      });
     });
 
     fireEvent.click(screen.getByRole("button", { name: "set-right-filesystem" }));
     await waitFor(() => {
-      expect(screen.getAllByText("Preview panel: notes.txt")).toHaveLength(1);
+      const previewPanels = screen.getAllByLabelText("Preview panel");
+      expect(previewPanels).toHaveLength(1);
+      expect(within(previewPanels[0]).getByText("notes.txt")).toBeInTheDocument();
     });
     expect(screen.getByLabelText("Filesystem panel")).toBeInTheDocument();
     expect(await screen.findByText("Select a drive")).toBeInTheDocument();
@@ -239,9 +257,13 @@ describe("WorkspacePanelLayout integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "set-right-canvas" }));
     expect(await screen.findByText("Scripts panel")).toBeInTheDocument();
     expect(await screen.findByText("Canvas panel")).toBeInTheDocument();
-    expect(screen.queryByText("Preview panel: notes.txt")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Preview panel")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "set-right-preview" }));
-    expect(await screen.findByText("Preview panel: notes.txt")).toBeInTheDocument();
+    await waitFor(() => {
+      const previewPanels = screen.getAllByLabelText("Preview panel");
+      expect(previewPanels).toHaveLength(1);
+      expect(within(previewPanels[0]).getByText("notes.txt")).toBeInTheDocument();
+    });
   });
 });

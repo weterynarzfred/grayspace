@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import PreviewPanel from "./PreviewPanel";
 
@@ -7,7 +7,23 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("./CodeTextPreview", () => ({
-  default: ({ content }) => <div data-testid="preview-text-content">{content}</div>,
+  default: ({
+    content,
+    readOnly = true,
+    onChange,
+    onSave,
+  }) => (
+    <div>
+      <div data-testid="preview-text-content">{content}</div>
+      <div data-testid="preview-read-only">{readOnly ? "true" : "false"}</div>
+      <button type="button" onClick={() => onChange?.(`${content} updated`)}>
+        mock-change
+      </button>
+      <button type="button" onClick={() => onSave?.()}>
+        mock-save
+      </button>
+    </div>
+  ),
 }));
 
 describe("PreviewPanel", () => {
@@ -25,7 +41,7 @@ describe("PreviewPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Preview panel")).toBeInTheDocument();
+    expect(screen.getByLabelText("Preview panel")).toBeInTheDocument();
     expect(screen.getByText("Select a file to preview.")).toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalled();
   });
@@ -71,7 +87,7 @@ describe("PreviewPanel", () => {
       />,
     );
 
-    const image = await screen.findByRole("img", { name: /preview of preview panel: image\.png/i });
+    const image = await screen.findByRole("img", { name: /preview of image\.png/i });
     expect(image).toHaveAttribute(
       "src",
       "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
@@ -94,7 +110,7 @@ describe("PreviewPanel", () => {
       />,
     );
 
-    const image = await screen.findByRole("img", { name: /preview of preview panel: image\.png/i });
+    const image = await screen.findByRole("img", { name: /preview of image\.png/i });
     expect(image).toHaveAttribute("src", "data:image/png;base64,AAAA");
   });
 
@@ -129,5 +145,69 @@ describe("PreviewPanel", () => {
     );
 
     expect(await screen.findByText("Permission denied.")).toBeInTheDocument();
+  });
+
+  it("saves text edits only when save is triggered", async () => {
+    invoke.mockImplementation(async (command) => {
+      if (command === "preview_read_file") {
+        return {
+          kind: "text",
+          content: "hello preview",
+          truncated: false,
+        };
+      }
+
+      if (command === "preview_write_text_file") {
+        return null;
+      }
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    render(
+      <PreviewPanel
+        tabSelectedFiles={{
+          selectedPath: "C:\\notes.txt",
+          selectedPaths: ["C:\\notes.txt"],
+        }}
+      />,
+    );
+
+    await screen.findByTestId("preview-text-content");
+    fireEvent.click(screen.getByRole("button", { name: "mock-change" }));
+    expect(await screen.findByText("Unsaved changes.")).toBeInTheDocument();
+    expect(
+      invoke.mock.calls.some(([command]) => command === "preview_write_text_file"),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save file" }));
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("preview_write_text_file", {
+        path: "C:\\notes.txt",
+        content: "hello preview updated",
+      });
+    });
+  });
+
+  it("keeps truncated text previews read-only", async () => {
+    invoke.mockResolvedValue({
+      kind: "text",
+      content: "truncated preview",
+      truncated: true,
+    });
+
+    render(
+      <PreviewPanel
+        tabSelectedFiles={{
+          selectedPath: "C:\\large.txt",
+          selectedPaths: ["C:\\large.txt"],
+        }}
+      />,
+    );
+
+    expect(await screen.findByTestId("preview-read-only")).toHaveTextContent("true");
+    expect(
+      await screen.findByText("Preview is truncated. Editing is disabled for large files."),
+    ).toBeInTheDocument();
   });
 });

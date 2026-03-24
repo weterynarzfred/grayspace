@@ -10,11 +10,9 @@ import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 const PanelsDndHandlersContext = createContext(null);
 
 function callHandlers(handlerEntries, callbackName, event) {
-  handlerEntries.forEach((handlers) => {
+  handlerEntries.forEach(handlers => {
     const callback = handlers[callbackName];
-    if (typeof callback === "function") {
-      callback(event);
-    }
+    if (typeof callback === "function") callback(event);
   });
 }
 
@@ -26,57 +24,37 @@ function PanelsDndLayer({ children }) {
     }),
   );
 
-  const registerHandlers = useMemo(
-    () => (handlers) => {
-      handlerEntriesRef.current.add(handlers);
-      return () => {
-        handlerEntriesRef.current.delete(handlers);
-      };
-    },
-    [],
-  );
+  const registerHandlers = useMemo(() => handlers => {
+    handlerEntriesRef.current.add(handlers);
+    return () => { handlerEntriesRef.current.delete(handlers); };
+  }, []);
 
-  return (
-    <PanelsDndHandlersContext.Provider value={registerHandlers}>
-      <DndContext
-        sensors={sensors}
-        collisionDetection={pointerWithin}
-        autoScroll={false}
-        onDragStart={(event) =>
-          callHandlers(handlerEntriesRef.current, "onDragStart", event)
-        }
-        onDragEnd={(event) =>
-          callHandlers(handlerEntriesRef.current, "onDragEnd", event)
-        }
-        onDragCancel={(event) =>
-          callHandlers(handlerEntriesRef.current, "onDragCancel", event)
-        }
-      >
-        {children}
-      </DndContext>
-    </PanelsDndHandlersContext.Provider>
-  );
+  return <PanelsDndHandlersContext.Provider value={registerHandlers}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={pointerWithin}
+      autoScroll={false}
+      onDragStart={event => callHandlers(handlerEntriesRef.current, "onDragStart", event)}
+      onDragEnd={event => callHandlers(handlerEntriesRef.current, "onDragEnd", event)}
+      onDragCancel={event => callHandlers(handlerEntriesRef.current, "onDragCancel", event)}
+    >{children}</DndContext>
+  </PanelsDndHandlersContext.Provider>;
 }
 
 export function usePanelsDndHandlers(handlers) {
   const registerHandlers = useContext(PanelsDndHandlersContext);
   const handlersRef = useRef(handlers);
 
-  if (!registerHandlers) {
+  if (!registerHandlers)
     throw new Error("usePanelsDndHandlers must be used within PanelsDndLayer.");
-  }
 
   handlersRef.current = handlers;
 
-  useEffect(
-    () =>
-      registerHandlers({
-        onDragStart: (event) => handlersRef.current.onDragStart?.(event),
-        onDragEnd: (event) => handlersRef.current.onDragEnd?.(event),
-        onDragCancel: (event) => handlersRef.current.onDragCancel?.(event),
-      }),
-    [registerHandlers],
-  );
+  useEffect(() => registerHandlers({
+    onDragStart: event => handlersRef.current.onDragStart?.(event),
+    onDragEnd: event => handlersRef.current.onDragEnd?.(event),
+    onDragCancel: event => handlersRef.current.onDragCancel?.(event),
+  }), [registerHandlers],);
 }
 
 export default PanelsDndLayer;

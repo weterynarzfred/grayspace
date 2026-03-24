@@ -1,5 +1,6 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Serialize;
+use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -135,7 +136,7 @@ pub fn preview_read_file(path: &str) -> Result<FilePreview, String> {
       });
     }
 
-    let image_bytes = std::fs::read(&file_path).map_err(|error| error.to_string())?;
+    let image_bytes = fs::read(&file_path).map_err(|error| error.to_string())?;
     return Ok(FilePreview::Image {
       mime_type: image_format.mime_type().to_string(),
       data_base64: STANDARD.encode(image_bytes),
@@ -161,9 +162,29 @@ pub fn preview_read_file(path: &str) -> Result<FilePreview, String> {
   Ok(FilePreview::Text { content, truncated })
 }
 
+#[tauri::command]
+pub fn preview_write_text_file(path: &str, content: &str) -> Result<(), String> {
+  let file_path = PathBuf::from(path);
+  if !file_path.exists() {
+    return Err("The selected path does not exist.".to_string());
+  }
+
+  if !file_path.is_file() {
+    return Err("Preview edits can only be saved to files.".to_string());
+  }
+
+  fs::write(&file_path, content).map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
-  use super::{preview_read_file, FilePreview, MAX_IMAGE_PREVIEW_BYTES, MAX_TEXT_PREVIEW_BYTES};
+  use super::{
+    preview_read_file,
+    preview_write_text_file,
+    FilePreview,
+    MAX_IMAGE_PREVIEW_BYTES,
+    MAX_TEXT_PREVIEW_BYTES,
+  };
   use base64::{engine::general_purpose::STANDARD, Engine as _};
   use serde_json::Value;
   use std::fs;
@@ -328,5 +349,36 @@ mod tests {
       payload.get("data_base64").is_none(),
       "snake_case data_base64 key should not be present"
     );
+  }
+
+  #[test]
+  fn preview_write_text_file_updates_existing_file() {
+    let test_root = unique_test_root("grayspace_preview_write");
+    let file_path = test_root.join("editable.txt");
+    fs::create_dir_all(&test_root).expect("should create temp root");
+    fs::write(&file_path, "before").expect("should write original content");
+
+    preview_write_text_file(&file_path.to_string_lossy(), "after")
+      .expect("text file save should succeed");
+
+    let saved = fs::read_to_string(&file_path).expect("should read saved content");
+    assert_eq!(saved, "after");
+
+    fs::remove_dir_all(&test_root).expect("should clean up temp root");
+  }
+
+  #[test]
+  fn preview_write_text_file_rejects_directories() {
+    let test_root = unique_test_root("grayspace_preview_write_dir");
+    fs::create_dir_all(&test_root).expect("should create temp root");
+
+    let result = preview_write_text_file(&test_root.to_string_lossy(), "ignored");
+    assert!(result.is_err(), "writing into a directory should fail");
+    assert_eq!(
+      result.expect_err("directory write should fail"),
+      "Preview edits can only be saved to files."
+    );
+
+    fs::remove_dir_all(&test_root).expect("should clean up temp root");
   }
 }
