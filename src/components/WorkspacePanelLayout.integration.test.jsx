@@ -192,6 +192,14 @@ describe("WorkspacePanelLayout integration", () => {
         return null;
       }
 
+      if (command === "preview_read_file") {
+        return {
+          kind: "text",
+          content: "mock preview",
+          truncated: false,
+        };
+      }
+
       if (command === "move_path" || command === "import_paths") {
         return null;
       }

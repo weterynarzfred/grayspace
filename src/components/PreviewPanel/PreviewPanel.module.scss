@@ -1,0 +1,43 @@
+@use "../../styles/variables" as *;
+
+.previewLabel {
+  margin: 0 0 0.75rem;
+  color: $text-secondary;
+  overflow-wrap: break-word;
+}
+
+.textPreview {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid $border-secondary;
+  border-radius: 0.5rem;
+  background: rgba($bg-surface, 0.7);
+  color: $text-primary;
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.imagePreview {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  margin: 0 0 0.75rem;
+  border: 1px solid $border-secondary;
+  border-radius: 0.5rem;
+  background: rgba($bg-surface, 0.7);
+  object-fit: contain;
+}
+
+.muted {
+  margin: 0;
+  color: $text-tertiary;
+}
+
+.error {
+  margin: 0;
+  color: $text-warning;
+}

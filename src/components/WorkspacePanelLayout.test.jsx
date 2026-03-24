@@ -1,5 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
 import { vi } from "vitest";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+}));
 
 vi.mock("react-resizable-panels", () => ({
   Group: ({ children }) => <div>{children}</div>,
@@ -39,6 +44,15 @@ vi.mock("./FilesystemPanel/FilesystemPanel", () => ({
 import WorkspacePanelLayout from "./WorkspacePanelLayout";
 
 describe("WorkspacePanelLayout", () => {
+  beforeEach(() => {
+    invoke.mockReset();
+    invoke.mockResolvedValue({
+      kind: "text",
+      content: "mock preview",
+      truncated: false,
+    });
+  });
+
   it("forwards callbacks with explicit tabId and pane identifiers", () => {
     const onCurrentPathChange = vi.fn();
     const onFilesystemStateChange = vi.fn();

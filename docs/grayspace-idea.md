@@ -119,7 +119,10 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 
 - [x] sync preview with filesystem selection
 - [ ] add a button for locking the preview panel on the current file
-- [ ] displays image/audio/video/plaintext files using native HTML
+- [x] displays image files using native HTML
+- [ ] displays video files using native HTML
+- [ ] displays audio files using native HTML
+- [x] displays plaintext files using native HTML
 - [ ] slideshow using current filtered files
 
 ### External UI Panel
