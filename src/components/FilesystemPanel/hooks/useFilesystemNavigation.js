@@ -56,6 +56,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   const [isLoadingDrives, setIsLoadingDrives] = useState(true);
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
   const [isMovingEntry, setIsMovingEntry] = useState(false);
+  const [isDeletingEntries, setIsDeletingEntries] = useState(false);
   const [isImportingExternal, setIsImportingExternal] = useState(false);
   const [error, setError] = useState("");
   currentPathRef.current = currentPath;
@@ -319,6 +320,36 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     await moveEntries([sourcePath], destinationDir);
   }
 
+  async function deleteEntries(paths) {
+    const normalizedPaths = uniqueNonEmptyPaths(paths);
+    if (!currentPath || normalizedPaths.length === 0) return;
+
+    const activePath = currentPath;
+    const deletedPathSet = new Set(normalizedPaths);
+
+    setIsDeletingEntries(true);
+    setError("");
+
+    try {
+      await invoke("delete_paths", { paths: normalizedPaths });
+
+      await refreshEntriesForPath(activePath);
+      if (currentPathRef.current === activePath) {
+        setSelectedPaths((previousSelection) => (
+          previousSelection.filter((path) => !deletedPathSet.has(path))
+        ));
+        setSelectionAnchorPath((previousAnchorPath) => (
+          deletedPathSet.has(previousAnchorPath) ? "" : previousAnchorPath
+        ));
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete item.");
+      throw deleteError;
+    } finally {
+      setIsDeletingEntries(false);
+    }
+  }
+
   async function importExternalPaths(paths) {
     if (!currentPath || !Array.isArray(paths) || paths.length === 0) return;
 
@@ -353,6 +384,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     isLoadingDrives,
     isLoadingEntries,
     isMovingEntry,
+    isDeletingEntries,
     isImportingExternal,
     error,
     navigateToPath,
@@ -363,6 +395,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     openEntry,
     moveEntry,
     moveEntries,
+    deleteEntries,
     importExternalPaths,
   };
 }

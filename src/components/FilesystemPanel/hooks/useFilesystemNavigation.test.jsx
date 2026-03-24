@@ -68,6 +68,10 @@ function mockFilesystemInvoke({
       return null;
     }
 
+    if (command === "delete_paths") {
+      return null;
+    }
+
     throw new Error(`Unhandled invoke: ${command}`);
   });
 }
@@ -232,6 +236,71 @@ describe("useFilesystemNavigation", () => {
     expect(invoke).toHaveBeenCalledWith("parent_path", { path: "C:\\Users" });
     expect(result.current.selectedPaths).toEqual([]);
     expect(result.current.selectedPath).toBe("");
+  });
+
+  it("deletes selected entries and clears selection", async () => {
+    const directoryState = {
+      "C:\\": [
+        { name: "Users", path: "C:\\Users", is_dir: true },
+        { name: "todo.txt", path: "C:\\todo.txt", is_dir: false },
+      ],
+    };
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") {
+        return [{ name: "C:", path: "C:\\" }];
+      }
+
+      if (command === "list_directory") {
+        return (directoryState[payload?.path] ?? []).map((entry) => ({ ...entry }));
+      }
+
+      if (command === "delete_paths") {
+        const paths = payload?.paths ?? [];
+        paths.forEach((deletePath) => {
+          directoryState["C:\\"] = (directoryState["C:\\"] ?? []).filter(
+            (entry) => entry.path !== deletePath,
+          );
+        });
+        return null;
+      }
+
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+        return null;
+      }
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useFilesystemNavigation({
+      currentDrive: "C:\\",
+      currentPath: "C:\\",
+    }));
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual([
+        "C:\\Users",
+        "C:\\todo.txt",
+      ]);
+    });
+
+    act(() => {
+      result.current.selectEntry("C:\\todo.txt");
+    });
+
+    expect(result.current.selectedEntryPaths).toEqual(["C:\\todo.txt"]);
+
+    await act(async () => {
+      await result.current.deleteEntries(["C:\\todo.txt"]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users"]);
+    });
+    expect(result.current.selectedEntryPaths).toEqual([]);
+    expect(invoke).toHaveBeenCalledWith("delete_paths", {
+      paths: ["C:\\todo.txt"],
+    });
   });
 
   it("ignores stale move refresh results after navigating to a different folder", async () => {

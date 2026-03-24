@@ -5,6 +5,7 @@ function buildStatusMessages({
   isLoadingDrives,
   isLoadingEntries,
   isMovingEntry,
+  isDeletingEntries,
   isImportingExternal,
   error,
 }) {
@@ -26,6 +27,9 @@ function buildStatusMessages({
   if (isBrowsing && isMovingEntry) {
     messages.push({ id: "moving-entry", text: "Moving item...", tone: "muted" });
   }
+  if (isBrowsing && isDeletingEntries) {
+    messages.push({ id: "deleting-entries", text: "Deleting selected items...", tone: "muted" });
+  }
   if (isBrowsing && isImportingExternal) {
     messages.push({
       id: "importing-external",
@@ -45,6 +49,7 @@ function FilesystemStatusMessages({
   isLoadingDrives,
   isLoadingEntries,
   isMovingEntry,
+  isDeletingEntries,
   isImportingExternal,
   error,
 }) {
@@ -53,6 +58,7 @@ function FilesystemStatusMessages({
     isLoadingDrives,
     isLoadingEntries,
     isMovingEntry,
+    isDeletingEntries,
     isImportingExternal,
     error,
   });

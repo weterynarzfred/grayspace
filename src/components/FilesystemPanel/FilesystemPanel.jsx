@@ -14,9 +14,21 @@ import useExternalFilesystemDrag from "./hooks/useExternalFilesystemDrag";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import useFilesystemStatePersistence from "./hooks/useFilesystemStatePersistence";
 import { uniqueNonEmptyPaths } from "./pathSelection";
+import { useNotificationCenter } from "../../notifications/notificationCenter";
 import styles from "./FilesystemPanel.module.scss";
 
 const UP_ENTRY_SELECTION_ID = "__up__";
+
+function isEditableKeyboardTarget(target) {
+  if (!target || !(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+  return (
+    target.isContentEditable
+    || tagName === "input"
+    || tagName === "textarea"
+    || tagName === "select"
+  );
+}
 
 function FilesystemPanel({
   tabId = "",
@@ -32,6 +44,7 @@ function FilesystemPanel({
   const panelListRef = useRef(null);
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current);
+  const { openConfirm } = useNotificationCenter();
   const { handlePanelListScroll } = useFilesystemStatePersistence({
     tabId,
     pane,
@@ -44,7 +57,10 @@ function FilesystemPanel({
     selectedPaths: nav.selectedPaths,
   });
   const isBrowsing = nav.currentPath !== "";
-  const isEntryOperationInProgress = nav.isMovingEntry || nav.isImportingExternal;
+  const isEntryOperationInProgress =
+    nav.isMovingEntry
+    || nav.isDeletingEntries
+    || nav.isImportingExternal;
   const isExternalDragEnabled = isBrowsing && !isEntryOperationInProgress;
   const dnd = useFilesystemDnd({
     entries: nav.entries,
@@ -76,6 +92,9 @@ function FilesystemPanel({
   const breadcrumbs = buildBreadcrumbs(nav.currentPath, nav.currentDrive);
   const upDestinationPath =
     breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
+  const selectedEntryPaths = nav.selectedEntryPaths;
+  const filesystemEntries = nav.entries;
+  const deleteEntries = nav.deleteEntries;
 
   const emitTabSelectedFiles = useCallback((nextSelectedPaths) => {
     if (typeof onTabSelectedFilesChange !== "function" || !tabId) return;
@@ -92,11 +111,63 @@ function FilesystemPanel({
       onCurrentPathChange(nav.currentPath);
   }, [nav.currentPath, onCurrentPathChange]);
 
+  const handleDeleteSelectedEntries = useCallback(async () => {
+    const selectedPaths = uniqueNonEmptyPaths(selectedEntryPaths);
+    if (!isBrowsing || selectedPaths.length === 0 || isEntryOperationInProgress) return;
+
+    const selectedEntries = filesystemEntries.filter((entry) => selectedPaths.includes(entry.path));
+    const confirmMessage = selectedEntries.length === 1
+      ? `Delete "${selectedEntries[0].name}" permanently?`
+      : `Delete ${selectedEntries.length} selected items permanently?`;
+
+    const shouldDelete = await openConfirm({
+      title: "Delete selected items?",
+      message: confirmMessage,
+      tone: "warning",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      autoOpen: true,
+    });
+    if (!shouldDelete) return;
+
+    try {
+      await deleteEntries(selectedPaths);
+      emitTabSelectedFiles([]);
+    } catch {
+      // The hook surfaces user-facing errors via status messages.
+    }
+  }, [
+    emitTabSelectedFiles,
+    deleteEntries,
+    filesystemEntries,
+    isBrowsing,
+    isEntryOperationInProgress,
+    openConfirm,
+    selectedEntryPaths,
+  ]);
+
+  const handlePanelKeyDown = useCallback((event) => {
+    if (event.key !== "Delete") return;
+    if (event.defaultPrevented || event.repeat) return;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (isEditableKeyboardTarget(event.target)) return;
+    if (!isBrowsing || isEntryOperationInProgress || selectedEntryPaths.length === 0) return;
+
+    event.preventDefault();
+    void handleDeleteSelectedEntries();
+  }, [
+    handleDeleteSelectedEntries,
+    isBrowsing,
+    isEntryOperationInProgress,
+    selectedEntryPaths.length,
+  ]);
+
   return (
     <section
       ref={panelRef}
       className={`${styles.panelContent} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
       aria-label="Filesystem panel"
+      onKeyDown={handlePanelKeyDown}
     >
       <PanelHeader
         panelType={panelType}
@@ -115,6 +186,7 @@ function FilesystemPanel({
           isLoadingDrives={nav.isLoadingDrives}
           isLoadingEntries={nav.isLoadingEntries}
           isMovingEntry={nav.isMovingEntry}
+          isDeletingEntries={nav.isDeletingEntries}
           isImportingExternal={nav.isImportingExternal}
           error={nav.error}
         />

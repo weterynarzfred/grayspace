@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import PanelsDndLayer from "./PanelsDndLayer";
 import WorkspacePanelLayout from "./WorkspacePanelLayout";
+import { NotificationCenterProvider } from "../notifications/notificationCenter";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -200,7 +201,11 @@ describe("WorkspacePanelLayout integration", () => {
   });
 
   it("keeps last selected file across panel switching flow", async () => {
-    render(<WorkspacePanelLayoutHarness />);
+    render(
+      <NotificationCenterProvider>
+        <WorkspacePanelLayoutHarness />
+      </NotificationCenterProvider>,
+    );
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);

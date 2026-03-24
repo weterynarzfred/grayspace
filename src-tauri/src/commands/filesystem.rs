@@ -182,6 +182,35 @@ pub fn move_path(source: &str, destination_dir: &str) -> Result<(), String> {
   fs::rename(&source_path, &destination_path).map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+pub fn delete_paths(paths: Vec<String>) -> Result<(), String> {
+  let normalized_paths: Vec<PathBuf> = paths
+    .into_iter()
+    .filter_map(|path| (!path.trim().is_empty()).then_some(PathBuf::from(path)))
+    .collect();
+
+  if normalized_paths.is_empty() {
+    return Err("No paths were provided for deletion.".to_string());
+  }
+
+  for path in normalized_paths {
+    if !path.exists() {
+      return Err(format!(
+        "The path '{}' does not exist.",
+        path.to_string_lossy()
+      ));
+    }
+
+    if path.is_dir() {
+      fs::remove_dir_all(&path).map_err(|error| error.to_string())?;
+    } else {
+      fs::remove_file(&path).map_err(|error| error.to_string())?;
+    }
+  }
+
+  Ok(())
+}
+
 fn copy_path_recursive(source_path: &Path, destination_path: &Path) -> Result<(), String> {
   if source_path.is_dir() {
     fs::create_dir(destination_path).map_err(|error| error.to_string())?;

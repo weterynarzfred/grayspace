@@ -1,4 +1,4 @@
-use super::{import_paths, list_directory, move_path, parent_path};
+use super::{delete_paths, import_paths, list_directory, move_path, parent_path};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -163,6 +163,52 @@ fn move_path_rejects_missing_source() {
   );
 
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn delete_paths_removes_file() {
+  let test_root = unique_test_root("grayspace_delete_file");
+  let file_path = test_root.join("notes.txt");
+  fs::create_dir_all(&test_root).expect("should create temp root");
+  fs::write(&file_path, "remove me").expect("should create temp file");
+
+  let delete_target = file_path.to_string_lossy().to_string();
+  delete_paths(vec![delete_target]).expect("delete_paths should remove file");
+
+  assert!(!file_path.exists(), "file should be removed");
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn delete_paths_removes_directory_recursively() {
+  let test_root = unique_test_root("grayspace_delete_dir");
+  let folder_path = test_root.join("workspace");
+  let nested_path = folder_path.join("nested");
+  fs::create_dir_all(&nested_path).expect("should create nested folders");
+  fs::write(folder_path.join("root.txt"), "root").expect("should create root file");
+  fs::write(nested_path.join("leaf.txt"), "leaf").expect("should create nested file");
+
+  let delete_target = folder_path.to_string_lossy().to_string();
+  delete_paths(vec![delete_target]).expect("delete_paths should remove folder recursively");
+
+  assert!(!folder_path.exists(), "folder should be removed recursively");
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn delete_paths_rejects_missing_path() {
+  let test_root = unique_test_root("grayspace_delete_missing");
+  let missing_path = test_root.join("missing.txt");
+  let delete_target = missing_path.to_string_lossy().to_string();
+
+  let result = delete_paths(vec![delete_target]);
+
+  assert!(result.is_err());
+  assert!(result
+    .expect_err("should return an error")
+    .contains("does not exist."));
 }
 
 #[test]

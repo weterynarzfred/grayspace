@@ -29,6 +29,7 @@ import {
 import { ensureWorkspaceWindowCreated, getErrorMessage } from "./workspace/appRuntime";
 import useTabDragDrop from "./workspace/useTabDragDrop";
 import useWorkspaceLifecycle from "./workspace/useWorkspaceLifecycle";
+import { useNotificationCenter } from "./notifications/notificationCenter";
 
 import styles from "./App.module.scss";
 
@@ -36,6 +37,15 @@ function App() {
   const [viewState, dispatch] = useReducer(workspaceReducer, initialWorkspaceViewState);
   const [runtimeError, setRuntimeError] = useState("");
   const currentWindowIdRef = useRef("");
+  const {
+    notifications,
+    isNotificationsOpen,
+    pushNotification,
+    openConfirm,
+    toggleNotifications,
+    dismissNotification,
+    resolveConfirmNotification,
+  } = useNotificationCenter();
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 5 },
@@ -60,8 +70,15 @@ function App() {
   );
 
   const handleWorkspaceCommandError = useCallback(error => {
-    setRuntimeError(getErrorMessage(error));
-  }, []);
+    const message = getErrorMessage(error);
+    setRuntimeError(message);
+    pushNotification({
+      title: "Action failed",
+      message,
+      tone: "error",
+      autoOpen: true,
+    });
+  }, [pushNotification]);
 
   const handleSetActiveTab = useCallback(tabId => {
     if (!currentWindow) return;
@@ -86,10 +103,22 @@ function App() {
     }
   }, [currentWindow, handleWorkspaceCommandError]);
 
-  const handleCloseTab = useCallback(tabId => {
+  const handleCloseTab = useCallback(async (tabId) => {
     if (!currentWindow) return;
+
+    const closingTabTitle = tabs.find((tab) => tab.tabId === tabId)?.title ?? "this tab";
+    const shouldClose = await openConfirm({
+      title: "Close tab?",
+      message: `Close "${closingTabTitle}"?`,
+      tone: "warning",
+      confirmLabel: "Close tab",
+      cancelLabel: "Keep open",
+      autoOpen: true,
+    });
+    if (!shouldClose) return;
+
     workspaceCloseTab(currentWindow.windowId, tabId).catch(handleWorkspaceCommandError);
-  }, [currentWindow, handleWorkspaceCommandError]);
+  }, [currentWindow, handleWorkspaceCommandError, openConfirm, tabs]);
 
   const handleChangePanelType = useCallback((tabId, pane, panelType) => {
     if (!tabId) return;
@@ -156,6 +185,11 @@ function App() {
             onCloseTab={handleCloseTab}
             onCreateTab={handleCreateTab}
             onCreateWindow={handleCreateWindow}
+            notifications={notifications}
+            isNotificationsOpen={isNotificationsOpen}
+            onToggleNotifications={toggleNotifications}
+            onDismissNotification={dismissNotification}
+            onResolveNotificationConfirm={resolveConfirmNotification}
           />
         </DndContext>
 

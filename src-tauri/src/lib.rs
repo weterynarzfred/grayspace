@@ -3,8 +3,8 @@ mod commands;
 use tauri::Manager;
 
 use commands::filesystem::{
-  filesystem_watch_start, filesystem_watch_stop, handle_filesystem_window_destroyed, import_paths,
-  list_directory, list_drives, move_path, open_path, parent_path, start_external_drag,
+  delete_paths, filesystem_watch_start, filesystem_watch_stop, handle_filesystem_window_destroyed,
+  import_paths, list_directory, list_drives, move_path, open_path, parent_path, start_external_drag,
   FilesystemWatchState,
 };
 use commands::terminal::{
@@ -48,6 +48,7 @@ pub fn run() {
       parent_path,
       open_path,
       move_path,
+      delete_paths,
       import_paths,
       filesystem_watch_start,
       filesystem_watch_stop,

@@ -4,6 +4,10 @@ import { invoke } from "@tauri-apps/api/core";
 import PanelsDndLayer from "../PanelsDndLayer";
 import FilesystemPanel from "./FilesystemPanel";
 
+const { openConfirmMock } = vi.hoisted(() => ({
+  openConfirmMock: vi.fn(),
+}));
+
 const dndCallbacks = {
   onDragStart: undefined,
   onDragEnd: undefined,
@@ -14,6 +18,12 @@ let filesystemWatchCallback;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+}));
+
+vi.mock("../../notifications/notificationCenter", () => ({
+  useNotificationCenter: () => ({
+    openConfirm: openConfirmMock,
+  }),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -81,6 +91,8 @@ describe("FilesystemPanel", () => {
     dndCallbacks.onDragStart = undefined;
     dndCallbacks.onDragEnd = undefined;
     dndCallbacks.onDragCancel = undefined;
+    openConfirmMock.mockReset();
+    openConfirmMock.mockResolvedValue(true);
 
     const directoryState = {
       "C:\\": [
@@ -160,6 +172,25 @@ describe("FilesystemPanel", () => {
             path: path.win32.join(destinationDir, sourceName),
             is_dir: false,
           });
+        });
+        return null;
+      }
+
+      if (command === "delete_paths") {
+        const deletePaths = payload?.paths ?? [];
+        deletePaths.forEach((deletePath) => {
+          const parentPath = path.win32.dirname(deletePath);
+          const parentEntries = directoryState[parentPath] ?? [];
+          const entryToDelete = parentEntries.find((entry) => entry.path === deletePath);
+
+          directoryState[parentPath] = parentEntries.filter((entry) => entry.path !== deletePath);
+          if (entryToDelete?.is_dir) {
+            Object.keys(directoryState).forEach((directoryKey) => {
+              if (directoryKey === deletePath || directoryKey.startsWith(`${deletePath}\\`)) {
+                delete directoryState[directoryKey];
+              }
+            });
+          }
         });
         return null;
       }
@@ -640,5 +671,51 @@ describe("FilesystemPanel", () => {
     });
 
     expect(await screen.findByText("clip.mp4")).toBeInTheDocument();
+  });
+
+  it("opens confirmation and deletes selected entries on Delete key", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    fireEvent.keyDown(notesButton, { key: "Delete" });
+
+    await waitFor(() => {
+      expect(openConfirmMock).toHaveBeenCalledWith(expect.objectContaining({
+        title: "Delete selected items?",
+        confirmLabel: "Delete",
+      }));
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("delete_paths", {
+        paths: ["C:\\notes.txt"],
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not delete when Delete confirmation is cancelled", async () => {
+    openConfirmMock.mockResolvedValue(false);
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    fireEvent.keyDown(notesButton, { key: "Delete" });
+
+    await waitFor(() => {
+      expect(openConfirmMock).toHaveBeenCalled();
+    });
+    expect(invoke).not.toHaveBeenCalledWith("delete_paths", expect.anything());
+    expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 });
