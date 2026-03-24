@@ -8,6 +8,7 @@ const SCROLL_PERSIST_DEBOUNCE_MS = 120;
 
 export default function useFilesystemStatePersistence({
   tabId = "",
+  paneId = "",
   pane = "",
   onFilesystemStateChange = undefined,
   panelListRef = undefined,
@@ -20,12 +21,13 @@ export default function useFilesystemStatePersistence({
   const initialFilesystemStateRef = useRef(
     normalizeFilesystemPaneState(initialFilesystemState),
   );
+  const resolvedPaneId = paneId || pane;
   const lastPersistedStateRef = useRef(initialFilesystemStateRef.current);
   const latestScrollTopRef = useRef(initialFilesystemStateRef.current.scrollTop);
   const scrollPersistTimeoutRef = useRef(null);
 
   const persistFilesystemState = useCallback((nextState) => {
-    if (typeof onFilesystemStateChange !== "function" || !tabId || !pane) return;
+    if (typeof onFilesystemStateChange !== "function" || !tabId || !resolvedPaneId) return;
 
     const normalizedState = normalizeFilesystemPaneState(nextState);
     const lastState = lastPersistedStateRef.current;
@@ -39,7 +41,7 @@ export default function useFilesystemStatePersistence({
 
     lastPersistedStateRef.current = normalizedState;
     onFilesystemStateChange(normalizedState);
-  }, [onFilesystemStateChange, pane, tabId]);
+  }, [onFilesystemStateChange, resolvedPaneId, tabId]);
 
   const persistCurrentFilesystemState = useCallback(() => {
     persistFilesystemState({

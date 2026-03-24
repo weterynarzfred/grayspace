@@ -32,6 +32,7 @@ function isEditableKeyboardTarget(target) {
 
 function FilesystemPanel({
   tabId = "",
+  paneId = "",
   pane = "",
   panelType = "Filesystem",
   onPanelTypeChange = undefined,
@@ -45,9 +46,10 @@ function FilesystemPanel({
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current);
   const { openConfirm } = useNotificationCenter();
+  const resolvedPaneId = paneId || pane;
   const { handlePanelListScroll } = useFilesystemStatePersistence({
     tabId,
-    pane,
+    paneId: resolvedPaneId,
     onFilesystemStateChange,
     panelListRef,
     initialFilesystemState: initialFilesystemStateRef.current,

@@ -62,6 +62,7 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - [x] selecting files and folders
 - [x] opening files
 - [x] drag to move file/folder
+- [ ] drag between panels
 - [ ] cut, copy, and paste
 - [ ] make cut, copy, and paste work between the app and with system file explorer
 - [x] deleting files
@@ -84,16 +85,20 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - [ ] show files from subfolders with filters (eg ignoring node_modules or .git)
 - [ ] custom rules for displaying folder icons/thumbnails
 - [ ] double click on empty space navigates one folder up (same as "..")
+- [ ] add lazyloading for large folders
 
 ### Terminal Panel (ctrl + shift + `)
 
 - [x] integrate any shell
 - [ ] select a shell
 - [ ] multiple terminals at once with tabs - local to a terminal pane (not the same as global app tabs)
+- [ ] fix terminal switching between folders when two filesystem panels are open
+- [ ] add an option to disconnect terminal from the filesystem panel
 
 ### Scripts Panel (ctrl + shift + c)
 
 - [x] load scripts from `./.grayspace/folder.json` and display them as buttons that run specified commands
+- [ ] add proper styling
 
 ### Canvas Panel (ctrl + shift + g)
 

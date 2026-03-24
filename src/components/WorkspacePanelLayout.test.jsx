@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { vi } from "vitest";
 
@@ -58,19 +58,34 @@ describe("WorkspacePanelLayout", () => {
     const onFilesystemStateChange = vi.fn();
     const onTabSelectedFilesChange = vi.fn();
     const onPanelTypeChange = vi.fn();
+    const onPaneActivate = vi.fn();
+    const paneId = "pane-a";
 
     render(
       <WorkspacePanelLayout
         tab={{
           tabId: "tab-1",
-          layout: { split: 50 },
+          layout: {
+            kind: "split",
+            axis: "row",
+            ratio: 50,
+            first: {
+              kind: "leaf",
+              paneId,
+            },
+            second: {
+              kind: "leaf",
+              paneId: "pane-b",
+            },
+          },
+          activePaneId: paneId,
           selectedFiles: {
             selectedPath: "",
             selectedPaths: [],
           },
           paneStates: {
-            left: {
-              paneId: "tab-1-left",
+            [paneId]: {
+              paneId,
               panelType: "Filesystem",
               terminalSessionId: "term-1",
               filesystemState: {
@@ -80,8 +95,8 @@ describe("WorkspacePanelLayout", () => {
                 scrollTop: 0,
               },
             },
-            right: {
-              paneId: "tab-1-right",
+            "pane-b": {
+              paneId: "pane-b",
               panelType: "Preview",
               terminalSessionId: "term-2",
               filesystemState: {
@@ -97,13 +112,14 @@ describe("WorkspacePanelLayout", () => {
         onFilesystemStateChange={onFilesystemStateChange}
         onTabSelectedFilesChange={onTabSelectedFilesChange}
         onPanelTypeChange={onPanelTypeChange}
+        onPaneActivate={onPaneActivate}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "FilesystemMock" }));
 
-    expect(onCurrentPathChange).toHaveBeenCalledWith("tab-1", "left", "C:\\Mock");
-    expect(onFilesystemStateChange).toHaveBeenCalledWith("tab-1", "left", {
+    expect(onCurrentPathChange).toHaveBeenCalledWith("tab-1", paneId, "C:\\Mock");
+    expect(onFilesystemStateChange).toHaveBeenCalledWith("tab-1", paneId, {
       currentDrive: "C:\\",
       currentPath: "C:\\Mock",
       selectedPath: "C:\\Mock\\test.txt",
@@ -113,6 +129,77 @@ describe("WorkspacePanelLayout", () => {
       selectedPath: "C:\\Mock\\test.txt",
       selectedPaths: ["C:\\Mock\\test.txt"],
     });
-    expect(onPanelTypeChange).toHaveBeenCalledWith("tab-1", "left", "Terminal");
+    expect(onPanelTypeChange).toHaveBeenCalledWith("tab-1", paneId, "Terminal");
+  });
+
+  it("renders pane controls and forwards split/close actions", () => {
+    const onPaneSplit = vi.fn();
+    const onPaneClose = vi.fn();
+
+    render(
+      <WorkspacePanelLayout
+        tab={{
+          tabId: "tab-pane-controls",
+          layout: {
+            kind: "split",
+            axis: "row",
+            ratio: 50,
+            first: {
+              kind: "leaf",
+              paneId: "pane-left",
+            },
+            second: {
+              kind: "leaf",
+              paneId: "pane-right",
+            },
+          },
+          activePaneId: "pane-left",
+          selectedFiles: {
+            selectedPath: "",
+            selectedPaths: [],
+          },
+          paneStates: {
+            "pane-left": {
+              paneId: "pane-left",
+              panelType: "Canvas",
+              terminalSessionId: "term-1",
+              filesystemState: {
+                currentDrive: "",
+                currentPath: "",
+                selectedPath: "",
+                selectedPaths: [],
+                scrollTop: 0,
+              },
+            },
+            "pane-right": {
+              paneId: "pane-right",
+              panelType: "Canvas",
+              terminalSessionId: "term-2",
+              filesystemState: {
+                currentDrive: "",
+                currentPath: "",
+                selectedPath: "",
+                selectedPaths: [],
+                scrollTop: 0,
+              },
+            },
+          },
+        }}
+        onPaneSplit={onPaneSplit}
+        onPaneClose={onPaneClose}
+      />,
+    );
+
+    const leftPane = document.querySelector('[data-pane-id="pane-left"]');
+    expect(leftPane).toBeTruthy();
+
+    fireEvent.click(within(leftPane).getByRole("button", { name: "Split Right" }));
+    expect(onPaneSplit).toHaveBeenCalledWith("tab-pane-controls", "pane-left", "right");
+
+    fireEvent.click(within(leftPane).getByRole("button", { name: "Split Down" }));
+    expect(onPaneSplit).toHaveBeenCalledWith("tab-pane-controls", "pane-left", "bottom");
+
+    fireEvent.click(within(leftPane).getByRole("button", { name: "Close Pane" }));
+    expect(onPaneClose).toHaveBeenCalledWith("tab-pane-controls", "pane-left");
   });
 });

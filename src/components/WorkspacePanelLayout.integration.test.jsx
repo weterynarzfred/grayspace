@@ -55,13 +55,26 @@ vi.mock("./PreviewPanel/CodeTextPreview", () => ({
 function createInitialTabState() {
   return {
     tabId: "tab-integration",
-    layout: { split: 50 },
+    layout: {
+      kind: "split",
+      axis: "row",
+      ratio: 50,
+      first: {
+        kind: "leaf",
+        paneId: "tab-integration-left",
+      },
+      second: {
+        kind: "leaf",
+        paneId: "tab-integration-right",
+      },
+    },
+    activePaneId: "tab-integration-left",
     selectedFiles: {
       selectedPath: "",
       selectedPaths: [],
     },
     paneStates: {
-      left: {
+      "tab-integration-left": {
         paneId: "tab-integration-left",
         panelType: "Filesystem",
         terminalSessionId: "term-left",
@@ -73,7 +86,7 @@ function createInitialTabState() {
           scrollTop: 0,
         },
       },
-      right: {
+      "tab-integration-right": {
         paneId: "tab-integration-right",
         panelType: "Preview",
         terminalSessionId: "term-right",
@@ -92,13 +105,13 @@ function createInitialTabState() {
 function WorkspacePanelLayoutHarness() {
   const [tab, setTab] = useState(createInitialTabState);
 
-  function setPanelType(pane, panelType) {
+  function setPanelType(paneId, panelType) {
     setTab((previousTab) => ({
       ...previousTab,
       paneStates: {
         ...previousTab.paneStates,
-        [pane]: {
-          ...previousTab.paneStates[pane],
+        [paneId]: {
+          ...previousTab.paneStates[paneId],
           panelType,
         },
       },
@@ -107,37 +120,37 @@ function WorkspacePanelLayoutHarness() {
 
   return (
     <>
-      <button type="button" onClick={() => setPanelType("left", "Preview")}>
+      <button type="button" onClick={() => setPanelType("tab-integration-left", "Preview")}>
         set-left-preview
       </button>
-      <button type="button" onClick={() => setPanelType("left", "Scripts")}>
+      <button type="button" onClick={() => setPanelType("tab-integration-left", "Scripts")}>
         set-left-scripts
       </button>
-      <button type="button" onClick={() => setPanelType("right", "Filesystem")}>
+      <button type="button" onClick={() => setPanelType("tab-integration-right", "Filesystem")}>
         set-right-filesystem
       </button>
-      <button type="button" onClick={() => setPanelType("right", "Canvas")}>
+      <button type="button" onClick={() => setPanelType("tab-integration-right", "Canvas")}>
         set-right-canvas
       </button>
-      <button type="button" onClick={() => setPanelType("right", "Preview")}>
+      <button type="button" onClick={() => setPanelType("tab-integration-right", "Preview")}>
         set-right-preview
       </button>
 
       <PanelsDndLayer>
         <WorkspacePanelLayout
           tab={tab}
-          onPanelTypeChange={(tabId, pane, panelType) => {
-            if (!tabId || !pane || !panelType) return;
-            setPanelType(pane, panelType);
+          onPanelTypeChange={(tabId, paneId, panelType) => {
+            if (!tabId || !paneId || !panelType) return;
+            setPanelType(paneId, panelType);
           }}
-          onFilesystemStateChange={(tabId, pane, filesystemState) => {
-            if (!tabId || !pane || !filesystemState) return;
+          onFilesystemStateChange={(tabId, paneId, filesystemState) => {
+            if (!tabId || !paneId || !filesystemState) return;
             setTab((previousTab) => ({
               ...previousTab,
               paneStates: {
                 ...previousTab.paneStates,
-                [pane]: {
-                  ...previousTab.paneStates[pane],
+                [paneId]: {
+                  ...previousTab.paneStates[paneId],
                   filesystemState,
                 },
               },

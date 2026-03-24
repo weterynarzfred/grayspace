@@ -1,306 +1,638 @@
 use super::super::model::{PaneState, WorkspaceTab};
-use super::super::types::{FilesystemPaneState, TabSelectedFilesState};
+use super::super::types::{
+    FilesystemPaneState, LayoutAxis, SplitDirection, TabLayoutNode, TabSelectedFilesState,
+};
 use std::collections::HashSet;
 
 pub(super) struct PanePanelTypeUpdate {
-  pub(super) changed: bool,
-  pub(super) terminal_session_to_stop: Option<String>,
+    pub(super) changed: bool,
+    pub(super) terminal_session_to_stop: Option<String>,
 }
 
 pub(super) fn select_tab_pane_mut<'a>(
-  tab: &'a mut WorkspaceTab,
-  pane: &str,
+    tab: &'a mut WorkspaceTab,
+    pane_id: &str,
 ) -> Result<&'a mut PaneState, String> {
-  match pane {
-    "left" => Ok(&mut tab.pane_states.left),
-    "right" => Ok(&mut tab.pane_states.right),
-    _ => Err("Unsupported pane identifier.".to_string()),
-  }
+    tab.pane_states
+        .get_mut(pane_id)
+        .ok_or_else(|| "Pane not found.".to_string())
+}
+
+pub(super) fn select_tab_pane<'a>(
+    tab: &'a WorkspaceTab,
+    pane_id: &str,
+) -> Result<&'a PaneState, String> {
+    tab.pane_states
+        .get(pane_id)
+        .ok_or_else(|| "Pane not found.".to_string())
+}
+
+pub(super) fn resolve_tab_pane_id(
+    tab: &WorkspaceTab,
+    pane_id: Option<&str>,
+    legacy_pane: Option<&str>,
+) -> Result<String, String> {
+    if let Some(explicit_pane_id) = pane_id.filter(|value| !value.is_empty()) {
+        if tab.pane_states.contains_key(explicit_pane_id) {
+            return Ok(explicit_pane_id.to_string());
+        }
+        return Err("Pane not found.".to_string());
+    }
+
+    let Some(legacy_key) = legacy_pane else {
+        return Err("Pane identifier is required.".to_string());
+    };
+
+    let mut ordered_pane_ids = Vec::new();
+    collect_layout_leaf_pane_ids(&tab.layout, &mut ordered_pane_ids);
+    let resolved = match legacy_key {
+        "left" => ordered_pane_ids.first(),
+        "right" => ordered_pane_ids.get(1),
+        _ => None,
+    };
+
+    resolved
+        .cloned()
+        .ok_or_else(|| "Unsupported pane identifier.".to_string())
 }
 
 pub(super) fn update_pane_panel_type(
-  target_pane: &mut PaneState,
-  next_panel_type: String,
+    target_pane: &mut PaneState,
+    next_panel_type: String,
 ) -> PanePanelTypeUpdate {
-  let previous_panel_type = target_pane.panel_type.clone();
-  let changed = previous_panel_type != next_panel_type;
-  if changed {
-    target_pane.panel_type = next_panel_type.clone();
-  }
+    let previous_panel_type = target_pane.panel_type.clone();
+    let changed = previous_panel_type != next_panel_type;
+    if changed {
+        target_pane.panel_type = next_panel_type.clone();
+    }
 
-  let terminal_session_to_stop =
-    if previous_panel_type == "Terminal" && next_panel_type != "Terminal" {
-      Some(target_pane.terminal_session_id.clone())
-    } else {
-      None
-    };
+    let terminal_session_to_stop =
+        if previous_panel_type == "Terminal" && next_panel_type != "Terminal" {
+            Some(target_pane.terminal_session_id.clone())
+        } else {
+            None
+        };
 
-  PanePanelTypeUpdate {
-    changed,
-    terminal_session_to_stop,
-  }
+    PanePanelTypeUpdate {
+        changed,
+        terminal_session_to_stop,
+    }
 }
 
 fn normalize_selected_paths(
-  selected_path: String,
-  selected_paths: Vec<String>,
+    selected_path: String,
+    selected_paths: Vec<String>,
 ) -> (String, Vec<String>) {
-  let mut seen_paths = HashSet::new();
-  let mut normalized_selected_paths = Vec::new();
+    let mut seen_paths = HashSet::new();
+    let mut normalized_selected_paths = Vec::new();
 
-  for path in selected_paths {
-    if path.is_empty() {
-      continue;
+    for path in selected_paths {
+        if path.is_empty() {
+            continue;
+        }
+        if seen_paths.insert(path.clone()) {
+            normalized_selected_paths.push(path);
+        }
     }
-    if seen_paths.insert(path.clone()) {
-      normalized_selected_paths.push(path);
+
+    if !selected_path.is_empty() && seen_paths.insert(selected_path.clone()) {
+        normalized_selected_paths.push(selected_path.clone());
     }
-  }
 
-  if !selected_path.is_empty() && seen_paths.insert(selected_path.clone()) {
-    normalized_selected_paths.push(selected_path.clone());
-  }
+    let normalized_selected_path = if selected_path.is_empty() {
+        normalized_selected_paths
+            .last()
+            .cloned()
+            .unwrap_or_default()
+    } else {
+        selected_path
+    };
 
-  let normalized_selected_path = if selected_path.is_empty() {
-    normalized_selected_paths.last().cloned().unwrap_or_default()
-  } else {
-    selected_path
-  };
-
-  (normalized_selected_path, normalized_selected_paths)
+    (normalized_selected_path, normalized_selected_paths)
 }
 
 fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState {
-  let FilesystemPaneState {
-    current_drive,
-    current_path,
-    selected_path,
-    selected_paths,
-    scroll_top,
-  } = state;
-  let (normalized_selected_path, normalized_selected_paths) =
-    normalize_selected_paths(selected_path, selected_paths);
+    let FilesystemPaneState {
+        current_drive,
+        current_path,
+        selected_path,
+        selected_paths,
+        scroll_top,
+    } = state;
+    let (normalized_selected_path, normalized_selected_paths) =
+        normalize_selected_paths(selected_path, selected_paths);
 
-  FilesystemPaneState {
-    current_drive,
-    current_path,
-    selected_path: normalized_selected_path,
-    selected_paths: normalized_selected_paths,
-    scroll_top: if scroll_top.is_finite() {
-      scroll_top.max(0.0)
-    } else {
-      0.0
-    },
-  }
+    FilesystemPaneState {
+        current_drive,
+        current_path,
+        selected_path: normalized_selected_path,
+        selected_paths: normalized_selected_paths,
+        scroll_top: if scroll_top.is_finite() {
+            scroll_top.max(0.0)
+        } else {
+            0.0
+        },
+    }
 }
 
 pub(super) fn update_pane_filesystem_state(
-  target_pane: &mut PaneState,
-  next_state: FilesystemPaneState,
+    target_pane: &mut PaneState,
+    next_state: FilesystemPaneState,
 ) -> bool {
-  let normalized_state = normalize_filesystem_state(next_state);
-  if target_pane.filesystem_state == normalized_state {
-    return false;
-  }
-  target_pane.filesystem_state = normalized_state;
-  true
+    let normalized_state = normalize_filesystem_state(next_state);
+    if target_pane.filesystem_state == normalized_state {
+        return false;
+    }
+    target_pane.filesystem_state = normalized_state;
+    true
 }
 
 fn normalize_tab_selected_files_state(state: TabSelectedFilesState) -> TabSelectedFilesState {
-  let TabSelectedFilesState {
-    selected_path,
-    selected_paths,
-  } = state;
-  let (selected_path, selected_paths) = normalize_selected_paths(selected_path, selected_paths);
-  TabSelectedFilesState {
-    selected_path,
-    selected_paths,
-  }
+    let TabSelectedFilesState {
+        selected_path,
+        selected_paths,
+    } = state;
+    let (selected_path, selected_paths) = normalize_selected_paths(selected_path, selected_paths);
+    TabSelectedFilesState {
+        selected_path,
+        selected_paths,
+    }
 }
 
 pub(super) fn update_tab_selected_files(
-  tab: &mut WorkspaceTab,
-  next_state: TabSelectedFilesState,
+    tab: &mut WorkspaceTab,
+    next_state: TabSelectedFilesState,
 ) -> bool {
-  let normalized_state = normalize_tab_selected_files_state(next_state);
-  if tab.selected_files == normalized_state {
-    return false;
-  }
-  tab.selected_files = normalized_state;
-  true
+    let normalized_state = normalize_tab_selected_files_state(next_state);
+    if tab.selected_files == normalized_state {
+        return false;
+    }
+    tab.selected_files = normalized_state;
+    true
 }
 
 pub(super) fn update_tab_workspace_root(
-  tab: &mut WorkspaceTab,
-  workspace_root: Option<String>,
+    tab: &mut WorkspaceTab,
+    workspace_root: Option<String>,
 ) -> bool {
-  if tab.workspace_root == workspace_root {
-    return false;
-  }
-  tab.workspace_root = workspace_root;
-  true
+    if tab.workspace_root == workspace_root {
+        return false;
+    }
+    tab.workspace_root = workspace_root;
+    true
+}
+
+pub(super) fn collect_layout_leaf_pane_ids(layout: &TabLayoutNode, output: &mut Vec<String>) {
+    match layout {
+        TabLayoutNode::Leaf { pane_id } => output.push(pane_id.clone()),
+        TabLayoutNode::Split { first, second, .. } => {
+            collect_layout_leaf_pane_ids(first, output);
+            collect_layout_leaf_pane_ids(second, output);
+        }
+    }
+}
+
+pub(super) fn layout_contains_pane(layout: &TabLayoutNode, pane_id: &str) -> bool {
+    match layout {
+        TabLayoutNode::Leaf {
+            pane_id: layout_pane_id,
+        } => layout_pane_id == pane_id,
+        TabLayoutNode::Split { first, second, .. } => {
+            layout_contains_pane(first, pane_id) || layout_contains_pane(second, pane_id)
+        }
+    }
+}
+
+pub(super) fn find_first_layout_pane_id(layout: &TabLayoutNode) -> Option<String> {
+    match layout {
+        TabLayoutNode::Leaf { pane_id } => Some(pane_id.clone()),
+        TabLayoutNode::Split { first, .. } => find_first_layout_pane_id(first),
+    }
+}
+
+pub(super) fn count_layout_leaves(layout: &TabLayoutNode) -> usize {
+    match layout {
+        TabLayoutNode::Leaf { .. } => 1,
+        TabLayoutNode::Split { first, second, .. } => {
+            count_layout_leaves(first) + count_layout_leaves(second)
+        }
+    }
+}
+
+pub(super) fn split_layout_leaf(
+    layout: &mut TabLayoutNode,
+    target_pane_id: &str,
+    direction: SplitDirection,
+    new_pane_id: &str,
+) -> bool {
+    match layout {
+        TabLayoutNode::Leaf { pane_id } if pane_id == target_pane_id => {
+            let original_pane_id = pane_id.clone();
+            let axis = match direction {
+                SplitDirection::Right => LayoutAxis::Row,
+                SplitDirection::Bottom => LayoutAxis::Column,
+            };
+            *layout = TabLayoutNode::Split {
+                axis,
+                ratio: 50,
+                first: Box::new(TabLayoutNode::Leaf {
+                    pane_id: original_pane_id,
+                }),
+                second: Box::new(TabLayoutNode::Leaf {
+                    pane_id: new_pane_id.to_string(),
+                }),
+            };
+            true
+        }
+        TabLayoutNode::Leaf { .. } => false,
+        TabLayoutNode::Split { first, second, .. } => {
+            split_layout_leaf(first, target_pane_id, direction, new_pane_id)
+                || split_layout_leaf(second, target_pane_id, direction, new_pane_id)
+        }
+    }
+}
+
+struct RemoveLeafResult {
+    node: Option<TabLayoutNode>,
+    removed: bool,
+    replacement_pane_id: Option<String>,
+}
+
+fn remove_layout_leaf(node: TabLayoutNode, target_pane_id: &str) -> RemoveLeafResult {
+    match node {
+        TabLayoutNode::Leaf { pane_id } => {
+            if pane_id == target_pane_id {
+                RemoveLeafResult {
+                    node: None,
+                    removed: true,
+                    replacement_pane_id: None,
+                }
+            } else {
+                RemoveLeafResult {
+                    node: Some(TabLayoutNode::Leaf { pane_id }),
+                    removed: false,
+                    replacement_pane_id: None,
+                }
+            }
+        }
+        TabLayoutNode::Split {
+            axis,
+            ratio,
+            first,
+            second,
+        } => {
+            let first_node = *first;
+            let second_node = *second;
+            let first_result = remove_layout_leaf(first_node, target_pane_id);
+
+            if first_result.removed {
+                match first_result.node {
+                    Some(next_first_node) => RemoveLeafResult {
+                        node: Some(TabLayoutNode::Split {
+                            axis,
+                            ratio,
+                            first: Box::new(next_first_node),
+                            second: Box::new(second_node),
+                        }),
+                        removed: true,
+                        replacement_pane_id: first_result.replacement_pane_id,
+                    },
+                    None => {
+                        let fallback_pane_id = first_result
+                            .replacement_pane_id
+                            .or_else(|| find_first_layout_pane_id(&second_node));
+                        RemoveLeafResult {
+                            node: Some(second_node),
+                            removed: true,
+                            replacement_pane_id: fallback_pane_id,
+                        }
+                    }
+                }
+            } else {
+                let second_result = remove_layout_leaf(second_node, target_pane_id);
+                if second_result.removed {
+                    match second_result.node {
+                        Some(next_second_node) => RemoveLeafResult {
+                            node: Some(TabLayoutNode::Split {
+                                axis,
+                                ratio,
+                                first: Box::new(
+                                    first_result.node.expect("first node should remain"),
+                                ),
+                                second: Box::new(next_second_node),
+                            }),
+                            removed: true,
+                            replacement_pane_id: second_result.replacement_pane_id,
+                        },
+                        None => {
+                            let fallback_pane_id =
+                                second_result.replacement_pane_id.or_else(|| {
+                                    first_result
+                                        .node
+                                        .as_ref()
+                                        .and_then(find_first_layout_pane_id)
+                                });
+                            RemoveLeafResult {
+                                node: first_result.node,
+                                removed: true,
+                                replacement_pane_id: fallback_pane_id,
+                            }
+                        }
+                    }
+                } else {
+                    RemoveLeafResult {
+                        node: Some(TabLayoutNode::Split {
+                            axis,
+                            ratio,
+                            first: Box::new(first_result.node.expect("first node should remain")),
+                            second: Box::new(
+                                second_result.node.expect("second node should remain"),
+                            ),
+                        }),
+                        removed: false,
+                        replacement_pane_id: None,
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub(super) fn close_layout_leaf(
+    layout: &mut TabLayoutNode,
+    target_pane_id: &str,
+) -> Result<Option<String>, String> {
+    let removal_result = remove_layout_leaf(layout.clone(), target_pane_id);
+    if !removal_result.removed {
+        return Err("Pane not found.".to_string());
+    }
+
+    let Some(next_layout) = removal_result.node else {
+        return Err("Cannot close the last pane.".to_string());
+    };
+
+    *layout = next_layout;
+    Ok(removal_result
+        .replacement_pane_id
+        .or_else(|| find_first_layout_pane_id(layout)))
 }
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    update_pane_filesystem_state, update_pane_panel_type, update_tab_selected_files,
-    update_tab_workspace_root,
-  };
-  use crate::commands::workspace::model::WorkspaceModel;
-  use crate::commands::workspace::types::{FilesystemPaneState, TabSelectedFilesState};
+    use super::{
+        close_layout_leaf, count_layout_leaves, layout_contains_pane, resolve_tab_pane_id,
+        split_layout_leaf, update_pane_filesystem_state, update_pane_panel_type,
+        update_tab_selected_files, update_tab_workspace_root,
+    };
+    use crate::commands::workspace::model::WorkspaceModel;
+    use crate::commands::workspace::types::{
+        FilesystemPaneState, SplitDirection, TabLayoutNode, TabSelectedFilesState,
+    };
 
-  #[test]
-  fn update_pane_filesystem_state_detects_real_changes() {
-    let mut model = WorkspaceModel::default();
-    let mut tab = model.create_default_tab();
+    #[test]
+    fn update_pane_filesystem_state_detects_real_changes() {
+        let mut model = WorkspaceModel::default();
+        let mut tab = model.create_default_tab();
+        let active_pane_id = tab.active_pane_id.clone();
 
-    let left_pane = &mut tab.pane_states.left;
-    assert!(!update_pane_filesystem_state(
-      left_pane,
-      FilesystemPaneState::default()
-    ));
+        let active_pane = tab
+            .pane_states
+            .get_mut(&active_pane_id)
+            .expect("active pane should exist");
+        assert!(!update_pane_filesystem_state(
+            active_pane,
+            FilesystemPaneState::default()
+        ));
 
-    assert!(update_pane_filesystem_state(
-      left_pane,
-      FilesystemPaneState {
-        current_drive: "C:\\".to_string(),
-        current_path: "C:\\Users".to_string(),
-        selected_path: "C:\\Users\\todo.txt".to_string(),
-        selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
-        scroll_top: 125.7,
-      },
-    ));
-    assert_eq!(left_pane.filesystem_state.current_path, "C:\\Users");
-    assert_eq!(left_pane.filesystem_state.scroll_top, 125.7);
+        assert!(update_pane_filesystem_state(
+            active_pane,
+            FilesystemPaneState {
+                current_drive: "C:\\".to_string(),
+                current_path: "C:\\Users".to_string(),
+                selected_path: "C:\\Users\\todo.txt".to_string(),
+                selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
+                scroll_top: 125.7,
+            },
+        ));
+        assert_eq!(active_pane.filesystem_state.current_path, "C:\\Users");
+        assert_eq!(active_pane.filesystem_state.scroll_top, 125.7);
 
-    assert!(update_pane_filesystem_state(
-      left_pane,
-      FilesystemPaneState {
-        current_drive: "C:\\".to_string(),
-        current_path: "C:\\Users".to_string(),
-        selected_path: "C:\\Users\\todo.txt".to_string(),
-        selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
-        scroll_top: f64::NAN,
-      },
-    ));
-    assert_eq!(left_pane.filesystem_state.scroll_top, 0.0);
-  }
+        assert!(update_pane_filesystem_state(
+            active_pane,
+            FilesystemPaneState {
+                current_drive: "C:\\".to_string(),
+                current_path: "C:\\Users".to_string(),
+                selected_path: "C:\\Users\\todo.txt".to_string(),
+                selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
+                scroll_top: f64::NAN,
+            },
+        ));
+        assert_eq!(active_pane.filesystem_state.scroll_top, 0.0);
+    }
 
-  #[test]
-  fn update_pane_filesystem_state_normalizes_multi_selection() {
-    let mut model = WorkspaceModel::default();
-    let mut tab = model.create_default_tab();
-    let left_pane = &mut tab.pane_states.left;
+    #[test]
+    fn update_pane_filesystem_state_normalizes_multi_selection() {
+        let mut model = WorkspaceModel::default();
+        let mut tab = model.create_default_tab();
+        let active_pane_id = tab.active_pane_id.clone();
+        let active_pane = tab
+            .pane_states
+            .get_mut(&active_pane_id)
+            .expect("active pane should exist");
 
-    assert!(update_pane_filesystem_state(
-      left_pane,
-      FilesystemPaneState {
-        current_drive: "C:\\".to_string(),
-        current_path: "C:\\Users".to_string(),
-        selected_path: String::new(),
-        selected_paths: vec![
-          "C:\\Users\\alpha.txt".to_string(),
-          "C:\\Users\\alpha.txt".to_string(),
-          "C:\\Users\\beta.txt".to_string(),
-        ],
-        scroll_top: 1.0,
-      },
-    ));
+        assert!(update_pane_filesystem_state(
+            active_pane,
+            FilesystemPaneState {
+                current_drive: "C:\\".to_string(),
+                current_path: "C:\\Users".to_string(),
+                selected_path: String::new(),
+                selected_paths: vec![
+                    "C:\\Users\\alpha.txt".to_string(),
+                    "C:\\Users\\alpha.txt".to_string(),
+                    "C:\\Users\\beta.txt".to_string(),
+                ],
+                scroll_top: 1.0,
+            },
+        ));
 
-    assert_eq!(
-      left_pane.filesystem_state.selected_paths,
-      vec![
-        "C:\\Users\\alpha.txt".to_string(),
-        "C:\\Users\\beta.txt".to_string(),
-      ]
-    );
-    assert_eq!(left_pane.filesystem_state.selected_path, "C:\\Users\\beta.txt");
-  }
+        assert_eq!(
+            active_pane.filesystem_state.selected_paths,
+            vec![
+                "C:\\Users\\alpha.txt".to_string(),
+                "C:\\Users\\beta.txt".to_string(),
+            ]
+        );
+        assert_eq!(
+            active_pane.filesystem_state.selected_path,
+            "C:\\Users\\beta.txt"
+        );
+    }
 
-  #[test]
-  fn update_pane_panel_type_stops_terminal_only_when_leaving_terminal() {
-    let mut model = WorkspaceModel::default();
-    let mut tab = model.create_default_tab();
-    tab.pane_states.left.panel_type = "Terminal".to_string();
-    let terminal_session_id = tab.pane_states.left.terminal_session_id.clone();
+    #[test]
+    fn update_pane_panel_type_stops_terminal_only_when_leaving_terminal() {
+        let mut model = WorkspaceModel::default();
+        let mut tab = model.create_default_tab();
+        let active_pane_id = tab.active_pane_id.clone();
+        {
+            let active_pane = tab
+                .pane_states
+                .get_mut(&active_pane_id)
+                .expect("active pane should exist");
+            active_pane.panel_type = "Terminal".to_string();
+        }
+        let terminal_session_id = tab
+            .pane_states
+            .get(&active_pane_id)
+            .expect("active pane should exist")
+            .terminal_session_id
+            .clone();
 
-    let update = update_pane_panel_type(&mut tab.pane_states.left, "Preview".to_string());
-    assert!(update.changed);
-    assert_eq!(update.terminal_session_to_stop, Some(terminal_session_id));
-    assert_eq!(tab.pane_states.left.panel_type, "Preview");
+        let update = update_pane_panel_type(
+            tab.pane_states
+                .get_mut(&active_pane_id)
+                .expect("active pane should exist"),
+            "Preview".to_string(),
+        );
+        assert!(update.changed);
+        assert_eq!(update.terminal_session_to_stop, Some(terminal_session_id));
+        assert_eq!(
+            tab.pane_states
+                .get(&active_pane_id)
+                .expect("active pane should exist")
+                .panel_type,
+            "Preview"
+        );
 
-    let no_change = update_pane_panel_type(&mut tab.pane_states.left, "Preview".to_string());
-    assert!(!no_change.changed);
-    assert_eq!(no_change.terminal_session_to_stop, None);
-  }
+        let no_change = update_pane_panel_type(
+            tab.pane_states
+                .get_mut(&active_pane_id)
+                .expect("active pane should exist"),
+            "Preview".to_string(),
+        );
+        assert!(!no_change.changed);
+        assert_eq!(no_change.terminal_session_to_stop, None);
+    }
 
-  #[test]
-  fn update_tab_workspace_root_detects_changes() {
-    let mut model = WorkspaceModel::default();
-    let mut tab = model.create_default_tab();
+    #[test]
+    fn update_tab_workspace_root_detects_changes() {
+        let mut model = WorkspaceModel::default();
+        let mut tab = model.create_default_tab();
 
-    assert!(!update_tab_workspace_root(&mut tab, None));
-    assert!(update_tab_workspace_root(
-      &mut tab,
-      Some("C:\\Projects\\grayspace".to_string())
-    ));
-    assert_eq!(tab.workspace_root.as_deref(), Some("C:\\Projects\\grayspace"));
-    assert!(!update_tab_workspace_root(
-      &mut tab,
-      Some("C:\\Projects\\grayspace".to_string())
-    ));
-  }
+        assert!(!update_tab_workspace_root(&mut tab, None));
+        assert!(update_tab_workspace_root(
+            &mut tab,
+            Some("C:\\Projects\\grayspace".to_string())
+        ));
+        assert_eq!(
+            tab.workspace_root.as_deref(),
+            Some("C:\\Projects\\grayspace")
+        );
+        assert!(!update_tab_workspace_root(
+            &mut tab,
+            Some("C:\\Projects\\grayspace".to_string())
+        ));
+    }
 
-  #[test]
-  fn update_tab_selected_files_normalizes_and_detects_changes() {
-    let mut model = WorkspaceModel::default();
-    let mut tab = model.create_default_tab();
+    #[test]
+    fn update_tab_selected_files_normalizes_and_detects_changes() {
+        let mut model = WorkspaceModel::default();
+        let mut tab = model.create_default_tab();
 
-    assert!(!update_tab_selected_files(
-      &mut tab,
-      TabSelectedFilesState::default()
-    ));
+        assert!(!update_tab_selected_files(
+            &mut tab,
+            TabSelectedFilesState::default()
+        ));
 
-    assert!(update_tab_selected_files(
-      &mut tab,
-      TabSelectedFilesState {
-        selected_path: String::new(),
-        selected_paths: vec![
-          "C:\\Users\\todo.txt".to_string(),
-          "C:\\Users\\todo.txt".to_string(),
-          "C:\\Users\\draft.md".to_string(),
-        ],
-      },
-    ));
-    assert_eq!(
-      tab.selected_files.selected_paths,
-      vec![
-        "C:\\Users\\todo.txt".to_string(),
-        "C:\\Users\\draft.md".to_string(),
-      ]
-    );
-    assert_eq!(tab.selected_files.selected_path, "C:\\Users\\draft.md");
+        assert!(update_tab_selected_files(
+            &mut tab,
+            TabSelectedFilesState {
+                selected_path: String::new(),
+                selected_paths: vec![
+                    "C:\\Users\\todo.txt".to_string(),
+                    "C:\\Users\\todo.txt".to_string(),
+                    "C:\\Users\\draft.md".to_string(),
+                ],
+            },
+        ));
+        assert_eq!(
+            tab.selected_files.selected_paths,
+            vec![
+                "C:\\Users\\todo.txt".to_string(),
+                "C:\\Users\\draft.md".to_string(),
+            ]
+        );
+        assert_eq!(tab.selected_files.selected_path, "C:\\Users\\draft.md");
 
-    assert!(!update_tab_selected_files(
-      &mut tab,
-      TabSelectedFilesState {
-        selected_path: "C:\\Users\\draft.md".to_string(),
-        selected_paths: vec![
-          "C:\\Users\\todo.txt".to_string(),
-          "C:\\Users\\draft.md".to_string(),
-        ],
-      },
-    ));
+        assert!(!update_tab_selected_files(
+            &mut tab,
+            TabSelectedFilesState {
+                selected_path: "C:\\Users\\draft.md".to_string(),
+                selected_paths: vec![
+                    "C:\\Users\\todo.txt".to_string(),
+                    "C:\\Users\\draft.md".to_string(),
+                ],
+            },
+        ));
 
-    assert!(update_tab_selected_files(
-      &mut tab,
-      TabSelectedFilesState {
-        selected_path: String::new(),
-        selected_paths: Vec::new(),
-      },
-    ));
-    assert_eq!(tab.selected_files.selected_path, "");
-    assert!(tab.selected_files.selected_paths.is_empty());
-  }
+        assert!(update_tab_selected_files(
+            &mut tab,
+            TabSelectedFilesState {
+                selected_path: String::new(),
+                selected_paths: Vec::new(),
+            },
+        ));
+        assert_eq!(tab.selected_files.selected_path, "");
+        assert!(tab.selected_files.selected_paths.is_empty());
+    }
+
+    #[test]
+    fn split_layout_leaf_adds_new_pane_and_close_collapses_parent() {
+        let mut model = WorkspaceModel::default();
+        let mut tab = model.create_default_tab();
+        let source_pane_id = tab.active_pane_id.clone();
+        let new_pane_id = "pane-new".to_string();
+
+        assert!(split_layout_leaf(
+            &mut tab.layout,
+            &source_pane_id,
+            SplitDirection::Bottom,
+            &new_pane_id,
+        ));
+        assert!(layout_contains_pane(&tab.layout, &source_pane_id));
+        assert!(layout_contains_pane(&tab.layout, &new_pane_id));
+        assert_eq!(count_layout_leaves(&tab.layout), 3);
+
+        let replacement = close_layout_leaf(&mut tab.layout, &new_pane_id)
+            .expect("closing a non-last pane should succeed");
+        assert_eq!(replacement.as_deref(), Some(source_pane_id.as_str()));
+        assert!(!layout_contains_pane(&tab.layout, &new_pane_id));
+        assert_eq!(count_layout_leaves(&tab.layout), 2);
+    }
+
+    #[test]
+    fn close_layout_leaf_rejects_last_pane() {
+        let mut layout = TabLayoutNode::Leaf {
+            pane_id: "only-pane".to_string(),
+        };
+        let result = close_layout_leaf(&mut layout, "only-pane");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn resolve_tab_pane_id_supports_explicit_and_legacy_names() {
+        let mut model = WorkspaceModel::default();
+        let tab = model.create_default_tab();
+        let mut ordered_panes = Vec::new();
+        super::collect_layout_leaf_pane_ids(&tab.layout, &mut ordered_panes);
+
+        let left = resolve_tab_pane_id(&tab, None, Some("left")).expect("left pane should resolve");
+        let right =
+            resolve_tab_pane_id(&tab, None, Some("right")).expect("right pane should resolve");
+        assert_eq!(left, ordered_panes[0]);
+        assert_eq!(right, ordered_panes[1]);
+
+        let explicit =
+            resolve_tab_pane_id(&tab, Some(&left), None).expect("explicit pane should resolve");
+        assert_eq!(explicit, left);
+    }
 }
