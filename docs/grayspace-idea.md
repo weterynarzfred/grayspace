@@ -64,13 +64,13 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - [x] drag to move file/folder
 - [ ] cut, copy, and paste
 - [ ] make cut, copy, and paste work between the app and with system file explorer
-- [ ] move to recycle bin
+- [x] deleting files
 - [ ] rename
 - [x] select multiple files/folders
   - [x] support for ctrl and shift
   - [x] bulk drag
   - [ ] bulk cut, copy, and paste
-  - [ ] bulk recycle bin
+  - [x] bulk delete
   - [ ] bulk rename with regex
 - [ ] undo for file operations
 - [ ] show in system explorer
