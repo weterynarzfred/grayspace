@@ -41,7 +41,6 @@ function App() {
     notifications,
     isNotificationsOpen,
     pushNotification,
-    openConfirm,
     toggleNotifications,
     dismissNotification,
     resolveConfirmNotification,
@@ -80,6 +79,11 @@ function App() {
     });
   }, [pushNotification]);
 
+  const handleTabScopedCommandError = useCallback(error => {
+    if (getErrorMessage(error) === "Tab not found.") return;
+    handleWorkspaceCommandError(error);
+  }, [handleWorkspaceCommandError]);
+
   const handleSetActiveTab = useCallback(tabId => {
     if (!currentWindow) return;
     workspaceSetActiveTab(currentWindow.windowId, tabId).catch(handleWorkspaceCommandError);
@@ -103,44 +107,32 @@ function App() {
     }
   }, [currentWindow, handleWorkspaceCommandError]);
 
-  const handleCloseTab = useCallback(async (tabId) => {
+  const handleCloseTab = useCallback((tabId) => {
     if (!currentWindow) return;
-
-    const closingTabTitle = tabs.find((tab) => tab.tabId === tabId)?.title ?? "this tab";
-    const shouldClose = await openConfirm({
-      title: "Close tab?",
-      message: `Close "${closingTabTitle}"?`,
-      tone: "warning",
-      confirmLabel: "Close tab",
-      cancelLabel: "Keep open",
-      autoOpen: true,
-    });
-    if (!shouldClose) return;
-
     workspaceCloseTab(currentWindow.windowId, tabId).catch(handleWorkspaceCommandError);
-  }, [currentWindow, handleWorkspaceCommandError, openConfirm, tabs]);
+  }, [currentWindow, handleWorkspaceCommandError]);
 
   const handleChangePanelType = useCallback((tabId, pane, panelType) => {
     if (!tabId) return;
-    workspaceSetTabPanelType(tabId, pane, panelType).catch(handleWorkspaceCommandError);
-  }, [handleWorkspaceCommandError]);
+    workspaceSetTabPanelType(tabId, pane, panelType).catch(handleTabScopedCommandError);
+  }, [handleTabScopedCommandError]);
 
   const handleSetTabCwdHint = useCallback((tabId, _pane, path) => {
     if (!tabId) return;
-    workspaceSetTabTerminalCwd(tabId, path ?? "").catch(handleWorkspaceCommandError);
-  }, [handleWorkspaceCommandError]);
+    workspaceSetTabTerminalCwd(tabId, path ?? "").catch(handleTabScopedCommandError);
+  }, [handleTabScopedCommandError]);
 
   const handleSetPaneFilesystemState = useCallback((tabId, pane, filesystemState) => {
     if (!tabId) return;
     workspaceSetTabPaneFilesystemState(tabId, pane, filesystemState).catch(
-      handleWorkspaceCommandError,
+      handleTabScopedCommandError,
     );
-  }, [handleWorkspaceCommandError]);
+  }, [handleTabScopedCommandError]);
 
   const handleSetTabSelectedFiles = useCallback((tabId, selectedFiles) => {
     if (!tabId) return;
-    workspaceSetTabSelectedFiles(tabId, selectedFiles).catch(handleWorkspaceCommandError);
-  }, [handleWorkspaceCommandError]);
+    workspaceSetTabSelectedFiles(tabId, selectedFiles).catch(handleTabScopedCommandError);
+  }, [handleTabScopedCommandError]);
 
   const {
     activeDragTabId,
