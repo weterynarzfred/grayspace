@@ -123,6 +123,7 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - [ ] displays video files using native HTML
 - [ ] displays audio files using native HTML
 - [x] displays plaintext files using native HTML
+- [ ] make text editable
 - [ ] slideshow using current filtered files
 
 ### External UI Panel
