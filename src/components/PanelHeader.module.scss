@@ -19,4 +19,7 @@
   align-items: center;
   justify-content: flex-end;
   gap: 0.5rem;
+  flex: 1 0 auto;
+  font-family: $font-mono;
+  font-size: $font-size-mono;
 }

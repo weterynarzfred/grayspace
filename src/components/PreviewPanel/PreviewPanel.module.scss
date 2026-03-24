@@ -1,24 +1,35 @@
 @use "../../styles/variables" as *;
 
 .previewLabel {
-  margin: 0 0 0.75rem;
-  color: $text-secondary;
-  overflow-wrap: break-word;
+  margin: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.panelBody {
+  padding: 0;
 }
 
 .textPreview {
-  margin: 0 0 0.75rem;
-  padding: 0.75rem;
-  border: 1px solid $border-secondary;
-  border-radius: 0.5rem;
-  background: rgba($bg-surface, 0.7);
-  color: $text-primary;
-  font-family: $font-mono;
+  background-color: #eee;
+  color: #111;
+  overflow: hidden;
+}
+
+.textPreview :global(.cm-editor) {
+  background: transparent;
   font-size: $font-size-mono;
-  line-height: 1.45;
-  white-space: pre-wrap;
+}
+
+.textPreview :global(.cm-focused) {
+  outline: none;
+}
+
+.textPreview :global(.cm-content) {
   word-break: break-word;
   overflow-wrap: anywhere;
+  padding: 0;
 }
 
 .imagePreview {

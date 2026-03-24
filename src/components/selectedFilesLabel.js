@@ -44,10 +44,10 @@ export function getPanelSelectedFilesLabel(baseLabel, selectedFiles = {}) {
   const normalizedSelection = normalizeSelectedFilesState(selectedFiles);
   const selectedCount = normalizedSelection.selectedPaths.length;
   if (selectedCount === 0) return baseLabel;
-  if (selectedCount > 1) return `${baseLabel}: ${selectedCount}`;
+  if (selectedCount > 1) return `${baseLabel}${selectedCount}`;
 
   const selectedFilePath =
     normalizedSelection.selectedPath || normalizedSelection.selectedPaths[0] || "";
   const fileName = getPathDisplayName(selectedFilePath);
-  return fileName ? `${baseLabel}: ${fileName}` : baseLabel;
+  return fileName ? `${baseLabel}${fileName}` : baseLabel;
 }

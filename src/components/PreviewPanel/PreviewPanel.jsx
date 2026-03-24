@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
 import { getPanelSelectedFilesLabel } from "../selectedFilesLabel";
+import CodeTextPreview from "./CodeTextPreview";
 import styles from "./PreviewPanel.module.scss";
 
 const INITIAL_PREVIEW_STATE = {
@@ -44,7 +45,7 @@ function PreviewPanel({
   onPanelTypeChange = undefined,
   tabSelectedFiles = undefined,
 }) {
-  const previewLabel = getPanelSelectedFilesLabel("Preview panel", tabSelectedFiles);
+  const previewLabel = getPanelSelectedFilesLabel("", tabSelectedFiles);
   const previewPath = useMemo(
     () => getSelectedPreviewPath(tabSelectedFiles),
     [tabSelectedFiles],
@@ -96,8 +97,7 @@ function PreviewPanel({
 
   return (
     <section className={shellStyles.panelContent} aria-label="Preview panel">
-      <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange} />
-      <div className={shellStyles.panelBody}>
+      <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
         <p className={styles.previewLabel}>{previewLabel}</p>
 
         {!previewPath ? (
@@ -111,39 +111,43 @@ function PreviewPanel({
         {previewPath && previewState.status === "error" ? (
           <p className={styles.error}>{previewState.error}</p>
         ) : null}
+      </PanelHeader>
+      <div className={`${shellStyles.panelBody} ${styles.panelBody}`}>
 
         {previewPath
           && previewState.status === "ready"
           && previewState.preview?.kind === "text" ? (
-            <>
-              <pre className={styles.textPreview} data-testid="preview-text-content">
-                {previewState.preview.content}
-              </pre>
-              {previewState.preview.truncated ? (
-                <p className={styles.muted}>Preview truncated to 256 KB.</p>
-              ) : null}
-            </>
-          ) : null}
+          <>
+            <CodeTextPreview
+              filePath={previewPath}
+              content={previewState.preview.content}
+              className={styles.textPreview}
+            />
+            {previewState.preview.truncated ? (
+              <p className={styles.muted}>Preview truncated to 256 KB.</p>
+            ) : null}
+          </>
+        ) : null}
 
         {previewPath
           && previewState.status === "ready"
           && previewState.preview?.kind === "image" ? (
-            imagePreviewSrc ? (
-              <img
-                className={styles.imagePreview}
-                src={imagePreviewSrc}
-                alt={`Preview of ${previewLabel}`}
-              />
-            ) : (
-              <p className={styles.muted}>Failed to render image preview.</p>
-            )
-          ) : null}
+          imagePreviewSrc ? (
+            <img
+              className={styles.imagePreview}
+              src={imagePreviewSrc}
+              alt={`Preview of ${previewLabel}`}
+            />
+          ) : (
+            <p className={styles.muted}>Failed to render image preview.</p>
+          )
+        ) : null}
 
         {previewPath
           && previewState.status === "ready"
           && previewState.preview?.kind === "unsupported" ? (
-            <p className={styles.muted}>{previewState.preview.reason}</p>
-          ) : null}
+          <p className={styles.muted}>{previewState.preview.reason}</p>
+        ) : null}
       </div>
     </section>
   );

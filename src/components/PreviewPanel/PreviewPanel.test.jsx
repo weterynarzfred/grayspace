@@ -6,6 +6,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock("./CodeTextPreview", () => ({
+  default: ({ content }) => <div data-testid="preview-text-content">{content}</div>,
+}));
+
 describe("PreviewPanel", () => {
   beforeEach(() => {
     invoke.mockReset();

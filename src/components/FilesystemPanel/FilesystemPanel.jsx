@@ -162,111 +162,109 @@ function FilesystemPanel({
     selectedEntryPaths.length,
   ]);
 
-  return (
-    <section
-      ref={panelRef}
-      className={`${styles.panelContent} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
-      aria-label="Filesystem panel"
-      onKeyDown={handlePanelKeyDown}
+  return <section
+    ref={panelRef}
+    className={`${styles.panelContent} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
+    aria-label="Filesystem panel"
+    onKeyDown={handlePanelKeyDown}
+  >
+    <PanelHeader
+      panelType={panelType}
+      onPanelTypeChange={onPanelTypeChange}
     >
-      <PanelHeader
-        panelType={panelType}
-        onPanelTypeChange={onPanelTypeChange}
-      >
-        <h2 className={styles.title}>{isBrowsing ? "Files" : "Drives"}</h2>
-      </PanelHeader>
-      <div
-        ref={panelListRef}
-        className={styles.panelList}
-        onScroll={handlePanelListScroll}
-        data-testid="filesystem-panel-list"
-      >
-        <FilesystemStatusMessages
-          isBrowsing={isBrowsing}
-          isLoadingDrives={nav.isLoadingDrives}
-          isLoadingEntries={nav.isLoadingEntries}
-          isMovingEntry={nav.isMovingEntry}
-          isDeletingEntries={nav.isDeletingEntries}
-          isImportingExternal={nav.isImportingExternal}
-          error={nav.error}
-        />
+      <div className={styles.title}>{isBrowsing ? "Files" : "Drives"}</div>
+    </PanelHeader>
+    <div
+      ref={panelListRef}
+      className={styles.panelList}
+      onScroll={handlePanelListScroll}
+      data-testid="filesystem-panel-list"
+    >
+      <FilesystemStatusMessages
+        isBrowsing={isBrowsing}
+        isLoadingDrives={nav.isLoadingDrives}
+        isLoadingEntries={nav.isLoadingEntries}
+        isMovingEntry={nav.isMovingEntry}
+        isDeletingEntries={nav.isDeletingEntries}
+        isImportingExternal={nav.isImportingExternal}
+        error={nav.error}
+      />
 
-        {!isBrowsing && !nav.isLoadingDrives && !nav.error && (
-          <ul className={styles.entryList}>
-            {nav.drives.map((drive) => (
-              <EntryItem
-                key={drive.path}
-                label={drive.name}
-                meta={drive.path}
-                isSelected={nav.selectedPaths.includes(drive.path)}
-                onClick={() => nav.setSelectedPath(drive.path)}
-                onDoubleClick={() => nav.selectDrive(drive.path)}
-              />
-            ))}
-          </ul>
-        )}
-
-        {isBrowsing && (
-          <>
-            <Breadcrumbs
-              currentPath={nav.currentPath}
-              currentDrive={nav.currentDrive}
-              onSelect={nav.navigateToPath}
-              activeDragPaths={dnd.activeDragPaths}
-              isMovingEntry={nav.isMovingEntry}
-              getDropIdForPath={dnd.getBreadcrumbDropId}
+      {!isBrowsing && !nav.isLoadingDrives && !nav.error && (
+        <ul className={styles.entryList}>
+          {nav.drives.map((drive) => (
+            <EntryItem
+              key={drive.path}
+              label={drive.name}
+              meta={drive.path}
+              isSelected={nav.selectedPaths.includes(drive.path)}
+              onClick={() => nav.setSelectedPath(drive.path)}
+              onDoubleClick={() => nav.selectDrive(drive.path)}
             />
+          ))}
+        </ul>
+      )}
 
-            {!nav.isLoadingEntries && !nav.error && (
-              <ul className={styles.entryList}>
-                <UpEntryDropTarget
-                  destinationPath={upDestinationPath}
-                  isSelected={nav.selectedPaths.includes(UP_ENTRY_SELECTION_ID)}
+      {isBrowsing && (
+        <>
+          <Breadcrumbs
+            currentPath={nav.currentPath}
+            currentDrive={nav.currentDrive}
+            onSelect={nav.navigateToPath}
+            activeDragPaths={dnd.activeDragPaths}
+            isMovingEntry={nav.isMovingEntry}
+            getDropIdForPath={dnd.getBreadcrumbDropId}
+          />
+
+          {!nav.isLoadingEntries && !nav.error && (
+            <ul className={styles.entryList}>
+              <UpEntryDropTarget
+                destinationPath={upDestinationPath}
+                isSelected={nav.selectedPaths.includes(UP_ENTRY_SELECTION_ID)}
+                isMovingEntry={isEntryOperationInProgress}
+                activeDragPaths={dnd.activeDragPaths}
+                onClick={() => nav.setSelectedPath(UP_ENTRY_SELECTION_ID)}
+                onDoubleClick={nav.goUp}
+              />
+              {nav.entries.map((entry) => (
+                <DraggableFilesystemEntry
+                  key={entry.path}
+                  entry={entry}
+                  isSelected={nav.selectedPaths.includes(entry.path)}
                   isMovingEntry={isEntryOperationInProgress}
                   activeDragPaths={dnd.activeDragPaths}
-                  onClick={() => nav.setSelectedPath(UP_ENTRY_SELECTION_ID)}
-                  onDoubleClick={nav.goUp}
+                  onClick={(event) => {
+                    const selectedEntryPaths = nav.selectEntry(entry.path, {
+                      additive: event.metaKey || event.ctrlKey,
+                      range: event.shiftKey,
+                    });
+                    emitTabSelectedFiles(selectedEntryPaths);
+                  }}
+                  onDoubleClick={() => nav.openEntry(entry)}
                 />
-                {nav.entries.map((entry) => (
-                  <DraggableFilesystemEntry
-                    key={entry.path}
-                    entry={entry}
-                    isSelected={nav.selectedPaths.includes(entry.path)}
-                    isMovingEntry={isEntryOperationInProgress}
-                    activeDragPaths={dnd.activeDragPaths}
-                    onClick={(event) => {
-                      const selectedEntryPaths = nav.selectEntry(entry.path, {
-                        additive: event.metaKey || event.ctrlKey,
-                        range: event.shiftKey,
-                      });
-                      emitTabSelectedFiles(selectedEntryPaths);
-                    }}
-                    onDoubleClick={() => nav.openEntry(entry)}
-                  />
-                ))}
-              </ul>
+              ))}
+            </ul>
+          )}
+          <DragOverlay dropAnimation={null}>
+            {activeDragEntry && (
+              <div className={styles.dragOverlay}>
+                <span className={styles.dragOverlayName}>
+                  {activeDragEntries.length > 1
+                    ? `${activeDragEntries.length} items`
+                    : activeDragEntry.name}
+                </span>
+                <span className={styles.dragOverlayMeta}>
+                  {activeDragEntries.length > 1
+                    ? "Move selection"
+                    : (activeDragEntry.is_dir ? "Folder" : "File")}
+                </span>
+              </div>
             )}
-            <DragOverlay dropAnimation={null}>
-              {activeDragEntry && (
-                <div className={styles.dragOverlay}>
-                  <span className={styles.dragOverlayName}>
-                    {activeDragEntries.length > 1
-                      ? `${activeDragEntries.length} items`
-                      : activeDragEntry.name}
-                  </span>
-                  <span className={styles.dragOverlayMeta}>
-                    {activeDragEntries.length > 1
-                      ? "Move selection"
-                      : (activeDragEntry.is_dir ? "Folder" : "File")}
-                  </span>
-                </div>
-              )}
-            </DragOverlay>
-          </>
-        )}
-      </div>
-    </section>
-  );
+          </DragOverlay>
+        </>
+      )}
+    </div>
+  </section>;
 }
 
 export default FilesystemPanel;
