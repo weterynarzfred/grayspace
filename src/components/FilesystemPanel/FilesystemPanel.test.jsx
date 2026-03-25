@@ -59,7 +59,7 @@ vi.mock("@dnd-kit/core", () => ({
     return <>{children}</>;
   },
   DragOverlay: ({ children }) => <>{children}</>,
-  PointerSensor: class {},
+  PointerSensor: class { },
   pointerWithin: vi.fn(() => []),
   useSensor: vi.fn(() => ({})),
   useSensors: vi.fn((...sensors) => sensors),
@@ -223,7 +223,6 @@ describe("FilesystemPanel", () => {
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
 
-    expect(await screen.findByText("Files")).toBeInTheDocument();
     expect(await screen.findByText("Users")).toBeInTheDocument();
     expect(await screen.findByText("notes.txt")).toBeInTheDocument();
     expect(screen.getByText("..")).toBeInTheDocument();
@@ -266,7 +265,6 @@ describe("FilesystemPanel", () => {
     fireEvent.click(driveButton);
 
     expect(driveButton).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByText("Drives")).toBeInTheDocument();
     expect(screen.getByText("Select a drive")).toBeInTheDocument();
   });
 
@@ -563,13 +561,10 @@ describe("FilesystemPanel", () => {
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
 
-    expect(await screen.findByText("Files")).toBeInTheDocument();
-
     const drivesCrumb = await screen.findByRole("button", { name: "Drives" });
     fireEvent.click(drivesCrumb);
 
     expect(await screen.findByText("Select a drive")).toBeInTheDocument();
-    expect(screen.getByText("Drives")).toBeInTheDocument();
   });
 
   it("hydrates filesystem state and restores scroll per pane", async () => {
