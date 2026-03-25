@@ -8,6 +8,13 @@
   text-overflow: ellipsis;
 }
 
+.previewActions {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  margin-left: auto;
+}
+
 .panelContent {
   display: flex;
   flex-direction: column;
@@ -65,11 +72,23 @@
   @include interactive-tile;
   height: 100%;
   border: solid $border-default;
-  border-width: 0 1px;
+  border-width: 0 0 0 1px;
   padding: 0 0.5rem;
 }
 
 .saveButton:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.lockButton {
+  @include interactive-tile;
+  height: 100%;
+  border: solid $border-default;
+  border-width: 0 0 0 1px;
+  padding: 0 0.5rem;
+}
+
+.lockButtonLocked {
+  color: $accent-active-light;
 }

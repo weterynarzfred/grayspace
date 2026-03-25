@@ -67,6 +67,7 @@ describe("PreviewPanel", () => {
     });
 
     expect(await screen.findByTestId("preview-text-content")).toHaveTextContent("hello preview");
+    expect(screen.getByText("notes.txt").tagName).toBe("EM");
   });
 
   it("loads and renders image previews", async () => {
@@ -154,7 +155,7 @@ describe("PreviewPanel", () => {
       invoke.mock.calls.some(([command]) => command === "preview_write_text_file"),
     ).toBe(false);
 
-    fireEvent.click(screen.getByRole("button", { name: "Save file" }));
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("preview_write_text_file", {
         path: "C:\\notes.txt",
@@ -182,5 +183,107 @@ describe("PreviewPanel", () => {
     expect(
       await screen.findByText("Preview is truncated. Editing is disabled for large files."),
     ).toBeInTheDocument();
+  });
+
+  it("auto-locks when selection changes while text edits are unsaved", async () => {
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "preview_read_file") {
+        if (payload?.path === "C:\\notes.txt") {
+          return {
+            kind: "text",
+            content: "notes body",
+            truncated: false,
+          };
+        }
+        if (payload?.path === "C:\\other.txt") {
+          return {
+            kind: "text",
+            content: "other body",
+            truncated: false,
+          };
+        }
+      }
+
+      if (command === "preview_write_text_file") {
+        return null;
+      }
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { rerender } = render(
+      <PreviewPanel
+        tabSelectedFiles={{
+          selectedPaths: ["C:\\notes.txt"],
+        }}
+      />,
+    );
+
+    await screen.findByTestId("preview-text-content");
+    fireEvent.click(screen.getByRole("button", { name: "mock-change" }));
+    expect(await screen.findByText("Unsaved changes.")).toBeInTheDocument();
+
+    rerender(
+      <PreviewPanel
+        tabSelectedFiles={{
+          selectedPaths: ["C:\\other.txt"],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
+    expect(screen.getByTestId("preview-text-content")).toHaveTextContent("notes body updated");
+
+    const readCalls = invoke.mock.calls.filter(([command]) => command === "preview_read_file");
+    expect(readCalls).toEqual([
+      ["preview_read_file", { path: "C:\\notes.txt" }],
+    ]);
+  });
+
+  it("keeps non-text previews pinned when manually locked", async () => {
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "preview_read_file") {
+        if (payload?.path === "C:\\one.png") {
+          return {
+            kind: "image",
+            mimeType: "image/png",
+            dataBase64: "AAAA",
+          };
+        }
+        if (payload?.path === "C:\\two.png") {
+          return {
+            kind: "image",
+            mimeType: "image/png",
+            dataBase64: "BBBB",
+          };
+        }
+      }
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { rerender } = render(
+      <PreviewPanel
+        tabSelectedFiles={{
+          selectedPaths: ["C:\\one.png"],
+        }}
+      />,
+    );
+
+    await screen.findByRole("img", { name: /preview of one\.png/i });
+    fireEvent.click(screen.getByRole("button", { name: /^lock$/i }));
+
+    rerender(
+      <PreviewPanel
+        tabSelectedFiles={{
+          selectedPaths: ["C:\\two.png"],
+        }}
+      />,
+    );
+
+    const image = await screen.findByRole("img", { name: /preview of one\.png/i });
+    expect(image).toHaveAttribute("src", "data:image/png;base64,AAAA");
+    expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalledWith("preview_read_file", { path: "C:\\two.png" });
   });
 });

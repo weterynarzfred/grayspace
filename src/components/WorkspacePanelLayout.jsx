@@ -92,11 +92,10 @@ function WorkspacePanelLayout({
       onPointerDownCapture={() => onPaneActivate?.(tabId, paneId)}
     >
       {splitPreview?.paneId === paneId ? <div
-        className={`${styles.splitPreview} ${
-          splitPreview.direction === "right"
+        className={`${styles.splitPreview} ${splitPreview.direction === "right"
             ? styles.splitPreviewVertical
             : styles.splitPreviewHorizontal
-        }`}
+          }`}
         data-testid={`split-preview-${paneId}`}
         data-direction={splitPreview.direction}
         aria-hidden="true"
@@ -241,9 +240,7 @@ function WorkspacePanelLayout({
       orientation={orientation}
       className={styles.panelGroup}
       onLayoutChanged={handleLayoutChanged}
-    >
-      {groupChildren}
-    </Group>;
+    >{groupChildren}</Group>;
   }, [onSplitRatioChange, renderPaneViewport, tabId]);
 
   if (!tabLayout) return <div className={styles.panelGroup} />;

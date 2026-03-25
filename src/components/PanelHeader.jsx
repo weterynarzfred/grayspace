@@ -8,28 +8,22 @@ function PanelHeader({ panelType, onPanelTypeChange, children }) {
     ? `${styles.header} ${styles.headerActive}`
     : styles.header;
 
-  return (
-    <header className={headerClassName}>
-      <PanelTypeSwitcher
-        panelType={panelType}
-        onPanelTypeChange={onPanelTypeChange}
-      />
-      {children ? <div className={styles.content}>{children}</div> : null}
-      {paneActions ? (
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.actionButton}
-            onClick={paneActions.onClose}
-            disabled={!paneActions.canClose}
-            title={paneActions.canClose ? "Close pane" : "Cannot close the last pane"}
-          >
-            Close Pane
-          </button>
-        </div>
-      ) : null}
-    </header>
-  );
+  return <header className={headerClassName}>
+    <PanelTypeSwitcher
+      panelType={panelType}
+      onPanelTypeChange={onPanelTypeChange}
+    />
+    {children ? <div className={styles.content}>{children}</div> : null}
+    {paneActions ? <div className={styles.actions}>
+      {paneActions.canClose ? <button
+        type="button"
+        className={styles.actionButton}
+        onClick={paneActions.onClose}
+        disabled={!paneActions.canClose}
+        title={paneActions.canClose ? "Close Pane" : "Cannot close the last pane"}
+      >×</button> : null}
+    </div> : null}
+  </header>;
 }
 
 export default PanelHeader;

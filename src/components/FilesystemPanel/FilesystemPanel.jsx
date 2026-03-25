@@ -159,9 +159,7 @@ function FilesystemPanel({
     <PanelHeader
       panelType={panelType}
       onPanelTypeChange={onPanelTypeChange}
-    >
-      <div className={styles.title}>{isBrowsing ? "Files" : "Drives"}</div>
-    </PanelHeader>
+    ></PanelHeader>
     <div
       ref={panelListRef}
       className={styles.panelList}

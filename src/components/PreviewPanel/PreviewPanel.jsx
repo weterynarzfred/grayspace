@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
-import { getPanelSelectedFilesLabel } from "../selectedFilesLabel";
 import { getPrimarySelectedPath, getSelectedPathsFromState } from "../../utils/pathSelection";
 import CodeTextPreview from "./CodeTextPreview";
 import styles from "./PreviewPanel.module.scss";
@@ -15,6 +14,16 @@ const INITIAL_PREVIEW_STATE = {
 
 function getSelectedPreviewPath(selectedFiles = {}) {
   return getPrimarySelectedPath(getSelectedPathsFromState(selectedFiles));
+}
+
+function getPathDisplayName(path) {
+  if (typeof path !== "string" || !path) return "";
+
+  const trimmedPath = path.replace(/[\\/]+$/, "");
+  if (!trimmedPath) return path;
+
+  const pathSegments = trimmedPath.split(/[\\/]/);
+  return pathSegments[pathSegments.length - 1] ?? trimmedPath;
 }
 
 function getErrorMessage(error) {
@@ -35,16 +44,27 @@ function PreviewPanel({
   tabSelectedFiles = undefined,
   onPaneDirtyStateChange = undefined,
 }) {
-  const previewLabel = getPanelSelectedFilesLabel("", tabSelectedFiles);
-  const previewPath = useMemo(
+  const selectedPreviewPath = useMemo(
     () => getSelectedPreviewPath(tabSelectedFiles),
     [tabSelectedFiles],
   );
-  const [previewState, setPreviewState] = useState(INITIAL_PREVIEW_STATE);
+  const [lockedPath, setLockedPath] = useState("");
   const [textContent, setTextContent] = useState("");
   const [saveStatus, setSaveStatus] = useState("idle");
   const [saveError, setSaveError] = useState("");
+  const [previewState, setPreviewState] = useState(INITIAL_PREVIEW_STATE);
   const latestSaveRequestRef = useRef(0);
+  const latestPreviewPathRef = useRef(selectedPreviewPath);
+  const isLocked = Boolean(lockedPath);
+  const shouldAutoLockToCurrentPath =
+    !isLocked
+    && saveStatus === "dirty"
+    && latestPreviewPathRef.current
+    && selectedPreviewPath !== latestPreviewPathRef.current;
+  const previewPath = isLocked
+    ? lockedPath
+    : (shouldAutoLockToCurrentPath ? latestPreviewPathRef.current : selectedPreviewPath);
+  const previewLabel = useMemo(() => getPathDisplayName(previewPath), [previewPath]);
   const imagePreviewSrc = useMemo(() => {
     if (previewState.status !== "ready" || previewState.preview?.kind !== "image") return null;
     return buildImagePreviewSrc(previewState.preview);
@@ -68,6 +88,33 @@ function PreviewPanel({
       setSaveError(getErrorMessage(saveLoadError));
     }
   }, []);
+
+  const handleToggleLock = useCallback(() => {
+    if (isLocked) {
+      const willSwitchToSelectedPath =
+        selectedPreviewPath
+        && selectedPreviewPath !== lockedPath
+        && saveStatus === "dirty";
+      if (willSwitchToSelectedPath) {
+        setSaveStatus("idle");
+        setSaveError("");
+      }
+      setLockedPath("");
+      return;
+    }
+
+    if (!previewPath) return;
+    setLockedPath(previewPath);
+  }, [isLocked, lockedPath, previewPath, saveStatus, selectedPreviewPath]);
+
+  useEffect(() => {
+    latestPreviewPathRef.current = previewPath;
+  }, [previewPath]);
+
+  useEffect(() => {
+    if (!shouldAutoLockToCurrentPath || isLocked) return;
+    setLockedPath(latestPreviewPathRef.current);
+  }, [isLocked, shouldAutoLockToCurrentPath]);
 
   const handleTextContentChange = useCallback((nextContent) => {
     if (!isTextEditable || !previewPath) return;
@@ -170,7 +217,9 @@ function PreviewPanel({
 
   return <section className={`${shellStyles.panelContent} ${styles.panelContent}`} aria-label="Preview panel">
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
-      <p className={styles.previewLabel}>{previewLabel}</p>
+      {previewLabel ? <p className={styles.previewLabel}>
+        {isLocked ? previewLabel : <em>{previewLabel}</em>}
+      </p> : null}
 
       {!previewPath ? (
         <p className={styles.muted}>Select a file to preview.</p>
@@ -188,16 +237,19 @@ function PreviewPanel({
         <p className={saveStatus === "error" ? styles.error : styles.muted}>{saveStatusMessage}</p>
       ) : null}
 
-      {isTextPreviewReady ? (
+      {previewPath ? <div className={styles.previewActions}>
         <button
+          type="button"
+          className={`${styles.lockButton} ${isLocked ? styles.lockButtonLocked : ""}`}
+          onClick={handleToggleLock}
+        >{isLocked ? "unlock" : "lock"}</button>
+        {isTextPreviewReady ? <button
           type="button"
           className={styles.saveButton}
           onClick={handleSaveNow}
           disabled={!isTextEditable || saveStatus === "saving"}
-        >
-          Save file
-        </button>
-      ) : null}
+        >save</button> : null}
+      </div> : null}
     </PanelHeader>
     <div className={`${shellStyles.panelBody} ${styles.panelBody}`}>
 

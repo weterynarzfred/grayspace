@@ -247,7 +247,7 @@ describe("WorkspacePanelLayout", () => {
     fireEvent.pointerUp(rightSplitHandle, { pointerId: 3, clientX: 22, clientY: 22 });
     expect(onPaneSplit).toHaveBeenCalledTimes(2);
 
-    fireEvent.click(within(leftPane).getByRole("button", { name: "Close Pane" }));
+    fireEvent.click(within(leftPane).getByTitle("Close Pane"));
     expect(onPaneClose).toHaveBeenCalledWith("tab-pane-controls", "pane-left");
   });
 
