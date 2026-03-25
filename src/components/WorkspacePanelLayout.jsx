@@ -11,7 +11,7 @@ import { PaneHeaderActionsProvider } from "./paneHeaderActionsContext";
 import styles from "./WorkspacePanelLayout.module.scss";
 
 const DEFAULT_SPLIT_PERCENT = 50;
-const DEFAULT_PANEL_MIN_SIZE = 10;
+const DEFAULT_PANEL_MIN_SIZE_PERCENT = 10;
 const LEGACY_PRIMARY_PANE_ID = "left";
 const LEGACY_SECONDARY_PANE_ID = "right";
 
@@ -79,6 +79,23 @@ function getTabLayout(layout, paneStates) {
   return createFallbackLayout(layout, paneStates);
 }
 
+function getSplitGroupId(tabId, nodePath) {
+  const safeTabId = tabId || "tab";
+  return `workspace-split-${safeTabId}-${nodePath}`;
+}
+
+function getSplitRatioFromLayout(layoutByPanel, firstPanelId) {
+  if (!layoutByPanel || typeof layoutByPanel !== "object" || !firstPanelId) {
+    return DEFAULT_SPLIT_PERCENT;
+  }
+  const firstSize = Number(layoutByPanel[firstPanelId]);
+  return Math.round(clampSplitPercent(firstSize));
+}
+
+function formatPercent(value) {
+  return `${clampSplitPercent(value)}%`;
+}
+
 function WorkspacePanelLayout({
   tab,
   cwdHint = "",
@@ -89,6 +106,8 @@ function WorkspacePanelLayout({
   onPaneActivate = undefined,
   onPaneSplit = undefined,
   onPaneClose = undefined,
+  onPaneDirtyStateChange = undefined,
+  onSplitRatioChange = undefined,
 }) {
   const paneStates = tab?.paneStates ?? {};
   const paneCount = Object.keys(paneStates).length;
@@ -105,9 +124,8 @@ function WorkspacePanelLayout({
     const isActivePane = Boolean(activePaneId && paneId === activePaneId);
     const paneHeaderActions = {
       canClose: paneCount > 1,
-      onSplitRight: () => onPaneSplit?.(tabId, paneId, "right"),
-      onSplitDown: () => onPaneSplit?.(tabId, paneId, "bottom"),
       onClose: () => onPaneClose?.(tabId, paneId),
+      isActive: isActivePane,
     };
 
     return <div
@@ -116,6 +134,22 @@ function WorkspacePanelLayout({
       data-pane-id={paneId}
       onPointerDownCapture={() => onPaneActivate?.(tabId, paneId)}
     >
+      <div className={styles.cornerHandles}>
+        <button
+          type="button"
+          className={`${styles.cornerHandle} ${styles.cornerHandleRight}`}
+          aria-label="Split pane right"
+          title="Split pane right (Alt+V)"
+          onClick={() => onPaneSplit?.(tabId, paneId, "right")}
+        />
+        <button
+          type="button"
+          className={`${styles.cornerHandle} ${styles.cornerHandleBottom}`}
+          aria-label="Split pane down"
+          title="Split pane down (Alt+H)"
+          onClick={() => onPaneSplit?.(tabId, paneId, "bottom")}
+        />
+      </div>
       <PaneHeaderActionsProvider value={paneHeaderActions}>
         <PanelComponent
           tabId={tabId}
@@ -132,6 +166,9 @@ function WorkspacePanelLayout({
           onTabSelectedFilesChange={selectedFiles =>
             onTabSelectedFilesChange?.(tabId, selectedFiles)
           }
+          onPaneDirtyStateChange={dirtyState =>
+            onPaneDirtyStateChange?.(tabId, paneId, dirtyState, panelType)
+          }
           filesystemState={paneState?.filesystemState}
           tabSelectedFiles={tab?.selectedFiles}
           cwdHint={cwdHint}
@@ -144,6 +181,7 @@ function WorkspacePanelLayout({
     cwdHint,
     onCurrentPathChange,
     onPaneClose,
+    onPaneDirtyStateChange,
     onFilesystemStateChange,
     onPaneActivate,
     onPaneSplit,
@@ -173,17 +211,38 @@ function WorkspacePanelLayout({
     const separatorClassName = axis === "row"
       ? `${styles.resizeHandle} ${styles.resizeHandleHorizontal}`
       : `${styles.resizeHandle} ${styles.resizeHandleVertical}`;
+    const splitGroupId = getSplitGroupId(tabId, nodePath);
+    const firstPanelId = `${splitGroupId}-first`;
+    const secondPanelId = `${splitGroupId}-second`;
+    const handleLayoutChanged = (layoutByPanel) => {
+      const nextRatio = getSplitRatioFromLayout(layoutByPanel, firstPanelId);
+      onSplitRatioChange?.(tabId, nodePath, nextRatio);
+    };
 
-    return <Group orientation={orientation} className={styles.panelGroup}>
-      <Panel defaultSize={firstSize} minSize={DEFAULT_PANEL_MIN_SIZE}>
+    return <Group
+      key={splitGroupId}
+      id={splitGroupId}
+      orientation={orientation}
+      className={styles.panelGroup}
+      onLayoutChanged={handleLayoutChanged}
+    >
+      <Panel
+        id={firstPanelId}
+        defaultSize={formatPercent(firstSize)}
+        minSize={formatPercent(DEFAULT_PANEL_MIN_SIZE_PERCENT)}
+      >
         {renderLayoutNode(node.first, `${nodePath}-first`)}
       </Panel>
       <Separator className={separatorClassName} />
-      <Panel defaultSize={secondSize} minSize={DEFAULT_PANEL_MIN_SIZE}>
+      <Panel
+        id={secondPanelId}
+        defaultSize={formatPercent(secondSize)}
+        minSize={formatPercent(DEFAULT_PANEL_MIN_SIZE_PERCENT)}
+      >
         {renderLayoutNode(node.second, `${nodePath}-second`)}
       </Panel>
     </Group>;
-  }, [renderPaneViewport]);
+  }, [onSplitRatioChange, renderPaneViewport, tabId]);
 
   if (!tabLayout) return <div className={styles.panelGroup} />;
 

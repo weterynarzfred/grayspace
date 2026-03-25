@@ -221,6 +221,14 @@ pub struct TabClosePanePayload {
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TabLayoutSplitRatioPayload {
+    pub tab_id: String,
+    pub split_path: String,
+    pub ratio: u8,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TabSelectedFilesPayload {
     pub tab_id: String,
     pub selected_files: TabSelectedFilesState,

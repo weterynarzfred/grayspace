@@ -44,6 +44,7 @@ function PreviewPanel({
   panelType = "Preview",
   onPanelTypeChange = undefined,
   tabSelectedFiles = undefined,
+  onPaneDirtyStateChange = undefined,
 }) {
   const previewLabel = getPanelSelectedFilesLabel("", tabSelectedFiles);
   const previewPath = useMemo(
@@ -155,6 +156,28 @@ function PreviewPanel({
     if (saveStatus === "error") return saveError || "Failed to save file.";
     return "";
   }, [isTextEditable, isTextPreviewReady, saveError, saveStatus]);
+  const hasUnsavedPreviewChanges = isTextEditable && saveStatus === "dirty";
+
+  useEffect(() => {
+    if (typeof onPaneDirtyStateChange !== "function") return;
+
+    onPaneDirtyStateChange({
+      hasUnsavedChanges: hasUnsavedPreviewChanges,
+      scope: "preview-text",
+      message: hasUnsavedPreviewChanges
+        ? "This preview has unsaved text changes."
+        : "",
+    });
+  }, [hasUnsavedPreviewChanges, onPaneDirtyStateChange]);
+
+  useEffect(() => () => {
+    if (typeof onPaneDirtyStateChange !== "function") return;
+    onPaneDirtyStateChange({
+      hasUnsavedChanges: false,
+      scope: "preview-text",
+      message: "",
+    });
+  }, [onPaneDirtyStateChange]);
 
   return <section className={`${shellStyles.panelContent} ${styles.panelContent}`} aria-label="Preview panel">
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>

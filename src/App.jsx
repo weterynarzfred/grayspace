@@ -16,6 +16,7 @@ import {
   workspaceNewWindow,
   workspaceSetActiveTab,
   workspaceSetTabActivePane,
+  workspaceSetTabLayoutSplitRatio,
   workspaceSetTabPaneFilesystemState,
   workspaceSetTabPanelType,
   workspaceSetTabSelectedFiles,
@@ -53,14 +54,20 @@ function resolveTabPaneId(tab, preferredPaneId = "") {
   return Object.keys(tab?.paneStates ?? {})[0] ?? "";
 }
 
+function getPaneStateKey(tabId, paneId) {
+  return `${tabId}::${paneId}`;
+}
+
 function App() {
   const [viewState, dispatch] = useReducer(workspaceReducer, initialWorkspaceViewState);
   const [runtimeError, setRuntimeError] = useState("");
   const currentWindowIdRef = useRef("");
+  const paneDirtyStateRef = useRef(new Map());
   const {
     notifications,
     isNotificationsOpen,
     pushNotification,
+    openConfirm,
     toggleNotifications,
     dismissNotification,
     resolveConfirmNotification,
@@ -160,9 +167,58 @@ function App() {
     workspaceSplitTabPane(tabId, paneId, direction).catch(handleTabScopedCommandError);
   }, [handleTabScopedCommandError]);
 
-  const handleClosePane = useCallback((tabId, paneId) => {
+  const handleClosePane = useCallback(async (tabId, paneId) => {
     if (!tabId || !paneId) return;
-    workspaceCloseTabPane(tabId, paneId).catch(handleTabScopedCommandError);
+
+    const paneState = activeTab?.tabId === tabId
+      ? activeTab.paneStates?.[paneId]
+      : null;
+    const paneStateKey = getPaneStateKey(tabId, paneId);
+    const paneDirtyState = paneDirtyStateRef.current.get(paneStateKey);
+    const requiresUnsavedConfirm = paneState?.panelType === "Preview"
+      && paneDirtyState?.hasUnsavedChanges;
+
+    if (requiresUnsavedConfirm) {
+      const shouldClose = await openConfirm({
+        title: "Discard unsaved changes?",
+        message: paneDirtyState.message || "Close this pane and discard unsaved changes?",
+        tone: "warning",
+        confirmLabel: "Close pane",
+        cancelLabel: "Cancel",
+        autoOpen: true,
+      });
+      if (!shouldClose) return;
+    }
+
+    workspaceCloseTabPane(tabId, paneId)
+      .then(() => {
+        paneDirtyStateRef.current.delete(paneStateKey);
+      })
+      .catch(handleTabScopedCommandError);
+  }, [activeTab, handleTabScopedCommandError, openConfirm]);
+
+  const handlePaneDirtyStateChange = useCallback((tabId, paneId, dirtyState, panelType) => {
+    if (!tabId || !paneId) return;
+
+    const paneStateKey = getPaneStateKey(tabId, paneId);
+    const hasUnsavedChanges = Boolean(dirtyState?.hasUnsavedChanges);
+
+    if (!hasUnsavedChanges) {
+      paneDirtyStateRef.current.delete(paneStateKey);
+      return;
+    }
+
+    paneDirtyStateRef.current.set(paneStateKey, {
+      hasUnsavedChanges,
+      panelType: panelType ?? "",
+      scope: typeof dirtyState?.scope === "string" ? dirtyState.scope : "",
+      message: typeof dirtyState?.message === "string" ? dirtyState.message : "",
+    });
+  }, []);
+
+  const handleSetSplitRatio = useCallback((tabId, splitPath, ratio) => {
+    if (!tabId || !splitPath) return;
+    workspaceSetTabLayoutSplitRatio(tabId, splitPath, ratio).catch(handleTabScopedCommandError);
   }, [handleTabScopedCommandError]);
 
   const handleSetTabSelectedFiles = useCallback((tabId, selectedFiles) => {
@@ -263,6 +319,8 @@ function App() {
               onPaneActivate={handleSetActivePane}
               onPaneSplit={handleSplitPane}
               onPaneClose={handleClosePane}
+              onPaneDirtyStateChange={handlePaneDirtyStateChange}
+              onSplitRatioChange={handleSetSplitRatio}
             />
           </PanelsDndLayer>
         </section>

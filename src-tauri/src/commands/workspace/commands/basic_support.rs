@@ -252,6 +252,42 @@ pub(super) fn split_layout_leaf(
     }
 }
 
+pub(super) fn update_layout_split_ratio(
+    layout: &mut TabLayoutNode,
+    split_path: &str,
+    ratio: u8,
+) -> Result<bool, String> {
+    let mut path_segments = split_path.split('-');
+    if path_segments.next() != Some("root") {
+        return Err("Invalid split path.".to_string());
+    }
+
+    let mut current_node = layout;
+    for segment in path_segments {
+        current_node = match current_node {
+            TabLayoutNode::Split { first, second, .. } => match segment {
+                "first" => first.as_mut(),
+                "second" => second.as_mut(),
+                _ => return Err("Invalid split path.".to_string()),
+            },
+            TabLayoutNode::Leaf { .. } => return Err("Invalid split path.".to_string()),
+        };
+    }
+
+    let clamped_ratio = ratio.clamp(10, 90);
+    match current_node {
+        TabLayoutNode::Split { ratio, .. } => {
+            if *ratio == clamped_ratio {
+                Ok(false)
+            } else {
+                *ratio = clamped_ratio;
+                Ok(true)
+            }
+        }
+        TabLayoutNode::Leaf { .. } => Err("Split path points to a leaf pane.".to_string()),
+    }
+}
+
 struct RemoveLeafResult {
     node: Option<TabLayoutNode>,
     removed: bool,
@@ -381,7 +417,8 @@ pub(super) fn close_layout_leaf(
 mod tests {
     use super::{
         close_layout_leaf, count_layout_leaves, layout_contains_pane, resolve_tab_pane_id,
-        split_layout_leaf, update_pane_filesystem_state, update_pane_panel_type,
+        split_layout_leaf, update_layout_split_ratio, update_pane_filesystem_state,
+        update_pane_panel_type,
         update_tab_selected_files, update_tab_workspace_root,
     };
     use crate::commands::workspace::model::WorkspaceModel;
@@ -634,5 +671,54 @@ mod tests {
         let explicit =
             resolve_tab_pane_id(&tab, Some(&left), None).expect("explicit pane should resolve");
         assert_eq!(explicit, left);
+    }
+
+    #[test]
+    fn update_layout_split_ratio_updates_target_split() {
+        let mut model = WorkspaceModel::default();
+        let mut tab = model.create_default_tab();
+
+        let root_update_changed = update_layout_split_ratio(&mut tab.layout, "root", 72)
+            .expect("root split ratio update should succeed");
+        assert!(root_update_changed);
+
+        let root_update_no_change = update_layout_split_ratio(&mut tab.layout, "root", 72)
+            .expect("same ratio update should still succeed");
+        assert!(!root_update_no_change);
+
+        let source_pane_id = tab.active_pane_id.clone();
+        assert!(split_layout_leaf(
+            &mut tab.layout,
+            &source_pane_id,
+            SplitDirection::Bottom,
+            "pane-nested",
+        ));
+
+        let nested_update_changed = update_layout_split_ratio(&mut tab.layout, "root-first", 15)
+            .expect("nested split ratio update should succeed");
+        assert!(nested_update_changed);
+
+        match &tab.layout {
+            TabLayoutNode::Split { ratio, first, .. } => {
+                assert_eq!(*ratio, 72);
+                match first.as_ref() {
+                    TabLayoutNode::Split { ratio, .. } => assert_eq!(*ratio, 15),
+                    _ => panic!("expected nested split in first branch"),
+                }
+            }
+            _ => panic!("expected root split layout"),
+        }
+    }
+
+    #[test]
+    fn update_layout_split_ratio_rejects_invalid_paths() {
+        let mut model = WorkspaceModel::default();
+        let mut tab = model.create_default_tab();
+
+        let invalid_root_result = update_layout_split_ratio(&mut tab.layout, "main", 60);
+        assert!(invalid_root_result.is_err());
+
+        let leaf_path_result = update_layout_split_ratio(&mut tab.layout, "root-first", 60);
+        assert!(leaf_path_result.is_err());
     }
 }

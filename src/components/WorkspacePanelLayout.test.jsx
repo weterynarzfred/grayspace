@@ -7,7 +7,22 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("react-resizable-panels", () => ({
-  Group: ({ children }) => <div>{children}</div>,
+  Group: ({ children, id, onLayoutChanged }) => <div>
+    {children}
+    <button
+      type="button"
+      aria-label={`Mock resize ${id ?? "group"}`}
+      onClick={() => {
+        if (!id) return;
+        onLayoutChanged?.({
+          [`${id}-first`]: 68,
+          [`${id}-second`]: 32,
+        });
+      }}
+    >
+      MockResize
+    </button>
+  </div>,
   Panel: ({ children }) => <div>{children}</div>,
   Separator: (props) => <div {...props} />,
 }));
@@ -193,13 +208,76 @@ describe("WorkspacePanelLayout", () => {
     const leftPane = document.querySelector('[data-pane-id="pane-left"]');
     expect(leftPane).toBeTruthy();
 
-    fireEvent.click(within(leftPane).getByRole("button", { name: "Split Right" }));
+    fireEvent.click(within(leftPane).getByRole("button", { name: "Split pane right" }));
     expect(onPaneSplit).toHaveBeenCalledWith("tab-pane-controls", "pane-left", "right");
 
-    fireEvent.click(within(leftPane).getByRole("button", { name: "Split Down" }));
+    fireEvent.click(within(leftPane).getByRole("button", { name: "Split pane down" }));
     expect(onPaneSplit).toHaveBeenCalledWith("tab-pane-controls", "pane-left", "bottom");
 
     fireEvent.click(within(leftPane).getByRole("button", { name: "Close Pane" }));
     expect(onPaneClose).toHaveBeenCalledWith("tab-pane-controls", "pane-left");
+  });
+
+  it("reports split ratio changes for the active tab layout path", () => {
+    const onSplitRatioChange = vi.fn();
+
+    render(
+      <WorkspacePanelLayout
+        tab={{
+          tabId: "tab-ratio",
+          layout: {
+            kind: "split",
+            axis: "row",
+            ratio: 50,
+            first: {
+              kind: "leaf",
+              paneId: "pane-left",
+            },
+            second: {
+              kind: "leaf",
+              paneId: "pane-right",
+            },
+          },
+          activePaneId: "pane-left",
+          selectedFiles: {
+            selectedPath: "",
+            selectedPaths: [],
+          },
+          paneStates: {
+            "pane-left": {
+              paneId: "pane-left",
+              panelType: "Filesystem",
+              terminalSessionId: "term-left",
+              filesystemState: {
+                currentDrive: "",
+                currentPath: "",
+                selectedPath: "",
+                selectedPaths: [],
+                scrollTop: 0,
+              },
+            },
+            "pane-right": {
+              paneId: "pane-right",
+              panelType: "Preview",
+              terminalSessionId: "term-right",
+              filesystemState: {
+                currentDrive: "",
+                currentPath: "",
+                selectedPath: "",
+                selectedPaths: [],
+                scrollTop: 0,
+              },
+            },
+          },
+        }}
+        onSplitRatioChange={onSplitRatioChange}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Mock resize workspace-split-tab-ratio-root" }),
+    );
+
+    expect(onSplitRatioChange).toHaveBeenCalledWith("tab-ratio", "root", 68);
   });
 });

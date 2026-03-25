@@ -64,6 +64,12 @@ export function workspaceCloseTabPane(tabId, paneId) {
   });
 }
 
+export function workspaceSetTabLayoutSplitRatio(tabId, splitPath, ratio) {
+  return invoke("workspace_set_tab_layout_split_ratio", {
+    payload: { tabId, splitPath, ratio },
+  });
+}
+
 export function workspaceSetTabSelectedFiles(tabId, selectedFiles) {
   return invoke("workspace_set_tab_selected_files", {
     payload: { tabId, selectedFiles },

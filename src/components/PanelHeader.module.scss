@@ -13,6 +13,15 @@
   background: $bg-panel;
 }
 
+.headerActive {
+  background: linear-gradient(
+    0deg,
+    rgba($accent-active, 0.14),
+    rgba($accent-active, 0.14)
+  ),
+  $bg-panel;
+}
+
 .content {
   min-width: 0;
   display: flex;
@@ -45,4 +54,8 @@
     opacity: 0.6;
     cursor: not-allowed;
   }
+}
+
+.actionButton:not(:disabled) {
+  color: $text-warning;
 }

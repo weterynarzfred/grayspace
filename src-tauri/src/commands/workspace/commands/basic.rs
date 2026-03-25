@@ -2,15 +2,16 @@ use super::super::model::WorkspaceState;
 use super::super::runtime_effects::{emit_workspace_updated, publish_snapshot};
 use super::super::types::{
     NewWindowOptions, TabActivePanePayload, TabClosePanePayload, TabCwdPayload,
-    TabPaneFilesystemStatePayload, TabPanelTypePayload, TabSelectedFilesPayload,
-    TabSplitPanePayload, TabWorkspaceRootPayload, WindowBounds, WorkspaceBootstrapPayload,
-    WorkspacePaneSplitPayload, WorkspaceSnapshot, WorkspaceWindowCreationPayload,
+    TabLayoutSplitRatioPayload, TabPaneFilesystemStatePayload, TabPanelTypePayload,
+    TabSelectedFilesPayload, TabSplitPanePayload, TabWorkspaceRootPayload, WindowBounds,
+    WorkspaceBootstrapPayload, WorkspacePaneSplitPayload, WorkspaceSnapshot,
+    WorkspaceWindowCreationPayload,
 };
 use super::basic_support::{
     close_layout_leaf, count_layout_leaves, find_first_layout_pane_id, layout_contains_pane,
     resolve_tab_pane_id, select_tab_pane, select_tab_pane_mut, split_layout_leaf,
-    update_pane_filesystem_state, update_pane_panel_type, update_tab_selected_files,
-    update_tab_workspace_root,
+    update_layout_split_ratio, update_pane_filesystem_state, update_pane_panel_type,
+    update_tab_selected_files, update_tab_workspace_root,
 };
 use crate::commands::terminal::{stop_terminal_session_by_id, TerminalState};
 use std::fs;
@@ -268,6 +269,35 @@ pub fn workspace_set_tab_active_pane(
         model.snapshot()
     };
     publish_snapshot(&app_handle, &snapshot, false);
+    Ok(snapshot)
+}
+
+#[tauri::command]
+pub fn workspace_set_tab_layout_split_ratio(
+    app_handle: AppHandle,
+    state: State<WorkspaceState>,
+    payload: TabLayoutSplitRatioPayload,
+) -> Result<WorkspaceSnapshot, String> {
+    let (snapshot, changed) = {
+        let mut model = state
+            .inner
+            .lock()
+            .map_err(|_| "Workspace state is unavailable.".to_string())?;
+        let tab = model
+            .tabs
+            .get_mut(&payload.tab_id)
+            .ok_or_else(|| "Tab not found.".to_string())?;
+
+        let changed = update_layout_split_ratio(&mut tab.layout, &payload.split_path, payload.ratio)?;
+        if changed {
+            model.bump_revision();
+        }
+        (model.snapshot(), changed)
+    };
+
+    if changed {
+        publish_snapshot(&app_handle, &snapshot, false);
+    }
     Ok(snapshot)
 }
 
