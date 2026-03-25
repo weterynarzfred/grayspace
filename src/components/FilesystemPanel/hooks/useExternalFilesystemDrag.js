@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window";
 import { useEffect, useRef } from "react";
-import { uniqueNonEmptyPaths } from "../pathSelection";
+import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 
 const DRAG_OUT_POLL_INTERVAL_MS = 80;
 const DRAG_OUT_WINDOW_PADDING_PX = 2;

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getSelectedPathsFromState,
   uniqueNonEmptyPaths,
-} from "../pathSelection";
+} from "../../../utils/pathSelection";
 import useFilesystemDirectoryWatcher from "./useFilesystemDirectoryWatcher";
 
 function sortPathsByEntryOrder(paths, entryPaths) {
@@ -60,9 +60,6 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
   const [isImportingExternal, setIsImportingExternal] = useState(false);
   const [error, setError] = useState("");
   currentPathRef.current = currentPath;
-  const selectedPath = selectedPaths.includes(selectionAnchorPath)
-    ? selectionAnchorPath
-    : (selectedPaths[selectedPaths.length - 1] ?? "");
   const selectedEntryPaths = useMemo(() => {
     const entryPathSet = new Set(entries.map((entry) => entry.path));
     return selectedPaths.filter((path) => entryPathSet.has(path));
@@ -378,7 +375,6 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     currentDrive,
     currentPath,
     selectedPaths,
-    selectedPath,
     selectedEntryPaths,
     entries,
     isLoadingDrives,

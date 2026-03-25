@@ -7,14 +7,12 @@ describe("getPanelSelectedFilesLabel", () => {
 
   it("shows the selected filename for a single selected path", () => {
     expect(getPanelSelectedFilesLabel("Preview panel", {
-      selectedPath: "C:\\Users\\todo.txt",
-      selectedPaths: [],
+      selectedPaths: ["C:\\Users\\todo.txt"],
     })).toBe("Preview panel: todo.txt");
   });
 
   it("shows item count for multiple selected paths", () => {
     expect(getPanelSelectedFilesLabel("Preview panel", {
-      selectedPath: "C:\\Users\\todo.txt",
       selectedPaths: [
         "C:\\Users\\todo.txt",
         "C:\\Users\\draft.md",

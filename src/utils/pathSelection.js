@@ -17,7 +17,11 @@ export function uniqueNonEmptyPaths(paths) {
 }
 
 export function getSelectedPathsFromState(state = {}) {
-  const selectedPath = typeof state.selectedPath === "string" ? state.selectedPath : "";
-  const selectedPaths = Array.isArray(state.selectedPaths) ? state.selectedPaths : [];
-  return uniqueNonEmptyPaths([...selectedPaths, selectedPath]);
+  const selectedPaths = Array.isArray(state?.selectedPaths) ? state.selectedPaths : [];
+  return uniqueNonEmptyPaths(selectedPaths);
+}
+
+export function getPrimarySelectedPath(paths = []) {
+  const normalizedPaths = uniqueNonEmptyPaths(paths);
+  return normalizedPaths[normalizedPaths.length - 1] ?? "";
 }

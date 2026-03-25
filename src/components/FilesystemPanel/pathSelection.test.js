@@ -1,7 +1,7 @@
 import {
   getSelectedPathsFromState,
   uniqueNonEmptyPaths,
-} from "./pathSelection";
+} from "../../utils/pathSelection";
 
 describe("pathSelection", () => {
   it("removes empty values and duplicates while preserving order", () => {
@@ -20,19 +20,17 @@ describe("pathSelection", () => {
     ]);
   });
 
-  it("builds state selection from selectedPaths with selectedPath fallback", () => {
+  it("builds state selection from selectedPaths", () => {
     expect(getSelectedPathsFromState({
       selectedPaths: ["C:\\Users\\todo.txt"],
-      selectedPath: "C:\\Users\\Projects",
     })).toEqual([
       "C:\\Users\\todo.txt",
-      "C:\\Users\\Projects",
     ]);
   });
 
-  it("supports legacy selectedPath-only state", () => {
+  it("returns an empty array for invalid state", () => {
     expect(getSelectedPathsFromState({
-      selectedPath: "C:\\Users\\todo.txt",
-    })).toEqual(["C:\\Users\\todo.txt"]);
+      selectedPaths: null,
+    })).toEqual([]);
   });
 });

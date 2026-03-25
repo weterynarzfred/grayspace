@@ -1,34 +1,4 @@
-function uniqueNonEmptyPaths(paths) {
-  if (!Array.isArray(paths)) return [];
-
-  const seen = new Set();
-  const uniquePaths = [];
-  paths.forEach((path) => {
-    if (typeof path !== "string" || !path) return;
-    if (seen.has(path)) return;
-    seen.add(path);
-    uniquePaths.push(path);
-  });
-  return uniquePaths;
-}
-
-function normalizeSelectedFilesState(selectedFiles = {}) {
-  const selectedPath = typeof selectedFiles.selectedPath === "string"
-    ? selectedFiles.selectedPath
-    : "";
-  const selectedPaths = uniqueNonEmptyPaths([
-    ...(Array.isArray(selectedFiles.selectedPaths) ? selectedFiles.selectedPaths : []),
-    selectedPath,
-  ]);
-  const primaryPath = selectedPaths.includes(selectedPath)
-    ? selectedPath
-    : (selectedPaths[selectedPaths.length - 1] ?? "");
-
-  return {
-    selectedPath: primaryPath,
-    selectedPaths,
-  };
-}
+import { getPrimarySelectedPath, getSelectedPathsFromState } from "../utils/pathSelection";
 
 function getPathDisplayName(path) {
   if (typeof path !== "string" || !path) return "";
@@ -48,13 +18,11 @@ export function getPanelSelectedFilesLabel(baseLabel, selectedFiles = {}) {
     return `${normalizedBaseLabel}: ${value}`;
   };
 
-  const normalizedSelection = normalizeSelectedFilesState(selectedFiles);
-  const selectedCount = normalizedSelection.selectedPaths.length;
+  const selectedPaths = getSelectedPathsFromState(selectedFiles);
+  const selectedCount = selectedPaths.length;
   if (selectedCount === 0) return normalizedBaseLabel;
   if (selectedCount > 1) return joinLabel(String(selectedCount));
 
-  const selectedFilePath =
-    normalizedSelection.selectedPath || normalizedSelection.selectedPaths[0] || "";
-  const fileName = getPathDisplayName(selectedFilePath);
+  const fileName = getPathDisplayName(getPrimarySelectedPath(selectedPaths));
   return joinLabel(fileName);
 }

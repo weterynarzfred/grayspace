@@ -13,26 +13,16 @@ import useExternalFilesystemDrop from "./hooks/useExternalFilesystemDrop";
 import useExternalFilesystemDrag from "./hooks/useExternalFilesystemDrag";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import useFilesystemStatePersistence from "./hooks/useFilesystemStatePersistence";
-import { uniqueNonEmptyPaths } from "./pathSelection";
+import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
+import isEditableKeyboardTarget from "../../utils/isEditableKeyboardTarget";
 import styles from "./FilesystemPanel.module.scss";
 
 const UP_ENTRY_SELECTION_ID = "__up__";
 
-function isEditableKeyboardTarget(target) {
-  if (!target || !(target instanceof HTMLElement)) return false;
-  const tagName = target.tagName.toLowerCase();
-  return (
-    target.isContentEditable
-    || tagName === "input"
-    || tagName === "textarea"
-    || tagName === "select"
-  );
-}
-
 function FilesystemPanel({
   tabId = "",
-  pane = "",
+  paneId = "",
   panelType = "Filesystem",
   onPanelTypeChange = undefined,
   onCurrentPathChange = undefined,
@@ -47,13 +37,12 @@ function FilesystemPanel({
   const { openConfirm } = useNotificationCenter();
   const { handlePanelListScroll } = useFilesystemStatePersistence({
     tabId,
-    pane,
+    paneId,
     onFilesystemStateChange,
     panelListRef,
     initialFilesystemState: initialFilesystemStateRef.current,
     currentDrive: nav.currentDrive,
     currentPath: nav.currentPath,
-    selectedPath: nav.selectedPath,
     selectedPaths: nav.selectedPaths,
   });
   const isBrowsing = nav.currentPath !== "";
@@ -101,7 +90,6 @@ function FilesystemPanel({
 
     const normalizedPaths = uniqueNonEmptyPaths(nextSelectedPaths);
     onTabSelectedFilesChange({
-      selectedPath: normalizedPaths[normalizedPaths.length - 1] ?? "",
       selectedPaths: normalizedPaths,
     });
   }, [onTabSelectedFilesChange, tabId]);

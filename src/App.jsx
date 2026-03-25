@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer, useRef, useState } from "react";
+import { useMemo, useReducer, useRef, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -10,25 +10,16 @@ import PanelsDndLayer from "./components/PanelsDndLayer";
 import WorkspacePanelLayout from "./components/WorkspacePanelLayout";
 import WorkspaceTabStrip from "./components/WorkspaceTabStrip";
 import {
-  workspaceCloseTab,
-  workspaceNewTab,
-  workspaceNewWindow,
-  workspaceSetActiveTab,
-  workspaceSetTabPaneFilesystemState,
-  workspaceSetTabPanelType,
-  workspaceSetTabSelectedFiles,
-  workspaceSetTabTerminalCwd,
-} from "./workspace/workspaceApi";
-import {
   initialWorkspaceViewState,
   selectActiveTab,
   selectCurrentWindow,
   selectTabsForWindow,
   workspaceReducer,
 } from "./workspace/workspaceStore";
-import { ensureWorkspaceWindowCreated, getErrorMessage } from "./workspace/appRuntime";
 import useTabDragDrop from "./workspace/useTabDragDrop";
 import useWorkspaceLifecycle from "./workspace/useWorkspaceLifecycle";
+import useWorkspaceActions from "./workspace/useWorkspaceActions";
+import usePaneSplitShortcuts from "./workspace/usePaneSplitShortcuts";
 import { useNotificationCenter } from "./notifications/notificationCenter";
 
 import styles from "./App.module.scss";
@@ -69,78 +60,13 @@ function App() {
     [viewState.snapshot, currentWindow],
   );
 
-  const handleWorkspaceCommandError = useCallback(error => {
-    const message = getErrorMessage(error);
-    setRuntimeError(message);
-    pushNotification({
-      title: "Action failed",
-      message,
-      tone: "error",
-      autoOpen: true,
-    });
-  }, [pushNotification]);
-
-  const handleSetActiveTab = useCallback(tabId => {
-    if (!currentWindow) return;
-    workspaceSetActiveTab(currentWindow.windowId, tabId).catch(handleWorkspaceCommandError);
-  }, [currentWindow, handleWorkspaceCommandError]);
-
-  const handleCreateTab = useCallback(() => {
-    if (!currentWindow) return;
-    workspaceNewTab(currentWindow.windowId).catch(handleWorkspaceCommandError);
-  }, [currentWindow, handleWorkspaceCommandError]);
-
-  const handleCreateWindow = useCallback(async () => {
-    if (!currentWindow) return;
-    try {
-      const createdWindow = await workspaceNewWindow({
-        x: currentWindow.bounds.x + 40,
-        y: currentWindow.bounds.y + 40,
-      });
-      await ensureWorkspaceWindowCreated(createdWindow);
-    } catch (error) {
-      handleWorkspaceCommandError(error);
-    }
-  }, [currentWindow, handleWorkspaceCommandError]);
-
-  const handleCloseTab = useCallback(async (tabId) => {
-    if (!currentWindow) return;
-
-    const closingTabTitle = tabs.find((tab) => tab.tabId === tabId)?.title ?? "this tab";
-    const shouldClose = await openConfirm({
-      title: "Close tab?",
-      message: `Close "${closingTabTitle}"?`,
-      tone: "warning",
-      confirmLabel: "Close tab",
-      cancelLabel: "Keep open",
-      autoOpen: true,
-    });
-    if (!shouldClose) return;
-
-    workspaceCloseTab(currentWindow.windowId, tabId).catch(handleWorkspaceCommandError);
-  }, [currentWindow, handleWorkspaceCommandError, openConfirm, tabs]);
-
-  const handleChangePanelType = useCallback((tabId, pane, panelType) => {
-    if (!tabId) return;
-    workspaceSetTabPanelType(tabId, pane, panelType).catch(handleWorkspaceCommandError);
-  }, [handleWorkspaceCommandError]);
-
-  const handleSetTabCwdHint = useCallback((tabId, _pane, path) => {
-    if (!tabId) return;
-    workspaceSetTabTerminalCwd(tabId, path ?? "").catch(handleWorkspaceCommandError);
-  }, [handleWorkspaceCommandError]);
-
-  const handleSetPaneFilesystemState = useCallback((tabId, pane, filesystemState) => {
-    if (!tabId) return;
-    workspaceSetTabPaneFilesystemState(tabId, pane, filesystemState).catch(
-      handleWorkspaceCommandError,
-    );
-  }, [handleWorkspaceCommandError]);
-
-  const handleSetTabSelectedFiles = useCallback((tabId, selectedFiles) => {
-    if (!tabId) return;
-    workspaceSetTabSelectedFiles(tabId, selectedFiles).catch(handleWorkspaceCommandError);
-  }, [handleWorkspaceCommandError]);
+  const workspaceActions = useWorkspaceActions({
+    currentWindow,
+    activeTab,
+    pushNotification,
+    openConfirm,
+    setRuntimeError,
+  });
 
   const {
     activeDragTabId,
@@ -151,8 +77,10 @@ function App() {
   } = useTabDragDrop({
     snapshot: viewState.snapshot,
     currentWindow,
-    onError: handleWorkspaceCommandError,
+    onError: workspaceActions.handleWorkspaceCommandError,
   });
+
+  usePaneSplitShortcuts(workspaceActions.handleSplitActivePane);
 
   if (!currentWindow || !activeTab) {
     return (
@@ -181,10 +109,10 @@ function App() {
             tabs={tabs}
             activeTabId={currentWindow.activeTabId}
             activeDragTabId={activeDragTabId}
-            onActivateTab={handleSetActiveTab}
-            onCloseTab={handleCloseTab}
-            onCreateTab={handleCreateTab}
-            onCreateWindow={handleCreateWindow}
+            onActivateTab={workspaceActions.handleSetActiveTab}
+            onCloseTab={workspaceActions.handleCloseTab}
+            onCreateTab={workspaceActions.handleCreateTab}
+            onCreateWindow={workspaceActions.handleCreateWindow}
             notifications={notifications}
             isNotificationsOpen={isNotificationsOpen}
             onToggleNotifications={toggleNotifications}
@@ -199,10 +127,15 @@ function App() {
             <WorkspacePanelLayout
               tab={activeTab}
               cwdHint={activeTab.terminalCwdHint ?? ""}
-              onCurrentPathChange={handleSetTabCwdHint}
-              onFilesystemStateChange={handleSetPaneFilesystemState}
-              onTabSelectedFilesChange={handleSetTabSelectedFiles}
-              onPanelTypeChange={handleChangePanelType}
+              onCurrentPathChange={workspaceActions.handleSetTabCwdHint}
+              onFilesystemStateChange={workspaceActions.handleSetPaneFilesystemState}
+              onTabSelectedFilesChange={workspaceActions.handleSetTabSelectedFiles}
+              onPanelTypeChange={workspaceActions.handleChangePanelType}
+              onPaneActivate={workspaceActions.handleSetActivePane}
+              onPaneSplit={workspaceActions.handleSplitPane}
+              onPaneClose={workspaceActions.handleClosePane}
+              onPaneDirtyStateChange={workspaceActions.handlePaneDirtyStateChange}
+              onSplitRatioChange={workspaceActions.handleSetSplitRatio}
             />
           </PanelsDndLayer>
         </section>

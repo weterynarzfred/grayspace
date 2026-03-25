@@ -23,9 +23,9 @@ export function workspaceSetActiveTab(windowId, tabId) {
   return invoke("workspace_set_active_tab", { windowId, tabId });
 }
 
-export function workspaceSetTabPanelType(tabId, pane, panelType) {
+export function workspaceSetTabPanelType(tabId, paneId, panelType) {
   return invoke("workspace_set_tab_panel_type", {
-    payload: { tabId, pane, panelType },
+    payload: { tabId, paneId, panelType },
   });
 }
 
@@ -35,9 +35,38 @@ export function workspaceSetTabTerminalCwd(tabId, cwdHint) {
   });
 }
 
-export function workspaceSetTabPaneFilesystemState(tabId, pane, filesystemState) {
+export function workspaceSetTabPaneFilesystemState(tabId, paneId, filesystemState) {
   return invoke("workspace_set_tab_pane_filesystem_state", {
-    payload: { tabId, pane, filesystemState },
+    payload: { tabId, paneId, filesystemState },
+  });
+}
+
+export function workspaceSetTabActivePane(tabId, paneId) {
+  return invoke("workspace_set_tab_active_pane", {
+    payload: { tabId, paneId },
+  });
+}
+
+export function workspaceSplitTabPane(tabId, paneId, direction, newPanelType = null) {
+  return invoke("workspace_split_tab_pane", {
+    payload: {
+      tabId,
+      paneId,
+      direction,
+      newPanelType,
+    },
+  });
+}
+
+export function workspaceCloseTabPane(tabId, paneId) {
+  return invoke("workspace_close_tab_pane", {
+    payload: { tabId, paneId },
+  });
+}
+
+export function workspaceSetTabLayoutSplitRatio(tabId, splitPath, ratio) {
+  return invoke("workspace_set_tab_layout_split_ratio", {
+    payload: { tabId, splitPath, ratio },
   });
 }
 

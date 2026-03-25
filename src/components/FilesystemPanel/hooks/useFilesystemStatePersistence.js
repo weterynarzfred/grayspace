@@ -8,13 +8,12 @@ const SCROLL_PERSIST_DEBOUNCE_MS = 120;
 
 export default function useFilesystemStatePersistence({
   tabId = "",
-  pane = "",
+  paneId = "",
   onFilesystemStateChange = undefined,
   panelListRef = undefined,
   initialFilesystemState = undefined,
   currentDrive = "",
   currentPath = "",
-  selectedPath = "",
   selectedPaths = [],
 }) {
   const initialFilesystemStateRef = useRef(
@@ -25,13 +24,12 @@ export default function useFilesystemStatePersistence({
   const scrollPersistTimeoutRef = useRef(null);
 
   const persistFilesystemState = useCallback((nextState) => {
-    if (typeof onFilesystemStateChange !== "function" || !tabId || !pane) return;
+    if (typeof onFilesystemStateChange !== "function" || !tabId || !paneId) return;
 
     const normalizedState = normalizeFilesystemPaneState(nextState);
     const lastState = lastPersistedStateRef.current;
     const hasChanged = normalizedState.currentDrive !== lastState.currentDrive
       || normalizedState.currentPath !== lastState.currentPath
-      || normalizedState.selectedPath !== lastState.selectedPath
       || !arePathArraysEqual(normalizedState.selectedPaths, lastState.selectedPaths)
       || normalizedState.scrollTop !== lastState.scrollTop;
 
@@ -39,13 +37,12 @@ export default function useFilesystemStatePersistence({
 
     lastPersistedStateRef.current = normalizedState;
     onFilesystemStateChange(normalizedState);
-  }, [onFilesystemStateChange, pane, tabId]);
+  }, [onFilesystemStateChange, paneId, tabId]);
 
   const persistCurrentFilesystemState = useCallback(() => {
     persistFilesystemState({
       currentDrive,
       currentPath,
-      selectedPath,
       selectedPaths,
       scrollTop: latestScrollTopRef.current,
     });
@@ -53,7 +50,6 @@ export default function useFilesystemStatePersistence({
     currentDrive,
     currentPath,
     persistFilesystemState,
-    selectedPath,
     selectedPaths,
   ]);
 

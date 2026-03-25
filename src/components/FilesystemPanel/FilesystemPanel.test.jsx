@@ -290,7 +290,7 @@ describe("FilesystemPanel", () => {
     const onTabSelectedFilesChange = vi.fn();
     renderFilesystemPanel({
       tabId: "tab-1",
-      pane: "left",
+      paneId: "left",
       onTabSelectedFilesChange,
     });
 
@@ -302,13 +302,11 @@ describe("FilesystemPanel", () => {
 
     fireEvent.click(fileButton);
     expect(onTabSelectedFilesChange).toHaveBeenCalledWith({
-      selectedPath: "C:\\notes.txt",
       selectedPaths: ["C:\\notes.txt"],
     });
 
     fireEvent.click(fileButton, { ctrlKey: true });
     expect(onTabSelectedFilesChange).toHaveBeenLastCalledWith({
-      selectedPath: "",
       selectedPaths: [],
     });
   });
@@ -578,11 +576,10 @@ describe("FilesystemPanel", () => {
     const onFilesystemStateChange = vi.fn();
     renderFilesystemPanel({
       tabId: "tab-1",
-      pane: "left",
+      paneId: "left",
       filesystemState: {
         currentDrive: "C:\\",
         currentPath: "C:\\Users",
-        selectedPath: "C:\\Users\\todo.txt",
         selectedPaths: [
           "C:\\Users\\Projects",
           "C:\\Users\\todo.txt",
@@ -605,11 +602,10 @@ describe("FilesystemPanel", () => {
     const onFilesystemStateChange = vi.fn();
     renderFilesystemPanel({
       tabId: "tab-2",
-      pane: "left",
+      paneId: "left",
       filesystemState: {
         currentDrive: "C:\\",
         currentPath: "C:\\",
-        selectedPath: "",
         scrollTop: 0,
       },
       onFilesystemStateChange,
@@ -719,3 +715,4 @@ describe("FilesystemPanel", () => {
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 });
+
