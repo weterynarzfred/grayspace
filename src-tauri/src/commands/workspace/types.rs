@@ -105,7 +105,6 @@ pub struct PaneStateDto {
 pub struct FilesystemPaneState {
     pub current_drive: String,
     pub current_path: String,
-    pub selected_path: String,
     #[serde(default)]
     pub selected_paths: Vec<String>,
     pub scroll_top: f64,
@@ -114,7 +113,6 @@ pub struct FilesystemPaneState {
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct TabSelectedFilesState {
-    pub selected_path: String,
     #[serde(default)]
     pub selected_paths: Vec<String>,
 }
@@ -241,7 +239,6 @@ impl Default for FilesystemPaneState {
         Self {
             current_drive: String::new(),
             current_path: String::new(),
-            selected_path: String::new(),
             selected_paths: Vec::new(),
             scroll_top: 0.0,
         }
@@ -251,7 +248,6 @@ impl Default for FilesystemPaneState {
 impl Default for TabSelectedFilesState {
     fn default() -> Self {
         Self {
-            selected_path: String::new(),
             selected_paths: Vec::new(),
         }
     }

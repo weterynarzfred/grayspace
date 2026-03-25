@@ -50,10 +50,7 @@ pub(super) fn update_pane_panel_type(
     }
 }
 
-fn normalize_selected_paths(
-    selected_path: String,
-    selected_paths: Vec<String>,
-) -> (String, Vec<String>) {
+fn normalize_selected_paths(selected_paths: Vec<String>) -> Vec<String> {
     let mut seen_paths = HashSet::new();
     let mut normalized_selected_paths = Vec::new();
 
@@ -66,37 +63,21 @@ fn normalize_selected_paths(
         }
     }
 
-    if !selected_path.is_empty() && seen_paths.insert(selected_path.clone()) {
-        normalized_selected_paths.push(selected_path.clone());
-    }
-
-    let normalized_selected_path = if selected_path.is_empty() {
-        normalized_selected_paths
-            .last()
-            .cloned()
-            .unwrap_or_default()
-    } else {
-        selected_path
-    };
-
-    (normalized_selected_path, normalized_selected_paths)
+    normalized_selected_paths
 }
 
 fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState {
     let FilesystemPaneState {
         current_drive,
         current_path,
-        selected_path,
         selected_paths,
         scroll_top,
     } = state;
-    let (normalized_selected_path, normalized_selected_paths) =
-        normalize_selected_paths(selected_path, selected_paths);
+    let normalized_selected_paths = normalize_selected_paths(selected_paths);
 
     FilesystemPaneState {
         current_drive,
         current_path,
-        selected_path: normalized_selected_path,
         selected_paths: normalized_selected_paths,
         scroll_top: if scroll_top.is_finite() {
             scroll_top.max(0.0)
@@ -119,14 +100,8 @@ pub(super) fn update_pane_filesystem_state(
 }
 
 fn normalize_tab_selected_files_state(state: TabSelectedFilesState) -> TabSelectedFilesState {
-    let TabSelectedFilesState {
-        selected_path,
-        selected_paths,
-    } = state;
-    let (selected_path, selected_paths) = normalize_selected_paths(selected_path, selected_paths);
     TabSelectedFilesState {
-        selected_path,
-        selected_paths,
+        selected_paths: normalize_selected_paths(state.selected_paths),
     }
 }
 
@@ -407,7 +382,6 @@ mod tests {
             FilesystemPaneState {
                 current_drive: "C:\\".to_string(),
                 current_path: "C:\\Users".to_string(),
-                selected_path: "C:\\Users\\todo.txt".to_string(),
                 selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
                 scroll_top: 125.7,
             },
@@ -420,7 +394,6 @@ mod tests {
             FilesystemPaneState {
                 current_drive: "C:\\".to_string(),
                 current_path: "C:\\Users".to_string(),
-                selected_path: "C:\\Users\\todo.txt".to_string(),
                 selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
                 scroll_top: f64::NAN,
             },
@@ -443,7 +416,6 @@ mod tests {
             FilesystemPaneState {
                 current_drive: "C:\\".to_string(),
                 current_path: "C:\\Users".to_string(),
-                selected_path: String::new(),
                 selected_paths: vec![
                     "C:\\Users\\alpha.txt".to_string(),
                     "C:\\Users\\alpha.txt".to_string(),
@@ -459,10 +431,6 @@ mod tests {
                 "C:\\Users\\alpha.txt".to_string(),
                 "C:\\Users\\beta.txt".to_string(),
             ]
-        );
-        assert_eq!(
-            active_pane.filesystem_state.selected_path,
-            "C:\\Users\\beta.txt"
         );
     }
 
@@ -544,7 +512,6 @@ mod tests {
         assert!(update_tab_selected_files(
             &mut tab,
             TabSelectedFilesState {
-                selected_path: String::new(),
                 selected_paths: vec![
                     "C:\\Users\\todo.txt".to_string(),
                     "C:\\Users\\todo.txt".to_string(),
@@ -559,12 +526,10 @@ mod tests {
                 "C:\\Users\\draft.md".to_string(),
             ]
         );
-        assert_eq!(tab.selected_files.selected_path, "C:\\Users\\draft.md");
 
         assert!(!update_tab_selected_files(
             &mut tab,
             TabSelectedFilesState {
-                selected_path: "C:\\Users\\draft.md".to_string(),
                 selected_paths: vec![
                     "C:\\Users\\todo.txt".to_string(),
                     "C:\\Users\\draft.md".to_string(),
@@ -575,11 +540,9 @@ mod tests {
         assert!(update_tab_selected_files(
             &mut tab,
             TabSelectedFilesState {
-                selected_path: String::new(),
                 selected_paths: Vec::new(),
             },
         ));
-        assert_eq!(tab.selected_files.selected_path, "");
         assert!(tab.selected_files.selected_paths.is_empty());
     }
 

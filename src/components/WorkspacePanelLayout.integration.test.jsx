@@ -70,7 +70,6 @@ function createInitialTabState() {
     },
     activePaneId: "tab-integration-left",
     selectedFiles: {
-      selectedPath: "",
       selectedPaths: [],
     },
     paneStates: {
@@ -81,7 +80,6 @@ function createInitialTabState() {
         filesystemState: {
           currentDrive: "",
           currentPath: "",
-          selectedPath: "",
           selectedPaths: [],
           scrollTop: 0,
         },
@@ -93,7 +91,6 @@ function createInitialTabState() {
         filesystemState: {
           currentDrive: "",
           currentPath: "",
-          selectedPath: "",
           selectedPaths: [],
           scrollTop: 0,
         },
@@ -280,3 +277,4 @@ describe("WorkspacePanelLayout integration", () => {
     });
   });
 });
+

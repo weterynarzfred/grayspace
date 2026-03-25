@@ -64,11 +64,9 @@ vi.mock("./FilesystemPanel/FilesystemPanel", () => ({
         onFilesystemStateChange?.({
           currentDrive: "C:\\",
           currentPath: "C:\\Mock",
-          selectedPath: "C:\\Mock\\test.txt",
           scrollTop: 25,
         });
         onTabSelectedFilesChange?.({
-          selectedPath: "C:\\Mock\\test.txt",
           selectedPaths: ["C:\\Mock\\test.txt"],
         });
         onPanelTypeChange?.("Terminal");
@@ -118,7 +116,6 @@ describe("WorkspacePanelLayout", () => {
           },
           activePaneId: paneId,
           selectedFiles: {
-            selectedPath: "",
             selectedPaths: [],
           },
           paneStates: {
@@ -129,7 +126,6 @@ describe("WorkspacePanelLayout", () => {
               filesystemState: {
                 currentDrive: "",
                 currentPath: "",
-                selectedPath: "",
                 scrollTop: 0,
               },
             },
@@ -140,7 +136,6 @@ describe("WorkspacePanelLayout", () => {
               filesystemState: {
                 currentDrive: "",
                 currentPath: "",
-                selectedPath: "",
                 scrollTop: 0,
               },
             },
@@ -160,11 +155,9 @@ describe("WorkspacePanelLayout", () => {
     expect(onFilesystemStateChange).toHaveBeenCalledWith("tab-1", paneId, {
       currentDrive: "C:\\",
       currentPath: "C:\\Mock",
-      selectedPath: "C:\\Mock\\test.txt",
       scrollTop: 25,
     });
     expect(onTabSelectedFilesChange).toHaveBeenCalledWith("tab-1", {
-      selectedPath: "C:\\Mock\\test.txt",
       selectedPaths: ["C:\\Mock\\test.txt"],
     });
     expect(onPanelTypeChange).toHaveBeenCalledWith("tab-1", paneId, "Terminal");
@@ -193,7 +186,6 @@ describe("WorkspacePanelLayout", () => {
           },
           activePaneId: "pane-left",
           selectedFiles: {
-            selectedPath: "",
             selectedPaths: [],
           },
           paneStates: {
@@ -204,7 +196,6 @@ describe("WorkspacePanelLayout", () => {
               filesystemState: {
                 currentDrive: "",
                 currentPath: "",
-                selectedPath: "",
                 selectedPaths: [],
                 scrollTop: 0,
               },
@@ -216,7 +207,6 @@ describe("WorkspacePanelLayout", () => {
               filesystemState: {
                 currentDrive: "",
                 currentPath: "",
-                selectedPath: "",
                 selectedPaths: [],
                 scrollTop: 0,
               },
@@ -283,7 +273,6 @@ describe("WorkspacePanelLayout", () => {
           },
           activePaneId: "pane-left",
           selectedFiles: {
-            selectedPath: "",
             selectedPaths: [],
           },
           paneStates: {
@@ -294,7 +283,6 @@ describe("WorkspacePanelLayout", () => {
               filesystemState: {
                 currentDrive: "",
                 currentPath: "",
-                selectedPath: "",
                 selectedPaths: [],
                 scrollTop: 0,
               },
@@ -306,7 +294,6 @@ describe("WorkspacePanelLayout", () => {
               filesystemState: {
                 currentDrive: "",
                 currentPath: "",
-                selectedPath: "",
                 selectedPaths: [],
                 scrollTop: 0,
               },
@@ -355,7 +342,6 @@ describe("WorkspacePanelLayout", () => {
           },
           activePaneId: "pane-a",
           selectedFiles: {
-            selectedPath: "",
             selectedPaths: [],
           },
           paneStates: {
@@ -366,7 +352,6 @@ describe("WorkspacePanelLayout", () => {
               filesystemState: {
                 currentDrive: "",
                 currentPath: "",
-                selectedPath: "",
                 selectedPaths: [],
                 scrollTop: 0,
               },
@@ -378,7 +363,6 @@ describe("WorkspacePanelLayout", () => {
               filesystemState: {
                 currentDrive: "",
                 currentPath: "",
-                selectedPath: "",
                 selectedPaths: [],
                 scrollTop: 0,
               },
@@ -390,7 +374,6 @@ describe("WorkspacePanelLayout", () => {
               filesystemState: {
                 currentDrive: "",
                 currentPath: "",
-                selectedPath: "",
                 selectedPaths: [],
                 scrollTop: 0,
               },
@@ -412,3 +395,4 @@ describe("WorkspacePanelLayout", () => {
     expect(onSplitRatioChange).toHaveBeenCalledTimes(2);
   });
 });
+

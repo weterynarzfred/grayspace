@@ -302,13 +302,11 @@ describe("FilesystemPanel", () => {
 
     fireEvent.click(fileButton);
     expect(onTabSelectedFilesChange).toHaveBeenCalledWith({
-      selectedPath: "C:\\notes.txt",
       selectedPaths: ["C:\\notes.txt"],
     });
 
     fireEvent.click(fileButton, { ctrlKey: true });
     expect(onTabSelectedFilesChange).toHaveBeenLastCalledWith({
-      selectedPath: "",
       selectedPaths: [],
     });
   });
@@ -582,7 +580,6 @@ describe("FilesystemPanel", () => {
       filesystemState: {
         currentDrive: "C:\\",
         currentPath: "C:\\Users",
-        selectedPath: "C:\\Users\\todo.txt",
         selectedPaths: [
           "C:\\Users\\Projects",
           "C:\\Users\\todo.txt",
@@ -609,7 +606,6 @@ describe("FilesystemPanel", () => {
       filesystemState: {
         currentDrive: "C:\\",
         currentPath: "C:\\",
-        selectedPath: "",
         scrollTop: 0,
       },
       onFilesystemStateChange,
@@ -719,3 +715,4 @@ describe("FilesystemPanel", () => {
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 });
+

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
 import { getPanelSelectedFilesLabel } from "../selectedFilesLabel";
+import { getPrimarySelectedPath, getSelectedPathsFromState } from "../../utils/pathSelection";
 import CodeTextPreview from "./CodeTextPreview";
 import styles from "./PreviewPanel.module.scss";
 
@@ -13,15 +14,7 @@ const INITIAL_PREVIEW_STATE = {
 };
 
 function getSelectedPreviewPath(selectedFiles = {}) {
-  const selectedPath = typeof selectedFiles.selectedPath === "string"
-    ? selectedFiles.selectedPath
-    : "";
-  const selectedPaths = Array.isArray(selectedFiles.selectedPaths)
-    ? selectedFiles.selectedPaths.filter((path) => typeof path === "string" && path)
-    : [];
-  if (selectedPath && selectedPaths.includes(selectedPath)) return selectedPath;
-  if (selectedPath) return selectedPath;
-  return selectedPaths[selectedPaths.length - 1] ?? "";
+  return getPrimarySelectedPath(getSelectedPathsFromState(selectedFiles));
 }
 
 function getErrorMessage(error) {
@@ -30,12 +23,8 @@ function getErrorMessage(error) {
 }
 
 function buildImagePreviewSrc(preview) {
-  const mimeType = typeof preview?.mimeType === "string"
-    ? preview.mimeType
-    : (typeof preview?.mime_type === "string" ? preview.mime_type : "");
-  const dataBase64 = typeof preview?.dataBase64 === "string"
-    ? preview.dataBase64
-    : (typeof preview?.data_base64 === "string" ? preview.data_base64 : "");
+  const mimeType = typeof preview?.mimeType === "string" ? preview.mimeType : "";
+  const dataBase64 = typeof preview?.dataBase64 === "string" ? preview.dataBase64 : "";
   if (!mimeType || !dataBase64) return null;
   return `data:${mimeType};base64,${dataBase64}`;
 }

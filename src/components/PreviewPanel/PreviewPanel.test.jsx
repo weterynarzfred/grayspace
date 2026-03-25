@@ -35,7 +35,6 @@ describe("PreviewPanel", () => {
     render(
       <PreviewPanel
         tabSelectedFiles={{
-          selectedPath: "",
           selectedPaths: [],
         }}
       />,
@@ -56,7 +55,6 @@ describe("PreviewPanel", () => {
     render(
       <PreviewPanel
         tabSelectedFiles={{
-          selectedPath: "C:\\notes.txt",
           selectedPaths: ["C:\\notes.txt"],
         }}
       />,
@@ -81,7 +79,6 @@ describe("PreviewPanel", () => {
     render(
       <PreviewPanel
         tabSelectedFiles={{
-          selectedPath: "C:\\image.png",
           selectedPaths: ["C:\\image.png"],
         }}
       />,
@@ -94,26 +91,6 @@ describe("PreviewPanel", () => {
     );
   });
 
-  it("accepts snake_case image fields from backend payloads", async () => {
-    invoke.mockResolvedValue({
-      kind: "image",
-      mime_type: "image/png",
-      data_base64: "AAAA",
-    });
-
-    render(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPath: "C:\\image.png",
-          selectedPaths: ["C:\\image.png"],
-        }}
-      />,
-    );
-
-    const image = await screen.findByRole("img", { name: /preview of image\.png/i });
-    expect(image).toHaveAttribute("src", "data:image/png;base64,AAAA");
-  });
-
   it("shows unsupported-type messages returned by the backend", async () => {
     invoke.mockResolvedValue({
       kind: "unsupported",
@@ -123,7 +100,6 @@ describe("PreviewPanel", () => {
     render(
       <PreviewPanel
         tabSelectedFiles={{
-          selectedPath: "C:\\spec.pdf",
           selectedPaths: ["C:\\spec.pdf"],
         }}
       />,
@@ -138,7 +114,6 @@ describe("PreviewPanel", () => {
     render(
       <PreviewPanel
         tabSelectedFiles={{
-          selectedPath: "C:\\locked.txt",
           selectedPaths: ["C:\\locked.txt"],
         }}
       />,
@@ -167,7 +142,6 @@ describe("PreviewPanel", () => {
     render(
       <PreviewPanel
         tabSelectedFiles={{
-          selectedPath: "C:\\notes.txt",
           selectedPaths: ["C:\\notes.txt"],
         }}
       />,
@@ -199,7 +173,6 @@ describe("PreviewPanel", () => {
     render(
       <PreviewPanel
         tabSelectedFiles={{
-          selectedPath: "C:\\large.txt",
           selectedPaths: ["C:\\large.txt"],
         }}
       />,

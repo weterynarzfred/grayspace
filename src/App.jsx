@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useMemo, useReducer, useRef, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -10,59 +10,24 @@ import PanelsDndLayer from "./components/PanelsDndLayer";
 import WorkspacePanelLayout from "./components/WorkspacePanelLayout";
 import WorkspaceTabStrip from "./components/WorkspaceTabStrip";
 import {
-  workspaceCloseTab,
-  workspaceCloseTabPane,
-  workspaceNewTab,
-  workspaceNewWindow,
-  workspaceSetActiveTab,
-  workspaceSetTabActivePane,
-  workspaceSetTabLayoutSplitRatio,
-  workspaceSetTabPaneFilesystemState,
-  workspaceSetTabPanelType,
-  workspaceSetTabSelectedFiles,
-  workspaceSetTabTerminalCwd,
-  workspaceSplitTabPane,
-} from "./workspace/workspaceApi";
-import {
   initialWorkspaceViewState,
   selectActiveTab,
   selectCurrentWindow,
   selectTabsForWindow,
   workspaceReducer,
 } from "./workspace/workspaceStore";
-import { ensureWorkspaceWindowCreated, getErrorMessage } from "./workspace/appRuntime";
 import useTabDragDrop from "./workspace/useTabDragDrop";
 import useWorkspaceLifecycle from "./workspace/useWorkspaceLifecycle";
+import useWorkspaceActions from "./workspace/useWorkspaceActions";
+import usePaneSplitShortcuts from "./workspace/usePaneSplitShortcuts";
 import { useNotificationCenter } from "./notifications/notificationCenter";
 
 import styles from "./App.module.scss";
-
-function isEditableKeyboardTarget(target) {
-  if (!target || !(target instanceof HTMLElement)) return false;
-  const tagName = target.tagName.toLowerCase();
-  return (
-    target.isContentEditable
-    || tagName === "input"
-    || tagName === "textarea"
-    || tagName === "select"
-  );
-}
-
-function resolveTabPaneId(tab, preferredPaneId = "") {
-  if (preferredPaneId && tab?.paneStates?.[preferredPaneId]) return preferredPaneId;
-  if (tab?.activePaneId && tab?.paneStates?.[tab.activePaneId]) return tab.activePaneId;
-  return Object.keys(tab?.paneStates ?? {})[0] ?? "";
-}
-
-function getPaneStateKey(tabId, paneId) {
-  return `${tabId}::${paneId}`;
-}
 
 function App() {
   const [viewState, dispatch] = useReducer(workspaceReducer, initialWorkspaceViewState);
   const [runtimeError, setRuntimeError] = useState("");
   const currentWindowIdRef = useRef("");
-  const paneDirtyStateRef = useRef(new Map());
   const {
     notifications,
     isNotificationsOpen,
@@ -95,136 +60,13 @@ function App() {
     [viewState.snapshot, currentWindow],
   );
 
-  const handleWorkspaceCommandError = useCallback(error => {
-    const message = getErrorMessage(error);
-    setRuntimeError(message);
-    pushNotification({
-      title: "Action failed",
-      message,
-      tone: "error",
-      autoOpen: true,
-    });
-  }, [pushNotification]);
-
-  const handleTabScopedCommandError = useCallback(error => {
-    if (getErrorMessage(error) === "Tab not found.") return;
-    handleWorkspaceCommandError(error);
-  }, [handleWorkspaceCommandError]);
-
-  const handleSetActiveTab = useCallback(tabId => {
-    if (!currentWindow) return;
-    workspaceSetActiveTab(currentWindow.windowId, tabId).catch(handleWorkspaceCommandError);
-  }, [currentWindow, handleWorkspaceCommandError]);
-
-  const handleCreateTab = useCallback(() => {
-    if (!currentWindow) return;
-    workspaceNewTab(currentWindow.windowId).catch(handleWorkspaceCommandError);
-  }, [currentWindow, handleWorkspaceCommandError]);
-
-  const handleCreateWindow = useCallback(async () => {
-    if (!currentWindow) return;
-    try {
-      const createdWindow = await workspaceNewWindow({
-        x: currentWindow.bounds.x + 40,
-        y: currentWindow.bounds.y + 40,
-      });
-      await ensureWorkspaceWindowCreated(createdWindow);
-    } catch (error) {
-      handleWorkspaceCommandError(error);
-    }
-  }, [currentWindow, handleWorkspaceCommandError]);
-
-  const handleCloseTab = useCallback((tabId) => {
-    if (!currentWindow) return;
-    workspaceCloseTab(currentWindow.windowId, tabId).catch(handleWorkspaceCommandError);
-  }, [currentWindow, handleWorkspaceCommandError]);
-
-  const handleChangePanelType = useCallback((tabId, paneId, panelType) => {
-    if (!tabId) return;
-    workspaceSetTabPanelType(tabId, paneId, panelType).catch(handleTabScopedCommandError);
-  }, [handleTabScopedCommandError]);
-
-  const handleSetTabCwdHint = useCallback((tabId, _paneId, path) => {
-    if (!tabId) return;
-    workspaceSetTabTerminalCwd(tabId, path ?? "").catch(handleTabScopedCommandError);
-  }, [handleTabScopedCommandError]);
-
-  const handleSetPaneFilesystemState = useCallback((tabId, paneId, filesystemState) => {
-    if (!tabId) return;
-    workspaceSetTabPaneFilesystemState(tabId, paneId, filesystemState).catch(
-      handleTabScopedCommandError,
-    );
-  }, [handleTabScopedCommandError]);
-
-  const handleSetActivePane = useCallback((tabId, paneId) => {
-    if (!tabId || !paneId) return;
-    if (activeTab?.tabId === tabId && activeTab?.activePaneId === paneId) return;
-    workspaceSetTabActivePane(tabId, paneId).catch(handleTabScopedCommandError);
-  }, [activeTab?.activePaneId, activeTab?.tabId, handleTabScopedCommandError]);
-
-  const handleSplitPane = useCallback((tabId, paneId, direction) => {
-    if (!tabId || !paneId) return;
-    workspaceSplitTabPane(tabId, paneId, direction).catch(handleTabScopedCommandError);
-  }, [handleTabScopedCommandError]);
-
-  const handleClosePane = useCallback(async (tabId, paneId) => {
-    if (!tabId || !paneId) return;
-
-    const paneState = activeTab?.tabId === tabId
-      ? activeTab.paneStates?.[paneId]
-      : null;
-    const paneStateKey = getPaneStateKey(tabId, paneId);
-    const paneDirtyState = paneDirtyStateRef.current.get(paneStateKey);
-    const requiresUnsavedConfirm = paneState?.panelType === "Preview"
-      && paneDirtyState?.hasUnsavedChanges;
-
-    if (requiresUnsavedConfirm) {
-      const shouldClose = await openConfirm({
-        title: "Discard unsaved changes?",
-        message: paneDirtyState.message || "Close this pane and discard unsaved changes?",
-        tone: "warning",
-        confirmLabel: "Close pane",
-        cancelLabel: "Cancel",
-        autoOpen: true,
-      });
-      if (!shouldClose) return;
-    }
-
-    workspaceCloseTabPane(tabId, paneId)
-      .then(() => {
-        paneDirtyStateRef.current.delete(paneStateKey);
-      })
-      .catch(handleTabScopedCommandError);
-  }, [activeTab, handleTabScopedCommandError, openConfirm]);
-
-  const handlePaneDirtyStateChange = useCallback((tabId, paneId, dirtyState, panelType) => {
-    if (!tabId || !paneId) return;
-
-    const paneStateKey = getPaneStateKey(tabId, paneId);
-    const hasUnsavedChanges = Boolean(dirtyState?.hasUnsavedChanges);
-
-    if (!hasUnsavedChanges) {
-      paneDirtyStateRef.current.delete(paneStateKey);
-      return;
-    }
-
-    paneDirtyStateRef.current.set(paneStateKey, {
-      hasUnsavedChanges,
-      panelType: panelType ?? "",
-      scope: typeof dirtyState?.scope === "string" ? dirtyState.scope : "",
-      message: typeof dirtyState?.message === "string" ? dirtyState.message : "",
-    });
-  }, []);
-
-  const handleSetSplitRatio = useCallback((tabId, splitPath, ratio) => {
-    if (!tabId || !splitPath) return;
-    workspaceSetTabLayoutSplitRatio(tabId, splitPath, ratio).catch(handleTabScopedCommandError);
-  }, [handleTabScopedCommandError]);
-
-  const handleSetTabSelectedFiles = useCallback((tabId, selectedFiles) => {
-    if (!tabId) return;
-    workspaceSetTabSelectedFiles(tabId, selectedFiles).catch(handleTabScopedCommandError);
-  }, [handleTabScopedCommandError]);
+  const workspaceActions = useWorkspaceActions({
+    currentWindow,
+    activeTab,
+    pushNotification,
+    openConfirm,
+    setRuntimeError,
+  });
 
   const {
     activeDragTabId,
@@ -235,37 +77,10 @@ function App() {
   } = useTabDragDrop({
     snapshot: viewState.snapshot,
     currentWindow,
-    onError: handleWorkspaceCommandError,
+    onError: workspaceActions.handleWorkspaceCommandError,
   });
 
-  const handleSplitActivePane = useCallback((direction) => {
-    if (!activeTab?.tabId) return;
-    const paneId = resolveTabPaneId(activeTab);
-    if (!paneId) return;
-    handleSplitPane(activeTab.tabId, paneId, direction);
-  }, [activeTab, handleSplitPane]);
-
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.defaultPrevented || event.repeat) return;
-      if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
-      if (isEditableKeyboardTarget(event.target)) return;
-
-      const key = event.key.toLowerCase();
-      if (key === "v") {
-        event.preventDefault();
-        handleSplitActivePane("right");
-      } else if (key === "h") {
-        event.preventDefault();
-        handleSplitActivePane("bottom");
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [handleSplitActivePane]);
+  usePaneSplitShortcuts(workspaceActions.handleSplitActivePane);
 
   if (!currentWindow || !activeTab) {
     return (
@@ -294,10 +109,10 @@ function App() {
             tabs={tabs}
             activeTabId={currentWindow.activeTabId}
             activeDragTabId={activeDragTabId}
-            onActivateTab={handleSetActiveTab}
-            onCloseTab={handleCloseTab}
-            onCreateTab={handleCreateTab}
-            onCreateWindow={handleCreateWindow}
+            onActivateTab={workspaceActions.handleSetActiveTab}
+            onCloseTab={workspaceActions.handleCloseTab}
+            onCreateTab={workspaceActions.handleCreateTab}
+            onCreateWindow={workspaceActions.handleCreateWindow}
             notifications={notifications}
             isNotificationsOpen={isNotificationsOpen}
             onToggleNotifications={toggleNotifications}
@@ -312,15 +127,15 @@ function App() {
             <WorkspacePanelLayout
               tab={activeTab}
               cwdHint={activeTab.terminalCwdHint ?? ""}
-              onCurrentPathChange={handleSetTabCwdHint}
-              onFilesystemStateChange={handleSetPaneFilesystemState}
-              onTabSelectedFilesChange={handleSetTabSelectedFiles}
-              onPanelTypeChange={handleChangePanelType}
-              onPaneActivate={handleSetActivePane}
-              onPaneSplit={handleSplitPane}
-              onPaneClose={handleClosePane}
-              onPaneDirtyStateChange={handlePaneDirtyStateChange}
-              onSplitRatioChange={handleSetSplitRatio}
+              onCurrentPathChange={workspaceActions.handleSetTabCwdHint}
+              onFilesystemStateChange={workspaceActions.handleSetPaneFilesystemState}
+              onTabSelectedFilesChange={workspaceActions.handleSetTabSelectedFiles}
+              onPanelTypeChange={workspaceActions.handleChangePanelType}
+              onPaneActivate={workspaceActions.handleSetActivePane}
+              onPaneSplit={workspaceActions.handleSplitPane}
+              onPaneClose={workspaceActions.handleClosePane}
+              onPaneDirtyStateChange={workspaceActions.handlePaneDirtyStateChange}
+              onSplitRatioChange={workspaceActions.handleSetSplitRatio}
             />
           </PanelsDndLayer>
         </section>

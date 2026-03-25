@@ -4,7 +4,7 @@ import {
   parseDestinationTarget,
   parseEntryPath,
 } from "../dndIds";
-import { uniqueNonEmptyPaths } from "../pathSelection";
+import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 
 function useFilesystemDnd({
   entries,

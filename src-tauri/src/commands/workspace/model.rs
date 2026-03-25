@@ -337,11 +337,9 @@ mod tests {
             .expect("active pane should exist");
         assert_eq!(active_pane.filesystem_state.current_drive, "");
         assert_eq!(active_pane.filesystem_state.current_path, "");
-        assert_eq!(active_pane.filesystem_state.selected_path, "");
         assert!(active_pane.filesystem_state.selected_paths.is_empty());
         assert_eq!(active_pane.filesystem_state.scroll_top, 0.0);
 
-        assert_eq!(tab.selected_files.selected_path, "");
         assert!(tab.selected_files.selected_paths.is_empty());
     }
 

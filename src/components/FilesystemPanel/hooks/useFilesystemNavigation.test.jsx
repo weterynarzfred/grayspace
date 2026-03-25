@@ -180,7 +180,7 @@ describe("useFilesystemNavigation", () => {
     const { result } = renderHook(() => useFilesystemNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\",
-      selectedPath: "C:\\Users",
+      selectedPaths: ["C:\\Users"],
     }));
 
     await waitFor(() => {
@@ -203,7 +203,6 @@ describe("useFilesystemNavigation", () => {
     });
 
     expect(result.current.selectedPaths).toEqual([]);
-    expect(result.current.selectedPath).toBe("");
     expect(invoke).not.toHaveBeenCalledWith("parent_path", expect.anything());
   });
 
@@ -213,7 +212,7 @@ describe("useFilesystemNavigation", () => {
     const { result } = renderHook(() => useFilesystemNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\Users",
-      selectedPath: "C:\\Users\\todo.txt",
+      selectedPaths: ["C:\\Users\\todo.txt"],
     }));
 
     await waitFor(() => {
@@ -235,7 +234,6 @@ describe("useFilesystemNavigation", () => {
 
     expect(invoke).toHaveBeenCalledWith("parent_path", { path: "C:\\Users" });
     expect(result.current.selectedPaths).toEqual([]);
-    expect(result.current.selectedPath).toBe("");
   });
 
   it("deletes selected entries and clears selection", async () => {
