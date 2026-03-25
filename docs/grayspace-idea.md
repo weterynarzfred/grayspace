@@ -29,7 +29,7 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 ### Global functionality
 
 - [x] multiple resizable panels
-- [ ] splitting the viewport to create new panels instead of just having the two
+- [x] splitting the viewport to create new panels instead of just having the two
 - [x] dragging files onto app
 - [x] dragging files out of app
 - [ ] add a menu bar

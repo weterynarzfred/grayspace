@@ -12,8 +12,6 @@ import styles from "./WorkspacePanelLayout.module.scss";
 
 const DEFAULT_SPLIT_PERCENT = 50;
 const DEFAULT_PANEL_MIN_SIZE_PERCENT = 10;
-const LEGACY_PRIMARY_PANE_ID = "left";
-const LEGACY_SECONDARY_PANE_ID = "right";
 
 const PANEL_COMPONENTS = {
   Filesystem: FilesystemPanel,
@@ -33,50 +31,12 @@ function clampSplitPercent(nextSplit) {
 
 function getLayoutPaneId(node) {
   if (typeof node?.paneId === "string") return node.paneId;
-  if (typeof node?.pane_id === "string") return node.pane_id;
   return "";
 }
 
-function createFallbackLayout(layout, paneStates) {
-  const paneIds = Object.keys(paneStates ?? {});
-  if (!paneIds.length) return null;
-  if (paneIds.length === 1) {
-    return {
-      kind: "leaf",
-      paneId: paneIds[0],
-    };
-  }
-
-  const firstPaneId = paneIds.includes(LEGACY_PRIMARY_PANE_ID)
-    ? LEGACY_PRIMARY_PANE_ID
-    : paneIds[0];
-  const secondPaneId = paneIds.includes(LEGACY_SECONDARY_PANE_ID)
-    ? LEGACY_SECONDARY_PANE_ID
-    : paneIds.find(paneId => paneId !== firstPaneId);
-
-  if (!secondPaneId) return {
-    kind: "leaf",
-    paneId: firstPaneId,
-  };
-
-  return {
-    kind: "split",
-    axis: "row",
-    ratio: clampSplitPercent(layout?.split),
-    first: {
-      kind: "leaf",
-      paneId: firstPaneId,
-    },
-    second: {
-      kind: "leaf",
-      paneId: secondPaneId,
-    },
-  };
-}
-
-function getTabLayout(layout, paneStates) {
+function getTabLayout(layout) {
   if (layout?.kind === "leaf" || layout?.kind === "split") return layout;
-  return createFallbackLayout(layout, paneStates);
+  return null;
 }
 
 function getSplitGroupId(tabId, nodePath) {
@@ -111,7 +71,7 @@ function WorkspacePanelLayout({
 }) {
   const paneStates = tab?.paneStates ?? {};
   const paneCount = Object.keys(paneStates).length;
-  const tabLayout = getTabLayout(tab?.layout, paneStates);
+  const tabLayout = getTabLayout(tab?.layout);
   const tabId = tab?.tabId ?? "";
   const activePaneId = tab?.activePaneId ?? "";
 
@@ -154,7 +114,6 @@ function WorkspacePanelLayout({
         <PanelComponent
           tabId={tabId}
           paneId={paneId}
-          pane={paneId}
           panelType={panelType}
           onPanelTypeChange={nextPanelType =>
             onPanelTypeChange?.(tabId, paneId, nextPanelType)

@@ -290,7 +290,7 @@ describe("FilesystemPanel", () => {
     const onTabSelectedFilesChange = vi.fn();
     renderFilesystemPanel({
       tabId: "tab-1",
-      pane: "left",
+      paneId: "left",
       onTabSelectedFilesChange,
     });
 
@@ -578,7 +578,7 @@ describe("FilesystemPanel", () => {
     const onFilesystemStateChange = vi.fn();
     renderFilesystemPanel({
       tabId: "tab-1",
-      pane: "left",
+      paneId: "left",
       filesystemState: {
         currentDrive: "C:\\",
         currentPath: "C:\\Users",
@@ -605,7 +605,7 @@ describe("FilesystemPanel", () => {
     const onFilesystemStateChange = vi.fn();
     renderFilesystemPanel({
       tabId: "tab-2",
-      pane: "left",
+      paneId: "left",
       filesystemState: {
         currentDrive: "C:\\",
         currentPath: "C:\\",

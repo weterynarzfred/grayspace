@@ -27,35 +27,6 @@ pub(super) fn select_tab_pane<'a>(
         .ok_or_else(|| "Pane not found.".to_string())
 }
 
-pub(super) fn resolve_tab_pane_id(
-    tab: &WorkspaceTab,
-    pane_id: Option<&str>,
-    legacy_pane: Option<&str>,
-) -> Result<String, String> {
-    if let Some(explicit_pane_id) = pane_id.filter(|value| !value.is_empty()) {
-        if tab.pane_states.contains_key(explicit_pane_id) {
-            return Ok(explicit_pane_id.to_string());
-        }
-        return Err("Pane not found.".to_string());
-    }
-
-    let Some(legacy_key) = legacy_pane else {
-        return Err("Pane identifier is required.".to_string());
-    };
-
-    let mut ordered_pane_ids = Vec::new();
-    collect_layout_leaf_pane_ids(&tab.layout, &mut ordered_pane_ids);
-    let resolved = match legacy_key {
-        "left" => ordered_pane_ids.first(),
-        "right" => ordered_pane_ids.get(1),
-        _ => None,
-    };
-
-    resolved
-        .cloned()
-        .ok_or_else(|| "Unsupported pane identifier.".to_string())
-}
-
 pub(super) fn update_pane_panel_type(
     target_pane: &mut PaneState,
     next_panel_type: String,
@@ -180,16 +151,6 @@ pub(super) fn update_tab_workspace_root(
     }
     tab.workspace_root = workspace_root;
     true
-}
-
-pub(super) fn collect_layout_leaf_pane_ids(layout: &TabLayoutNode, output: &mut Vec<String>) {
-    match layout {
-        TabLayoutNode::Leaf { pane_id } => output.push(pane_id.clone()),
-        TabLayoutNode::Split { first, second, .. } => {
-            collect_layout_leaf_pane_ids(first, output);
-            collect_layout_leaf_pane_ids(second, output);
-        }
-    }
 }
 
 pub(super) fn layout_contains_pane(layout: &TabLayoutNode, pane_id: &str) -> bool {
@@ -416,8 +377,8 @@ pub(super) fn close_layout_leaf(
 #[cfg(test)]
 mod tests {
     use super::{
-        close_layout_leaf, count_layout_leaves, layout_contains_pane, resolve_tab_pane_id,
-        split_layout_leaf, update_layout_split_ratio, update_pane_filesystem_state,
+        close_layout_leaf, count_layout_leaves, layout_contains_pane, split_layout_leaf,
+        update_layout_split_ratio, update_pane_filesystem_state,
         update_pane_panel_type,
         update_tab_selected_files, update_tab_workspace_root,
     };
@@ -653,24 +614,6 @@ mod tests {
         };
         let result = close_layout_leaf(&mut layout, "only-pane");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn resolve_tab_pane_id_supports_explicit_and_legacy_names() {
-        let mut model = WorkspaceModel::default();
-        let tab = model.create_default_tab();
-        let mut ordered_panes = Vec::new();
-        super::collect_layout_leaf_pane_ids(&tab.layout, &mut ordered_panes);
-
-        let left = resolve_tab_pane_id(&tab, None, Some("left")).expect("left pane should resolve");
-        let right =
-            resolve_tab_pane_id(&tab, None, Some("right")).expect("right pane should resolve");
-        assert_eq!(left, ordered_panes[0]);
-        assert_eq!(right, ordered_panes[1]);
-
-        let explicit =
-            resolve_tab_pane_id(&tab, Some(&left), None).expect("explicit pane should resolve");
-        assert_eq!(explicit, left);
     }
 
     #[test]

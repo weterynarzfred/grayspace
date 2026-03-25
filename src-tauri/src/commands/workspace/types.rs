@@ -73,6 +73,7 @@ pub struct TabState {
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum TabLayoutNode {
     Leaf {
+        #[serde(rename = "paneId")]
         pane_id: String,
     },
     Split {
@@ -163,10 +164,7 @@ pub struct CloseTabPayload {
 #[serde(rename_all = "camelCase")]
 pub struct TabPanelTypePayload {
     pub tab_id: String,
-    #[serde(default)]
-    pub pane_id: Option<String>,
-    #[serde(default)]
-    pub pane: Option<String>,
+    pub pane_id: String,
     pub panel_type: String,
 }
 
@@ -181,10 +179,7 @@ pub struct TabCwdPayload {
 #[serde(rename_all = "camelCase")]
 pub struct TabPaneFilesystemStatePayload {
     pub tab_id: String,
-    #[serde(default)]
-    pub pane_id: Option<String>,
-    #[serde(default)]
-    pub pane: Option<String>,
+    pub pane_id: String,
     pub filesystem_state: FilesystemPaneState,
 }
 
@@ -270,5 +265,27 @@ impl Default for WindowBounds {
             width: DEFAULT_WINDOW_WIDTH,
             height: DEFAULT_WINDOW_HEIGHT,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TabLayoutNode;
+
+    #[test]
+    fn leaf_layout_serializes_with_camel_case_pane_id() {
+        let payload =
+            serde_json::to_value(TabLayoutNode::Leaf { pane_id: "pane-1".to_string() })
+                .expect("layout should serialize");
+
+        assert_eq!(
+            payload.get("kind").and_then(serde_json::Value::as_str),
+            Some("leaf")
+        );
+        assert_eq!(
+            payload.get("paneId").and_then(serde_json::Value::as_str),
+            Some("pane-1")
+        );
+        assert!(payload.get("pane_id").is_none());
     }
 }

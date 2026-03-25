@@ -9,7 +9,7 @@ use super::super::types::{
 };
 use super::basic_support::{
     close_layout_leaf, count_layout_leaves, find_first_layout_pane_id, layout_contains_pane,
-    resolve_tab_pane_id, select_tab_pane, select_tab_pane_mut, split_layout_leaf,
+    select_tab_pane, select_tab_pane_mut, split_layout_leaf,
     update_layout_split_ratio, update_pane_filesystem_state, update_pane_panel_type,
     update_tab_selected_files, update_tab_workspace_root,
 };
@@ -173,9 +173,7 @@ pub fn workspace_set_tab_panel_type(
             .tabs
             .get_mut(&payload.tab_id)
             .ok_or_else(|| "Tab not found.".to_string())?;
-        let pane_id =
-            resolve_tab_pane_id(tab, payload.pane_id.as_deref(), payload.pane.as_deref())?;
-        let target_pane = select_tab_pane_mut(tab, &pane_id)?;
+        let target_pane = select_tab_pane_mut(tab, &payload.pane_id)?;
         let update_result = update_pane_panel_type(target_pane, payload.panel_type);
         if update_result.changed {
             model.bump_revision();
@@ -231,9 +229,7 @@ pub fn workspace_set_tab_pane_filesystem_state(
             .tabs
             .get_mut(&payload.tab_id)
             .ok_or_else(|| "Tab not found.".to_string())?;
-        let pane_id =
-            resolve_tab_pane_id(tab, payload.pane_id.as_deref(), payload.pane.as_deref())?;
-        let target_pane = select_tab_pane_mut(tab, &pane_id)?;
+        let target_pane = select_tab_pane_mut(tab, &payload.pane_id)?;
 
         if update_pane_filesystem_state(target_pane, payload.filesystem_state) {
             model.bump_revision();

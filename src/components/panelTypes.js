@@ -7,6 +7,3 @@ export const PANEL_TYPES = [
   { value: "Preview", label: "Preview" },
   { value: "External UI", label: "External UI" },
 ];
-
-export const DEFAULT_LEFT_PANEL_TYPE = "Filesystem";
-export const DEFAULT_RIGHT_PANEL_TYPE = "Preview";
