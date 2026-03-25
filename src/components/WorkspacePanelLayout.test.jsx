@@ -14,10 +14,33 @@ vi.mock("react-resizable-panels", () => ({
       aria-label={`Mock resize ${id ?? "group"}`}
       onClick={() => {
         if (!id) return;
-        onLayoutChanged?.({
-          [`${id}-first`]: 68,
-          [`${id}-second`]: 32,
-        });
+        const collectPanelIds = (nodes, output = []) => {
+          const nodeList = Array.isArray(nodes) ? nodes : [nodes];
+          nodeList.forEach(node => {
+            if (!node || typeof node !== "object") return;
+            const panelId = node?.props?.id;
+            if (typeof panelId === "string" && panelId.includes("-segment-")) {
+              output.push(panelId);
+            }
+            if (node?.props?.children) collectPanelIds(node.props.children, output);
+          });
+          return output;
+        };
+
+        const panelIds = collectPanelIds(children);
+        if (!panelIds.length) return;
+
+        const panelSizes = panelIds.length === 2
+          ? [68, 32]
+          : panelIds.length === 3
+            ? [30, 20, 50]
+            : panelIds.map(() => 100 / panelIds.length);
+        const layoutByPanel = panelIds.reduce((result, panelId, index) => {
+          result[panelId] = panelSizes[index] ?? (100 / panelIds.length);
+          return result;
+        }, {});
+
+        onLayoutChanged?.(layoutByPanel);
       }}
     >
       MockResize
@@ -299,5 +322,93 @@ describe("WorkspacePanelLayout", () => {
     );
 
     expect(onSplitRatioChange).toHaveBeenCalledWith("tab-ratio", "root", 68);
+  });
+
+  it("flattens same-axis split chains and reports nested ratios", () => {
+    const onSplitRatioChange = vi.fn();
+
+    render(
+      <WorkspacePanelLayout
+        tab={{
+          tabId: "tab-chain",
+          layout: {
+            kind: "split",
+            axis: "row",
+            ratio: 70,
+            first: {
+              kind: "split",
+              axis: "row",
+              ratio: 50,
+              first: {
+                kind: "leaf",
+                paneId: "pane-a",
+              },
+              second: {
+                kind: "leaf",
+                paneId: "pane-b",
+              },
+            },
+            second: {
+              kind: "leaf",
+              paneId: "pane-c",
+            },
+          },
+          activePaneId: "pane-a",
+          selectedFiles: {
+            selectedPath: "",
+            selectedPaths: [],
+          },
+          paneStates: {
+            "pane-a": {
+              paneId: "pane-a",
+              panelType: "Filesystem",
+              terminalSessionId: "term-a",
+              filesystemState: {
+                currentDrive: "",
+                currentPath: "",
+                selectedPath: "",
+                selectedPaths: [],
+                scrollTop: 0,
+              },
+            },
+            "pane-b": {
+              paneId: "pane-b",
+              panelType: "Preview",
+              terminalSessionId: "term-b",
+              filesystemState: {
+                currentDrive: "",
+                currentPath: "",
+                selectedPath: "",
+                selectedPaths: [],
+                scrollTop: 0,
+              },
+            },
+            "pane-c": {
+              paneId: "pane-c",
+              panelType: "Canvas",
+              terminalSessionId: "term-c",
+              filesystemState: {
+                currentDrive: "",
+                currentPath: "",
+                selectedPath: "",
+                selectedPaths: [],
+                scrollTop: 0,
+              },
+            },
+          },
+        }}
+        onSplitRatioChange={onSplitRatioChange}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Mock resize workspace-split-tab-chain-root" }),
+    );
+
+    expect(onSplitRatioChange.mock.calls).toEqual(expect.arrayContaining([
+      ["tab-chain", "root", 50],
+      ["tab-chain", "root-first", 60],
+    ]));
+    expect(onSplitRatioChange).toHaveBeenCalledTimes(2);
   });
 });

@@ -45,12 +45,91 @@ function getSplitGroupId(tabId, nodePath) {
   return `workspace-split-${safeTabId}-${nodePath}`;
 }
 
-function getSplitRatioFromLayout(layoutByPanel, firstPanelId) {
-  if (!layoutByPanel || typeof layoutByPanel !== "object" || !firstPanelId) {
-    return DEFAULT_SPLIT_PERCENT;
+function getSplitAxis(node) {
+  return node?.axis === "column" ? "column" : "row";
+}
+
+function getSegmentPanelId(splitGroupId, segmentIndex) {
+  return `${splitGroupId}-segment-${segmentIndex}`;
+}
+
+function getPanelMinSizePercent(panelCount) {
+  if (!Number.isFinite(panelCount) || panelCount <= 0) {
+    return DEFAULT_PANEL_MIN_SIZE_PERCENT;
   }
-  const firstSize = Number(layoutByPanel[firstPanelId]);
-  return Math.round(clampSplitPercent(firstSize));
+  const dynamicMin = Math.floor(100 / panelCount);
+  return Math.max(1, Math.min(DEFAULT_PANEL_MIN_SIZE_PERCENT, dynamicMin));
+}
+
+function getLayoutPanelSize(layoutByPanel, panelId) {
+  if (!layoutByPanel || typeof layoutByPanel !== "object" || !panelId) return 0;
+  const panelSize = Number(layoutByPanel[panelId]);
+  if (!Number.isFinite(panelSize) || panelSize < 0) return 0;
+  return panelSize;
+}
+
+function collectSameAxisSegments(node, nodePath, axis, output = []) {
+  if (!node || typeof node !== "object") return output;
+
+  if (node.kind === "split" && getSplitAxis(node) === axis) {
+    collectSameAxisSegments(node.first, `${nodePath}-first`, axis, output);
+    collectSameAxisSegments(node.second, `${nodePath}-second`, axis, output);
+    return output;
+  }
+
+  output.push({ node, nodePath });
+  return output;
+}
+
+function collectSameAxisSegmentSizes(node, axis, branchSize = 100, output = []) {
+  if (!node || typeof node !== "object") return output;
+
+  if (node.kind === "split" && getSplitAxis(node) === axis) {
+    const firstRatio = clampSplitPercent(node.ratio) / 100;
+    collectSameAxisSegmentSizes(node.first, axis, branchSize * firstRatio, output);
+    collectSameAxisSegmentSizes(node.second, axis, branchSize * (1 - firstRatio), output);
+    return output;
+  }
+
+  output.push(branchSize);
+  return output;
+}
+
+function collectSameAxisSplitRatioUpdates(
+  node,
+  nodePath,
+  axis,
+  segmentSizesByPath,
+  output = [],
+) {
+  if (!node || typeof node !== "object") return 0;
+
+  if (node.kind === "split" && getSplitAxis(node) === axis) {
+    const firstSize = collectSameAxisSplitRatioUpdates(
+      node.first,
+      `${nodePath}-first`,
+      axis,
+      segmentSizesByPath,
+      output,
+    );
+    const secondSize = collectSameAxisSplitRatioUpdates(
+      node.second,
+      `${nodePath}-second`,
+      axis,
+      segmentSizesByPath,
+      output,
+    );
+    const totalSize = firstSize + secondSize;
+    if (totalSize > 0) {
+      output.push({
+        splitPath: nodePath,
+        ratio: Math.round(clampSplitPercent((firstSize / totalSize) * 100)),
+      });
+    }
+    return totalSize;
+  }
+
+  return Number(segmentSizesByPath[nodePath] ?? 0);
 }
 
 function formatPercent(value) {
@@ -297,20 +376,65 @@ function WorkspacePanelLayout({
 
     if (node.kind !== "split") return null;
 
-    const axis = node?.axis === "column" ? "column" : "row";
-    const firstSize = clampSplitPercent(node?.ratio);
-    const secondSize = 100 - firstSize;
+    const axis = getSplitAxis(node);
     const orientation = axis === "row" ? "horizontal" : "vertical";
     const separatorClassName = axis === "row"
       ? `${styles.resizeHandle} ${styles.resizeHandleHorizontal}`
       : `${styles.resizeHandle} ${styles.resizeHandleVertical}`;
     const splitGroupId = getSplitGroupId(tabId, nodePath);
-    const firstPanelId = `${splitGroupId}-first`;
-    const secondPanelId = `${splitGroupId}-second`;
+    const flatSegments = collectSameAxisSegments(node, nodePath, axis);
+    const flatSegmentSizes = collectSameAxisSegmentSizes(node, axis);
+    const panelMinSizePercent = getPanelMinSizePercent(flatSegments.length);
     const handleLayoutChanged = (layoutByPanel) => {
-      const nextRatio = getSplitRatioFromLayout(layoutByPanel, firstPanelId);
-      onSplitRatioChange?.(tabId, nodePath, nextRatio);
+      if (!onSplitRatioChange || !tabId) return;
+
+      const segmentSizesByPath = {};
+      flatSegments.forEach((segment, index) => {
+        const panelId = getSegmentPanelId(splitGroupId, index);
+        segmentSizesByPath[segment.nodePath] = getLayoutPanelSize(layoutByPanel, panelId);
+      });
+
+      const splitRatioUpdates = [];
+      collectSameAxisSplitRatioUpdates(
+        node,
+        nodePath,
+        axis,
+        segmentSizesByPath,
+        splitRatioUpdates,
+      );
+
+      splitRatioUpdates
+        .sort((a, b) => a.splitPath.length - b.splitPath.length)
+        .forEach(update => {
+          onSplitRatioChange(tabId, update.splitPath, update.ratio);
+        });
     };
+
+    const groupChildren = [];
+    flatSegments.forEach((segment, index) => {
+      const panelId = getSegmentPanelId(splitGroupId, index);
+      const defaultSize = formatPercent(flatSegmentSizes[index] ?? 0);
+
+      groupChildren.push(
+        <Panel
+          key={panelId}
+          id={panelId}
+          defaultSize={defaultSize}
+          minSize={formatPercent(panelMinSizePercent)}
+        >
+          {renderLayoutNode(segment.node, segment.nodePath)}
+        </Panel>,
+      );
+
+      if (index < flatSegments.length - 1) {
+        groupChildren.push(
+          <Separator
+            key={`${panelId}-separator`}
+            className={separatorClassName}
+          />,
+        );
+      }
+    });
 
     return <Group
       key={splitGroupId}
@@ -319,21 +443,7 @@ function WorkspacePanelLayout({
       className={styles.panelGroup}
       onLayoutChanged={handleLayoutChanged}
     >
-      <Panel
-        id={firstPanelId}
-        defaultSize={formatPercent(firstSize)}
-        minSize={formatPercent(DEFAULT_PANEL_MIN_SIZE_PERCENT)}
-      >
-        {renderLayoutNode(node.first, `${nodePath}-first`)}
-      </Panel>
-      <Separator className={separatorClassName} />
-      <Panel
-        id={secondPanelId}
-        defaultSize={formatPercent(secondSize)}
-        minSize={formatPercent(DEFAULT_PANEL_MIN_SIZE_PERCENT)}
-      >
-        {renderLayoutNode(node.second, `${nodePath}-second`)}
-      </Panel>
+      {groupChildren}
     </Group>;
   }, [onSplitRatioChange, renderPaneViewport, tabId]);
 
