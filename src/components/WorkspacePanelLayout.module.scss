@@ -15,38 +15,22 @@
   width: 100%;
 }
 
-.activePane {
-  .cornerHandles {
-    opacity: 1;
-  }
-}
-
 .cornerHandles {
   position: absolute;
-  top: 0.2rem;
-  right: 0.2rem;
+  inset: 0;
   z-index: 3;
-  display: flex;
-  gap: 0.2rem;
-  opacity: 0.75;
-  transition: opacity 0.15s ease;
-}
-
-.paneViewport:hover .cornerHandles {
-  opacity: 1;
+  pointer-events: none;
 }
 
 .cornerHandle {
-  width: 0.8rem;
-  height: 0.8rem;
-  border: 1px solid $border-default;
-  background: $bg-surface;
-  cursor: pointer;
+  position: absolute;
+  width: 1rem;
+  height: 1rem;
+  border: 0;
+  background: transparent;
+  cursor: crosshair;
   padding: 0;
-
-  &:hover {
-    border-color: $accent-active;
-  }
+  pointer-events: auto;
 
   &:focus-visible {
     outline: 1px solid $accent-active;
@@ -54,12 +38,49 @@
   }
 }
 
-.cornerHandleRight {
-  clip-path: polygon(100% 50%, 0 0, 0 100%);
+.cornerHandleTopLeft {
+  top: 0;
+  left: 0;
 }
 
-.cornerHandleBottom {
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
+.cornerHandleTopRight {
+  top: 0;
+  right: 0;
+}
+
+.cornerHandleBottomLeft {
+  bottom: 0;
+  left: 0;
+}
+
+.cornerHandleBottomRight {
+  right: 0;
+  bottom: 0;
+}
+
+.splitPreview {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 999px;
+  opacity: 0.85;
+  background: $accent-active;
+}
+
+.splitPreviewVertical {
+  top: 0.5rem;
+  bottom: 0.5rem;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+}
+
+.splitPreviewHorizontal {
+  left: 0.5rem;
+  right: 0.5rem;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
 }
 
 .resizeHandle {

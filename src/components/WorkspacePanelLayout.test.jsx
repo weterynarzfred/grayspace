@@ -208,11 +208,31 @@ describe("WorkspacePanelLayout", () => {
     const leftPane = document.querySelector('[data-pane-id="pane-left"]');
     expect(leftPane).toBeTruthy();
 
-    fireEvent.click(within(leftPane).getByRole("button", { name: "Split pane right" }));
+    const rightSplitHandle = within(leftPane).getByRole("button", { name: "Split pane right" });
+    fireEvent.pointerDown(rightSplitHandle, { pointerId: 1, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(rightSplitHandle, { pointerId: 1, clientX: 42, clientY: 12 });
+    expect(within(leftPane).getByTestId("split-preview-pane-left")).toHaveAttribute(
+      "data-direction",
+      "right",
+    );
+    fireEvent.pointerUp(rightSplitHandle, { pointerId: 1, clientX: 45, clientY: 12 });
+    expect(within(leftPane).queryByTestId("split-preview-pane-left")).not.toBeInTheDocument();
     expect(onPaneSplit).toHaveBeenCalledWith("tab-pane-controls", "pane-left", "right");
 
-    fireEvent.click(within(leftPane).getByRole("button", { name: "Split pane down" }));
+    const downSplitHandle = within(leftPane).getByRole("button", { name: "Split pane down" });
+    fireEvent.pointerDown(downSplitHandle, { pointerId: 2, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(downSplitHandle, { pointerId: 2, clientX: 12, clientY: 42 });
+    expect(within(leftPane).getByTestId("split-preview-pane-left")).toHaveAttribute(
+      "data-direction",
+      "bottom",
+    );
+    fireEvent.pointerUp(downSplitHandle, { pointerId: 2, clientX: 12, clientY: 45 });
+    expect(within(leftPane).queryByTestId("split-preview-pane-left")).not.toBeInTheDocument();
     expect(onPaneSplit).toHaveBeenCalledWith("tab-pane-controls", "pane-left", "bottom");
+
+    fireEvent.pointerDown(rightSplitHandle, { pointerId: 3, clientX: 20, clientY: 20 });
+    fireEvent.pointerUp(rightSplitHandle, { pointerId: 3, clientX: 22, clientY: 22 });
+    expect(onPaneSplit).toHaveBeenCalledTimes(2);
 
     fireEvent.click(within(leftPane).getByRole("button", { name: "Close Pane" }));
     expect(onPaneClose).toHaveBeenCalledWith("tab-pane-controls", "pane-left");
