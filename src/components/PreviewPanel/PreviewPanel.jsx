@@ -1,8 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
+import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePanelsDndHandlers } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
 import { getPrimarySelectedPath, getSelectedPathsFromState } from "../../utils/pathSelection";
+import { getFirstDraggedPathFromDndEvent } from "../dndEventPaths";
 import CodeTextPreview from "./CodeTextPreview";
 import styles from "./PreviewPanel.module.scss";
 
@@ -39,6 +42,7 @@ function buildImagePreviewSrc(preview) {
 }
 
 function PreviewPanel({
+  paneId = "",
   panelType = "Preview",
   onPanelTypeChange = undefined,
   tabSelectedFiles = undefined,
@@ -64,6 +68,7 @@ function PreviewPanel({
   const previewPath = isLocked
     ? lockedPath
     : (shouldAutoLockToCurrentPath ? latestPreviewPathRef.current : selectedPreviewPath);
+  const previewDropId = useMemo(() => `preview-drop:${paneId || "preview"}`, [paneId]);
   const previewLabel = useMemo(() => getPathDisplayName(previewPath), [previewPath]);
   const imagePreviewSrc = useMemo(() => {
     if (previewState.status !== "ready" || previewState.preview?.kind !== "image") return null;
@@ -106,6 +111,28 @@ function PreviewPanel({
     if (!previewPath) return;
     setLockedPath(previewPath);
   }, [isLocked, lockedPath, previewPath, saveStatus, selectedPreviewPath]);
+
+  const {
+    isOver: isDropOver,
+    setNodeRef: setDropNodeRef,
+  } = useDroppable({
+    id: previewDropId,
+    data: {
+      kind: "preview",
+      paneId,
+    },
+  });
+  const handleDropPath = useCallback((droppedPath) => {
+    if (!droppedPath) return;
+    setLockedPath(droppedPath);
+  }, []);
+
+  usePanelsDndHandlers({
+    onDragEnd: (event) => {
+      if (event?.over?.id !== previewDropId) return;
+      handleDropPath(getFirstDraggedPathFromDndEvent(event));
+    },
+  });
 
   useEffect(() => {
     latestPreviewPathRef.current = previewPath;
@@ -215,7 +242,11 @@ function PreviewPanel({
     });
   }, [onPaneDirtyStateChange]);
 
-  return <section className={`${shellStyles.panelContent} ${styles.panelContent}`} aria-label="Preview panel">
+  return <section
+    ref={setDropNodeRef}
+    className={`${shellStyles.panelContent} ${styles.panelContent} ${isDropOver ? styles.panelDropTarget : ""}`}
+    aria-label="Preview panel"
+  >
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
       {previewLabel ? <p className={styles.previewLabel}>
         {isLocked ? previewLabel : <em>{previewLabel}</em>}

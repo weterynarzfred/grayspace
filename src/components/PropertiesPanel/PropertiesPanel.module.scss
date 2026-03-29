@@ -1,0 +1,45 @@
+@use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
+
+.panelContent {
+  display: flex;
+  flex-direction: column;
+}
+
+.panelDropTarget {
+  outline: 1px dashed $accent-active;
+  outline-offset: -1px;
+}
+
+.pathLabel {
+  margin: 0;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pathValue {
+  margin: 0;
+  color: $text-primary;
+  word-break: break-all;
+}
+
+.muted {
+  margin: 0;
+  color: $text-tertiary;
+}
+
+.lockButton {
+  @include interactive-tile;
+  height: 100%;
+  border: solid $border-default;
+  border-width: 0 0 0 1px;
+  padding: 0 0.5rem;
+  margin-left: auto;
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+}
+
+.lockButtonLocked {
+  color: $accent-active-light;
+}

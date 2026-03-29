@@ -6,6 +6,11 @@
   overflow: hidden;
 }
 
+.panelDropTarget {
+  outline: 1px dashed $accent-active;
+  outline-offset: -1px;
+}
+
 .panelBody {
   flex: 1;
   min-height: 0;

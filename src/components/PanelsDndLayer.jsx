@@ -45,16 +45,17 @@ export function usePanelsDndHandlers(handlers) {
   const registerHandlers = useContext(PanelsDndHandlersContext);
   const handlersRef = useRef(handlers);
 
-  if (!registerHandlers)
-    throw new Error("usePanelsDndHandlers must be used within PanelsDndLayer.");
-
   handlersRef.current = handlers;
 
-  useEffect(() => registerHandlers({
-    onDragStart: event => handlersRef.current.onDragStart?.(event),
-    onDragEnd: event => handlersRef.current.onDragEnd?.(event),
-    onDragCancel: event => handlersRef.current.onDragCancel?.(event),
-  }), [registerHandlers],);
+  useEffect(() => {
+    if (!registerHandlers) return undefined;
+
+    return registerHandlers({
+      onDragStart: event => handlersRef.current.onDragStart?.(event),
+      onDragEnd: event => handlersRef.current.onDragEnd?.(event),
+      onDragCancel: event => handlersRef.current.onDragCancel?.(event),
+    });
+  }, [registerHandlers],);
 }
 
 export default PanelsDndLayer;

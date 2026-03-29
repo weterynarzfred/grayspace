@@ -20,6 +20,11 @@
   flex-direction: column;
 }
 
+.panelDropTarget {
+  outline: 1px dashed $accent-active;
+  outline-offset: -1px;
+}
+
 .panelBody {
   padding: 0;
   flex: 0 1 auto;

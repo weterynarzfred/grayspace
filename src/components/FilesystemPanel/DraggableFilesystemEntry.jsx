@@ -5,6 +5,7 @@ import { getDragEntryDndId, getEntryDndId } from "./dndIds";
 function DraggableFilesystemEntry({
   paneId = "",
   entry,
+  dragPaths = undefined,
   isSelected,
   isMovingEntry,
   activeDragPaths = [],
@@ -24,6 +25,7 @@ function DraggableFilesystemEntry({
     data: {
       sourcePath: entry.path,
       sourcePaneId: paneId,
+      dragPaths,
     },
   });
   const { isOver, setNodeRef: setDroppableNodeRef } = useDroppable({

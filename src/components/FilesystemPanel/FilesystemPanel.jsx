@@ -236,6 +236,11 @@ function FilesystemPanel({
                   key={entry.path}
                   paneId={paneId}
                   entry={entry}
+                  dragPaths={
+                    selectedEntryPaths.includes(entry.path)
+                      ? selectedEntryPaths
+                      : [entry.path]
+                  }
                   isSelected={nav.selectedPaths.includes(entry.path)}
                   isMovingEntry={isEntryOperationInProgress}
                   activeDragPaths={dnd.activeDragPaths}

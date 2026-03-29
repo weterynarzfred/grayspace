@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
+import PanelsDndLayer from "../PanelsDndLayer";
 import PreviewPanel from "./PreviewPanel";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -27,18 +28,24 @@ vi.mock("./CodeTextPreview", () => ({
 }));
 
 describe("PreviewPanel", () => {
+  function renderPreviewPanel(props = {}) {
+    return render(
+      <PanelsDndLayer>
+        <PreviewPanel {...props} />
+      </PanelsDndLayer>,
+    );
+  }
+
   beforeEach(() => {
     invoke.mockReset();
   });
 
   it("shows a placeholder when there is no selected file", () => {
-    render(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPaths: [],
-        }}
-      />,
-    );
+    renderPreviewPanel({
+      tabSelectedFiles: {
+        selectedPaths: [],
+      },
+    });
 
     expect(screen.getByLabelText("Preview panel")).toBeInTheDocument();
     expect(screen.getByText("Select a file to preview.")).toBeInTheDocument();
@@ -52,13 +59,11 @@ describe("PreviewPanel", () => {
       truncated: false,
     });
 
-    render(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPaths: ["C:\\notes.txt"],
-        }}
-      />,
-    );
+    renderPreviewPanel({
+      tabSelectedFiles: {
+        selectedPaths: ["C:\\notes.txt"],
+      },
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("preview_read_file", {
@@ -77,13 +82,11 @@ describe("PreviewPanel", () => {
       dataBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
     });
 
-    render(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPaths: ["C:\\image.png"],
-        }}
-      />,
-    );
+    renderPreviewPanel({
+      tabSelectedFiles: {
+        selectedPaths: ["C:\\image.png"],
+      },
+    });
 
     const image = await screen.findByRole("img", { name: /preview of image\.png/i });
     expect(image).toHaveAttribute(
@@ -98,13 +101,11 @@ describe("PreviewPanel", () => {
       reason: "PDF document previews are not supported yet.",
     });
 
-    render(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPaths: ["C:\\spec.pdf"],
-        }}
-      />,
-    );
+    renderPreviewPanel({
+      tabSelectedFiles: {
+        selectedPaths: ["C:\\spec.pdf"],
+      },
+    });
 
     expect(await screen.findByText("PDF document previews are not supported yet.")).toBeInTheDocument();
   });
@@ -112,13 +113,11 @@ describe("PreviewPanel", () => {
   it("surfaces preview loading errors", async () => {
     invoke.mockRejectedValue(new Error("Permission denied."));
 
-    render(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPaths: ["C:\\locked.txt"],
-        }}
-      />,
-    );
+    renderPreviewPanel({
+      tabSelectedFiles: {
+        selectedPaths: ["C:\\locked.txt"],
+      },
+    });
 
     expect(await screen.findByText("Permission denied.")).toBeInTheDocument();
   });
@@ -140,13 +139,11 @@ describe("PreviewPanel", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    render(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPaths: ["C:\\notes.txt"],
-        }}
-      />,
-    );
+    renderPreviewPanel({
+      tabSelectedFiles: {
+        selectedPaths: ["C:\\notes.txt"],
+      },
+    });
 
     await screen.findByTestId("preview-text-content");
     fireEvent.click(screen.getByRole("button", { name: "mock-change" }));
@@ -171,13 +168,11 @@ describe("PreviewPanel", () => {
       truncated: true,
     });
 
-    render(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPaths: ["C:\\large.txt"],
-        }}
-      />,
-    );
+    renderPreviewPanel({
+      tabSelectedFiles: {
+        selectedPaths: ["C:\\large.txt"],
+      },
+    });
 
     expect(await screen.findByTestId("preview-read-only")).toHaveTextContent("true");
     expect(
@@ -212,11 +207,13 @@ describe("PreviewPanel", () => {
     });
 
     const { rerender } = render(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPaths: ["C:\\notes.txt"],
-        }}
-      />,
+      <PanelsDndLayer>
+        <PreviewPanel
+          tabSelectedFiles={{
+            selectedPaths: ["C:\\notes.txt"],
+          }}
+        />
+      </PanelsDndLayer>,
     );
 
     await screen.findByTestId("preview-text-content");
@@ -224,11 +221,13 @@ describe("PreviewPanel", () => {
     expect(await screen.findByText("Unsaved changes.")).toBeInTheDocument();
 
     rerender(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPaths: ["C:\\other.txt"],
-        }}
-      />,
+      <PanelsDndLayer>
+        <PreviewPanel
+          tabSelectedFiles={{
+            selectedPaths: ["C:\\other.txt"],
+          }}
+        />
+      </PanelsDndLayer>,
     );
 
     expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
@@ -263,22 +262,26 @@ describe("PreviewPanel", () => {
     });
 
     const { rerender } = render(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPaths: ["C:\\one.png"],
-        }}
-      />,
+      <PanelsDndLayer>
+        <PreviewPanel
+          tabSelectedFiles={{
+            selectedPaths: ["C:\\one.png"],
+          }}
+        />
+      </PanelsDndLayer>,
     );
 
     await screen.findByRole("img", { name: /preview of one\.png/i });
     fireEvent.click(screen.getByRole("button", { name: /^lock$/i }));
 
     rerender(
-      <PreviewPanel
-        tabSelectedFiles={{
-          selectedPaths: ["C:\\two.png"],
-        }}
-      />,
+      <PanelsDndLayer>
+        <PreviewPanel
+          tabSelectedFiles={{
+            selectedPaths: ["C:\\two.png"],
+          }}
+        />
+      </PanelsDndLayer>,
     );
 
     const image = await screen.findByRole("img", { name: /preview of one\.png/i });
