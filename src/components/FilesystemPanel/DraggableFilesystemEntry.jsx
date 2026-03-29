@@ -1,8 +1,9 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import EntryItem from "./EntryItem";
-import { getEntryDndId } from "./dndIds";
+import { getDragEntryDndId, getEntryDndId } from "./dndIds";
 
 function DraggableFilesystemEntry({
+  paneId = "",
   entry,
   isSelected,
   isMovingEntry,
@@ -10,19 +11,29 @@ function DraggableFilesystemEntry({
   onClick,
   onDoubleClick,
 }) {
-  const dndId = getEntryDndId(entry.path);
+  const draggableId = getDragEntryDndId(paneId, entry.path);
+  const droppableId = getEntryDndId(entry.path);
   const {
     attributes,
     listeners,
     setNodeRef: setDraggableNodeRef,
     isDragging,
   } = useDraggable({
-    id: dndId,
+    id: draggableId,
     disabled: isMovingEntry,
+    data: {
+      sourcePath: entry.path,
+      sourcePaneId: paneId,
+    },
   });
   const { isOver, setNodeRef: setDroppableNodeRef } = useDroppable({
-    id: dndId,
+    id: droppableId,
     disabled: isMovingEntry || !entry.is_dir,
+    data: {
+      kind: "entry",
+      path: entry.path,
+      isDirectory: entry.is_dir,
+    },
   });
 
   function setNodeRef(node) {

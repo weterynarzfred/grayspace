@@ -61,8 +61,8 @@
 }
 
 .dropTarget {
-  border-color: $accent-active;
-  background: rgba($accent-active, 0.3);
+  outline: 1px dashed $accent-active;
+  outline-offset: -1px;
 }
 
 .entryPath {

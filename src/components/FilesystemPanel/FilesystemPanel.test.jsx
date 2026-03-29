@@ -84,6 +84,23 @@ function renderFilesystemPanel(props = {}) {
   );
 }
 
+function renderFilesystemPanels(primaryProps = {}, secondaryProps = {}) {
+  return render(
+    <PanelsDndLayer>
+      <FilesystemPanel
+        tabId="tab-cross"
+        paneId="pane-primary"
+        {...primaryProps}
+      />
+      <FilesystemPanel
+        tabId="tab-cross"
+        paneId="pane-secondary"
+        {...secondaryProps}
+      />
+    </PanelsDndLayer>,
+  );
+}
+
 describe("FilesystemPanel", () => {
   beforeEach(() => {
     externalDropCallback = undefined;
@@ -384,6 +401,183 @@ describe("FilesystemPanel", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("copies an entry when ctrl is held while dropping", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof dndCallbacks.onDragEnd).toBe("function");
+      expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+    });
+
+    dndCallbacks.onDragStart?.({
+      active: { id: "entry:C:\\notes.txt" },
+      activatorEvent: { ctrlKey: false },
+    });
+    await dndCallbacks.onDragEnd?.({
+      active: { id: "entry:C:\\notes.txt" },
+      over: { id: "entry:C:\\Users" },
+      activatorEvent: { ctrlKey: true },
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("import_paths", {
+        paths: ["C:\\notes.txt"],
+        destinationDir: "C:\\Users",
+      });
+    });
+
+    expect(invoke).not.toHaveBeenCalledWith("move_path", {
+      source: "C:\\notes.txt",
+      destinationDir: "C:\\Users",
+    });
+    expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+  });
+
+  it("does not move an entry when dropped onto a file entry", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof dndCallbacks.onDragEnd).toBe("function");
+    });
+
+    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+    await dndCallbacks.onDragEnd?.({
+      active: { id: "entry:C:\\notes.txt" },
+      over: {
+        id: "entry:C:\\draft.md",
+        data: {
+          current: {
+            kind: "entry",
+            path: "C:\\draft.md",
+            isDirectory: false,
+          },
+        },
+      },
+    });
+
+    expect(invoke).not.toHaveBeenCalledWith("move_path", {
+      source: "C:\\notes.txt",
+      destinationDir: "C:\\draft.md",
+    });
+  });
+
+  it("moves an entry into another panel current folder when dropped on panel target", async () => {
+    renderFilesystemPanels(
+      {
+        filesystemState: {
+          currentDrive: "C:\\",
+          currentPath: "C:\\",
+          selectedPaths: [],
+        },
+      },
+      {
+        filesystemState: {
+          currentDrive: "C:\\",
+          currentPath: "C:\\Users",
+          selectedPaths: [],
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(typeof dndCallbacks.onDragEnd).toBe("function");
+      expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+
+    dndCallbacks.onDragStart?.({
+      active: {
+        id: "entry:C:\\notes.txt",
+        data: {
+          current: {
+            sourcePath: "C:\\notes.txt",
+            sourcePaneId: "pane-primary",
+          },
+        },
+      },
+    });
+    await dndCallbacks.onDragEnd?.({
+      active: {
+        id: "entry:C:\\notes.txt",
+        data: {
+          current: {
+            sourcePath: "C:\\notes.txt",
+            sourcePaneId: "pane-primary",
+          },
+        },
+      },
+      over: { id: "panel:C:\\Users" },
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("move_path", {
+        source: "C:\\notes.txt",
+        destinationDir: "C:\\Users",
+      });
+    });
+  });
+
+  it("moves an entry when dropped onto a folder listed in another panel", async () => {
+    renderFilesystemPanels(
+      {
+        filesystemState: {
+          currentDrive: "C:\\",
+          currentPath: "C:\\",
+          selectedPaths: [],
+        },
+      },
+      {
+        filesystemState: {
+          currentDrive: "C:\\",
+          currentPath: "C:\\",
+          selectedPaths: [],
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(typeof dndCallbacks.onDragEnd).toBe("function");
+      expect(screen.getAllByRole("button", { name: /notes\.txt/i }).length).toBeGreaterThan(0);
+    });
+
+    dndCallbacks.onDragStart?.({
+      active: {
+        id: "entry:C:\\notes.txt",
+        data: {
+          current: {
+            sourcePath: "C:\\notes.txt",
+            sourcePaneId: "pane-primary",
+          },
+        },
+      },
+    });
+    await dndCallbacks.onDragEnd?.({
+      active: {
+        id: "entry:C:\\notes.txt",
+        data: {
+          current: {
+            sourcePath: "C:\\notes.txt",
+            sourcePaneId: "pane-primary",
+          },
+        },
+      },
+      over: { id: "entry:C:\\Users" },
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("move_path", {
+        source: "C:\\notes.txt",
+        destinationDir: "C:\\Users",
+      });
     });
   });
 

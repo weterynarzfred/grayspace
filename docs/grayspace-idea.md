@@ -62,7 +62,8 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - [x] selecting files and folders
 - [x] opening files
 - [x] drag to move file/folder
-- [ ] drag between panels
+- [x] drag between panels
+- [ ] drag between tabs
 - [ ] cut, copy, and paste
 - [ ] make cut, copy, and paste work between the app and with system file explorer
 - [x] deleting files
@@ -139,5 +140,5 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 ## Things from above that look hard and might be scrapped
 - cross-app file operations (app – system file explorer)
 - undo for file operations
-- arbitrary pane splitting + persistent workspace state
+- persistent workspace state
 - the whole canvas panel

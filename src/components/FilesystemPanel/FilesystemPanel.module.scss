@@ -10,6 +10,11 @@
   padding: 1rem;
 }
 
+.panelDropTarget {
+  outline: 1px dashed $accent-active;
+  outline-offset: -1px;
+}
+
 .externalDropTarget {
   outline: 1px dashed $accent-active;
   outline-offset: -1px;

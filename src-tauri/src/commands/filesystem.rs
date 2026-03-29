@@ -34,6 +34,11 @@ struct FilesystemWatchEventPayload {
     changed_path: String,
 }
 
+#[cfg(target_os = "windows")]
+const CROSS_DEVICE_ERROR_CODE: i32 = 17;
+#[cfg(not(target_os = "windows"))]
+const CROSS_DEVICE_ERROR_CODE: i32 = 18;
+
 fn watch_state_key(window_label: &str, watch_id: &str) -> String {
     format!("{window_label}::{watch_id}")
 }
@@ -51,6 +56,33 @@ fn sort_entries(entries: &mut [FsEntry]) {
         (false, true) => std::cmp::Ordering::Greater,
         _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
+}
+
+fn is_cross_device_error(error: &std::io::Error) -> bool {
+    matches!(error.raw_os_error(), Some(code) if code == CROSS_DEVICE_ERROR_CODE)
+}
+
+fn remove_source_path(source_path: &Path) -> Result<(), String> {
+    if source_path.is_dir() {
+        fs::remove_dir_all(source_path).map_err(|error| error.to_string())?;
+    } else {
+        fs::remove_file(source_path).map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
+fn handle_move_rename_error(
+    source_path: &Path,
+    destination_path: &Path,
+    rename_error: std::io::Error,
+) -> Result<(), String> {
+    if !is_cross_device_error(&rename_error) {
+        return Err(rename_error.to_string());
+    }
+
+    copy_path_recursive(source_path, destination_path)?;
+    remove_source_path(source_path)
 }
 
 #[tauri::command]
@@ -179,7 +211,10 @@ pub fn move_path(source: &str, destination_dir: &str) -> Result<(), String> {
         ));
     }
 
-    fs::rename(&source_path, &destination_path).map_err(|error| error.to_string())
+    match fs::rename(&source_path, &destination_path) {
+        Ok(()) => Ok(()),
+        Err(rename_error) => handle_move_rename_error(&source_path, &destination_path, rename_error),
+    }
 }
 
 #[tauri::command]

@@ -313,6 +313,39 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     if (moveErrorToThrow) throw moveErrorToThrow;
   }
 
+  async function copyEntries(sourcePaths, destinationDir) {
+    const normalizedSourcePaths = uniqueNonEmptyPaths(sourcePaths);
+    if (!destinationDir || normalizedSourcePaths.length === 0) return;
+
+    const activePath = currentPath;
+    let copyErrorToThrow = null;
+
+    setIsMovingEntry(true);
+    setError("");
+
+    try {
+      await invoke("import_paths", { paths: normalizedSourcePaths, destinationDir });
+    } catch (copyError) {
+      setError(copyError instanceof Error ? copyError.message : "Failed to copy item.");
+      copyErrorToThrow = copyError;
+    } finally {
+      if (activePath) {
+        try {
+          await refreshEntriesForPath(activePath);
+        } catch (refreshError) {
+          if (!copyErrorToThrow) {
+            setError(refreshError instanceof Error ? refreshError.message : "Failed to refresh folder.");
+            copyErrorToThrow = refreshError;
+          }
+        }
+      }
+
+      setIsMovingEntry(false);
+    }
+
+    if (copyErrorToThrow) throw copyErrorToThrow;
+  }
+
   async function moveEntry(sourcePath, destinationDir) {
     await moveEntries([sourcePath], destinationDir);
   }
@@ -391,6 +424,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     openEntry,
     moveEntry,
     moveEntries,
+    copyEntries,
     deleteEntries,
     importExternalPaths,
   };

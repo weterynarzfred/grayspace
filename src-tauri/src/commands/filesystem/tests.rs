@@ -1,4 +1,6 @@
-use super::{delete_paths, import_paths, list_directory, move_path, parent_path};
+use super::{
+    delete_paths, handle_move_rename_error, import_paths, list_directory, move_path, parent_path,
+};
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -10,6 +12,16 @@ fn unique_test_root(prefix: &str) -> PathBuf {
         .as_nanos();
     std::env::temp_dir().join(format!("{prefix}_{unique_id}"))
 }
+
+#[cfg(target_os = "windows")]
+const CROSS_DEVICE_ERROR_CODE: i32 = 17;
+#[cfg(not(target_os = "windows"))]
+const CROSS_DEVICE_ERROR_CODE: i32 = 18;
+
+#[cfg(target_os = "windows")]
+const NON_CROSS_DEVICE_ERROR_CODE: i32 = 5;
+#[cfg(not(target_os = "windows"))]
+const NON_CROSS_DEVICE_ERROR_CODE: i32 = 13;
 
 #[test]
 fn list_directory_sorts_directories_before_files() {
@@ -161,6 +173,83 @@ fn move_path_rejects_missing_source() {
         result.expect_err("should return an error"),
         "The source path does not exist."
     );
+
+    fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn handle_move_rename_error_falls_back_to_copy_and_delete_for_file() {
+    let test_root = unique_test_root("grayspace_move_cross_drive_file");
+    let source_dir = test_root.join("source");
+    let destination_dir = test_root.join("destination");
+    let source_file = source_dir.join("notes.txt");
+    let destination_file = destination_dir.join("notes.txt");
+
+    fs::create_dir_all(&source_dir).expect("should create source dir");
+    fs::create_dir_all(&destination_dir).expect("should create destination dir");
+    fs::write(&source_file, "hello").expect("should create source file");
+
+    let rename_error = std::io::Error::from_raw_os_error(CROSS_DEVICE_ERROR_CODE);
+    handle_move_rename_error(&source_file, &destination_file, rename_error)
+        .expect("cross-device fallback should copy and delete source file");
+
+    assert!(!source_file.exists(), "source file should be removed after fallback");
+    assert!(
+        destination_file.exists(),
+        "destination file should exist after fallback"
+    );
+
+    fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn handle_move_rename_error_falls_back_to_copy_and_delete_for_directory() {
+    let test_root = unique_test_root("grayspace_move_cross_drive_dir");
+    let source_dir = test_root.join("source").join("assets");
+    let nested_dir = source_dir.join("nested");
+    let destination_dir = test_root.join("destination");
+    let destination_path = destination_dir.join("assets");
+
+    fs::create_dir_all(&nested_dir).expect("should create nested source dir");
+    fs::create_dir_all(&destination_dir).expect("should create destination dir");
+    fs::write(source_dir.join("root.txt"), "root").expect("should create source root file");
+    fs::write(nested_dir.join("leaf.txt"), "leaf").expect("should create nested source file");
+
+    let rename_error = std::io::Error::from_raw_os_error(CROSS_DEVICE_ERROR_CODE);
+    handle_move_rename_error(&source_dir, &destination_path, rename_error)
+        .expect("cross-device fallback should copy and delete source directory");
+
+    assert!(!source_dir.exists(), "source directory should be removed after fallback");
+    assert!(
+        destination_path.join("root.txt").exists(),
+        "destination directory should contain copied root file"
+    );
+    assert!(
+        destination_path.join("nested").join("leaf.txt").exists(),
+        "destination directory should contain copied nested file"
+    );
+
+    fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn handle_move_rename_error_returns_original_error_when_not_cross_device() {
+    let test_root = unique_test_root("grayspace_move_non_cross_error");
+    let source_dir = test_root.join("source");
+    let destination_dir = test_root.join("destination");
+    let source_file = source_dir.join("notes.txt");
+    let destination_file = destination_dir.join("notes.txt");
+
+    fs::create_dir_all(&source_dir).expect("should create source dir");
+    fs::create_dir_all(&destination_dir).expect("should create destination dir");
+    fs::write(&source_file, "hello").expect("should create source file");
+
+    let rename_error = std::io::Error::from_raw_os_error(NON_CROSS_DEVICE_ERROR_CODE);
+    let result = handle_move_rename_error(&source_file, &destination_file, rename_error);
+
+    assert!(result.is_err(), "non cross-device errors should be returned");
+    assert!(source_file.exists(), "source file should remain in place");
+    assert!(!destination_file.exists(), "destination file should not be created");
 
     fs::remove_dir_all(&test_root).expect("should clean up temp root");
 }

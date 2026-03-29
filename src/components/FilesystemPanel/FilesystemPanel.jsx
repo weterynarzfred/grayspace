@@ -1,4 +1,4 @@
-import { DragOverlay } from "@dnd-kit/core";
+import { DragOverlay, useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useRef } from "react";
 import { usePanelsDndHandlers } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
@@ -52,11 +52,13 @@ function FilesystemPanel({
     || nav.isImportingExternal;
   const isExternalDragEnabled = isBrowsing && !isEntryOperationInProgress;
   const dnd = useFilesystemDnd({
+    paneId,
     entries: nav.entries,
     selectedPaths: nav.selectedEntryPaths,
     currentPath: nav.currentPath,
     isMovingEntry: isEntryOperationInProgress,
     moveEntries: nav.moveEntries,
+    copyEntries: nav.copyEntries,
   });
   const { isExternalDragOver } = useExternalFilesystemDrop({
     panelRef,
@@ -64,7 +66,7 @@ function FilesystemPanel({
     onDropPaths: nav.importExternalPaths,
   });
   useExternalFilesystemDrag({
-    dragPaths: dnd.activeDragPaths,
+    dragPaths: dnd.externalDragPaths,
     isEnabled: isExternalDragEnabled,
     onExternalDragStart: dnd.markExternalDragStart,
     onExternalDragError: dnd.clearExternalDragStart,
@@ -81,6 +83,22 @@ function FilesystemPanel({
   const breadcrumbs = buildBreadcrumbs(nav.currentPath, nav.currentDrive);
   const upDestinationPath =
     breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
+  const {
+    isOver: isPanelDropOver,
+    setNodeRef: setPanelDropNodeRef,
+  } = useDroppable({
+    id: dnd.getPanelDropId(nav.currentPath),
+    disabled: !isBrowsing || isEntryOperationInProgress,
+    data: {
+      kind: "panel",
+      path: nav.currentPath,
+      isDirectory: true,
+    },
+  });
+  const setPanelNodeRef = useCallback((node) => {
+    panelRef.current = node;
+    setPanelDropNodeRef(node);
+  }, [setPanelDropNodeRef]);
   const selectedEntryPaths = nav.selectedEntryPaths;
   const filesystemEntries = nav.entries;
   const deleteEntries = nav.deleteEntries;
@@ -151,20 +169,14 @@ function FilesystemPanel({
   ]);
 
   return <section
-    ref={panelRef}
-    className={`${styles.panelContent} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
+    ref={setPanelNodeRef}
+    className={`${styles.panelContent} ${isPanelDropOver ? styles.panelDropTarget : ""} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
     aria-label="Filesystem panel"
     onKeyDown={handlePanelKeyDown}
   >
     <PanelHeader
       panelType={panelType}
       onPanelTypeChange={onPanelTypeChange}
-    ></PanelHeader>
-    <div
-      ref={panelListRef}
-      className={styles.panelList}
-      onScroll={handlePanelListScroll}
-      data-testid="filesystem-panel-list"
     >
       <FilesystemStatusMessages
         isBrowsing={isBrowsing}
@@ -175,6 +187,13 @@ function FilesystemPanel({
         isImportingExternal={nav.isImportingExternal}
         error={nav.error}
       />
+    </PanelHeader>
+    <div
+      ref={panelListRef}
+      className={styles.panelList}
+      onScroll={handlePanelListScroll}
+      data-testid="filesystem-panel-list"
+    >
 
       {!isBrowsing && !nav.isLoadingDrives && !nav.error && (
         <ul className={styles.entryList}>
@@ -215,6 +234,7 @@ function FilesystemPanel({
               {nav.entries.map((entry) => (
                 <DraggableFilesystemEntry
                   key={entry.path}
+                  paneId={paneId}
                   entry={entry}
                   isSelected={nav.selectedPaths.includes(entry.path)}
                   isMovingEntry={isEntryOperationInProgress}
