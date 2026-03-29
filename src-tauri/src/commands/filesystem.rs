@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, State};
 
 #[derive(Serialize)]
@@ -18,6 +19,16 @@ pub struct FsEntry {
     name: String,
     path: String,
     is_dir: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsPathProperties {
+    path: String,
+    size_bytes: Option<u64>,
+    entry_type: String,
+    date_modified_ms: Option<u64>,
+    date_created_ms: Option<u64>,
 }
 
 const FILESYSTEM_WATCH_EVENT: &str = "filesystem-watch-event";
@@ -56,6 +67,27 @@ fn sort_entries(entries: &mut [FsEntry]) {
         (false, true) => std::cmp::Ordering::Greater,
         _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
+}
+
+fn infer_entry_type(path: &Path, is_dir: bool) -> String {
+    if is_dir {
+        return "Folder".to_string();
+    }
+
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::trim)
+        .filter(|extension| !extension.is_empty())
+        .map(|extension| format!("{} file", extension.to_uppercase()))
+        .unwrap_or_else(|| "File".to_string())
+}
+
+fn system_time_to_epoch_millis(value: Result<SystemTime, std::io::Error>) -> Option<u64> {
+    value.ok().and_then(|time| {
+        time.duration_since(UNIX_EPOCH)
+            .ok()
+            .and_then(|duration| u64::try_from(duration.as_millis()).ok())
+    })
 }
 
 fn is_cross_device_error(error: &std::io::Error) -> bool {
@@ -132,6 +164,30 @@ pub fn list_directory(path: &str) -> Result<Vec<FsEntry>, String> {
     sort_entries(&mut entries);
 
     Ok(entries)
+}
+
+#[tauri::command]
+pub fn filesystem_get_properties(path: &str) -> Result<FsPathProperties, String> {
+    let normalized_path = path.trim();
+    if normalized_path.is_empty() {
+        return Err("A path is required.".to_string());
+    }
+
+    let target_path = PathBuf::from(normalized_path);
+    if !target_path.exists() {
+        return Err(format!("The path '{}' does not exist.", normalized_path));
+    }
+
+    let metadata = fs::metadata(&target_path).map_err(|error| error.to_string())?;
+    let is_dir = metadata.is_dir();
+
+    Ok(FsPathProperties {
+        path: normalized_path.to_string(),
+        size_bytes: (!is_dir).then_some(metadata.len()),
+        entry_type: infer_entry_type(&target_path, is_dir),
+        date_modified_ms: system_time_to_epoch_millis(metadata.modified()),
+        date_created_ms: system_time_to_epoch_millis(metadata.created()),
+    })
 }
 
 #[tauri::command]

@@ -114,7 +114,8 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 
 ### Properties Panel
 
-- [ ] displays properties of files, can include metadata
+- [x] displays properties of files
+  - [ ] include metadata
   - [ ] editing some properties would be great
 - [ ] editable custom metadata saved in sidecar files `file.ext.grayspace`
   - [ ] tags that can be then filtered and searched for

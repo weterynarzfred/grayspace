@@ -1,11 +1,18 @@
+import { invoke } from "@tauri-apps/api/core";
 import { useDroppable } from "@dnd-kit/core";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePanelsDndHandlers } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
 import { getFirstDraggedPathFromDndEvent } from "../dndEventPaths";
 import { getPrimarySelectedPath, getSelectedPathsFromState } from "../../utils/pathSelection";
 import styles from "./PropertiesPanel.module.scss";
+
+const INITIAL_DETAILS_STATE = {
+  status: "idle",
+  details: null,
+  error: "",
+};
 
 function getPathDisplayName(path) {
   if (typeof path !== "string" || !path) return "";
@@ -15,6 +22,40 @@ function getPathDisplayName(path) {
 
   const pathSegments = trimmedPath.split(/[\\/]/);
   return pathSegments[pathSegments.length - 1] ?? trimmedPath;
+}
+
+function getErrorMessage(error) {
+  if (error instanceof Error && error.message) return error.message;
+  return "Failed to load properties.";
+}
+
+function formatSize(sizeBytes) {
+  if (typeof sizeBytes !== "number" || !Number.isFinite(sizeBytes) || sizeBytes < 0) {
+    return "Unknown";
+  }
+
+  if (sizeBytes === 1) return "1 B";
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = sizeBytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const maximumFractionDigits = value >= 100 || unitIndex === 0 ? 0 : (value >= 10 ? 1 : 2);
+  return `${value.toLocaleString(undefined, { maximumFractionDigits })} ${units[unitIndex]}`;
+}
+
+function formatDate(timestampMs) {
+  if (typeof timestampMs !== "number" || !Number.isFinite(timestampMs) || timestampMs <= 0) {
+    return "Unknown";
+  }
+
+  const date = new Date(timestampMs);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+  return date.toLocaleString();
 }
 
 function PropertiesPanel({
@@ -28,6 +69,7 @@ function PropertiesPanel({
     [tabSelectedFiles],
   );
   const [lockedPath, setLockedPath] = useState("");
+  const [detailsState, setDetailsState] = useState(INITIAL_DETAILS_STATE);
   const isLocked = Boolean(lockedPath);
   const propertiesPath = isLocked ? lockedPath : selectedPropertiesPath;
   const propertiesLabel = useMemo(() => getPathDisplayName(propertiesPath), [propertiesPath]);
@@ -68,6 +110,54 @@ function PropertiesPanel({
     },
   });
 
+  useEffect(() => {
+    if (!propertiesPath) {
+      setDetailsState(INITIAL_DETAILS_STATE);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    async function loadProperties() {
+      setDetailsState({
+        status: "loading",
+        details: null,
+        error: "",
+      });
+
+      try {
+        const details = await invoke("filesystem_get_properties", { path: propertiesPath });
+        if (cancelled) return;
+        setDetailsState({
+          status: "ready",
+          details,
+          error: "",
+        });
+      } catch (loadError) {
+        if (cancelled) return;
+        setDetailsState({
+          status: "error",
+          details: null,
+          error: getErrorMessage(loadError),
+        });
+      }
+    }
+
+    loadProperties();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [propertiesPath]);
+
+  const details = detailsState.details;
+  const detailsRows = useMemo(() => ([
+    { key: "size", value: formatSize(details?.sizeBytes) },
+    { key: "type", value: details?.entryType || "Unknown" },
+    { key: "date modified", value: formatDate(details?.dateModifiedMs) },
+    { key: "date created", value: formatDate(details?.dateCreatedMs) },
+  ]), [details]);
+
   return (
     <section
       ref={setDropNodeRef}
@@ -75,11 +165,9 @@ function PropertiesPanel({
       aria-label="Properties panel"
     >
       <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
-        {propertiesLabel ? <p className={styles.pathLabel}>
-          {isLocked ? propertiesLabel : <em>{propertiesLabel}</em>}
-        </p> : (
+        {propertiesLabel ? <p className={styles.pathLabel}></p> :
           <p className={styles.muted}>Select a file to inspect.</p>
-        )}
+        }
         {propertiesPath ? <button
           type="button"
           className={`${styles.lockButton} ${isLocked ? styles.lockButtonLocked : ""}`}
@@ -88,7 +176,25 @@ function PropertiesPanel({
       </PanelHeader>
       <div className={shellStyles.panelBody}>
         {propertiesPath ? (
-          <p className={styles.pathValue} title={propertiesPath}>{propertiesPath}</p>
+          <>
+            <p className={styles.pathValue} title={propertiesPath}>{propertiesPath}</p>
+            {detailsState.status === "loading" ? (
+              <p className={styles.muted}>Loading properties...</p>
+            ) : null}
+            {detailsState.status === "error" ? (
+              <p className={styles.error}>{detailsState.error}</p>
+            ) : null}
+            {detailsState.status === "ready" ? (
+              <dl className={styles.detailsList}>
+                {detailsRows.map(({ key, value }) => (
+                  <div key={key} className={styles.detailRow}>
+                    <dt className={styles.detailKey}>{key}</dt>
+                    <dd className={styles.detailValue}>{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            ) : null}
+          </>
         ) : (
           <p className={styles.muted}>No file selected.</p>
         )}

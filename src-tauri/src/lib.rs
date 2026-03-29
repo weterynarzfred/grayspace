@@ -4,8 +4,8 @@ use tauri::Manager;
 
 use commands::filesystem::{
     delete_paths, filesystem_watch_start, filesystem_watch_stop,
-    handle_filesystem_window_destroyed, import_paths, list_directory, list_drives, move_path,
-    open_path, parent_path, start_external_drag, FilesystemWatchState,
+    filesystem_get_properties, handle_filesystem_window_destroyed, import_paths, list_directory,
+    list_drives, move_path, open_path, parent_path, start_external_drag, FilesystemWatchState,
 };
 use commands::preview::{preview_read_file, preview_write_text_file};
 use commands::terminal::{
@@ -48,6 +48,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             list_drives,
             list_directory,
+            filesystem_get_properties,
             parent_path,
             open_path,
             move_path,

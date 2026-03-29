@@ -131,7 +131,7 @@ pub fn preview_read_file(path: &str) -> Result<FilePreview, String> {
     if let Some(image_format) = detect_image_format(&detection_bytes) {
         if metadata.len() > MAX_IMAGE_PREVIEW_BYTES {
             return Ok(FilePreview::Unsupported {
-                reason: "Image preview is limited to 8 MB.".to_string(),
+                reason: "Image preview is limited to 64 MB.".to_string(),
             });
         }
 

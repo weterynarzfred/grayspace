@@ -1,5 +1,6 @@
 use super::{
-    delete_paths, handle_move_rename_error, import_paths, list_directory, move_path, parent_path,
+    delete_paths, filesystem_get_properties, handle_move_rename_error, import_paths, list_directory,
+    move_path, parent_path,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -84,6 +85,47 @@ fn list_directory_returns_error_for_missing_path() {
 
     let result = list_directory(&missing_path);
     assert!(result.is_err());
+}
+
+#[test]
+fn filesystem_get_properties_returns_file_details() {
+    let test_root = unique_test_root("grayspace_properties_file");
+    let file_path = test_root.join("notes.txt");
+
+    fs::create_dir_all(&test_root).expect("should create temp root");
+    fs::write(&file_path, "hello").expect("should write test file");
+
+    let file_path_string = file_path.to_string_lossy().to_string();
+    let properties = filesystem_get_properties(&file_path_string)
+        .expect("filesystem_get_properties should read file metadata");
+
+    assert_eq!(properties.path, file_path_string);
+    assert_eq!(properties.entry_type, "TXT file");
+    assert_eq!(properties.size_bytes, Some(5));
+    assert!(
+        properties.date_modified_ms.is_some(),
+        "file modified date should be available"
+    );
+
+    fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn filesystem_get_properties_returns_folder_details() {
+    let test_root = unique_test_root("grayspace_properties_folder");
+    let folder_path = test_root.join("assets");
+
+    fs::create_dir_all(&folder_path).expect("should create test folder");
+
+    let folder_path_string = folder_path.to_string_lossy().to_string();
+    let properties = filesystem_get_properties(&folder_path_string)
+        .expect("filesystem_get_properties should read folder metadata");
+
+    assert_eq!(properties.path, folder_path_string);
+    assert_eq!(properties.entry_type, "Folder");
+    assert_eq!(properties.size_bytes, None);
+
+    fs::remove_dir_all(&test_root).expect("should clean up temp root");
 }
 
 #[test]
