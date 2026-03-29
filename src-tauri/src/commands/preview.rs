@@ -1,4 +1,3 @@
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::Serialize;
 use std::fs;
 use std::fs::File;
@@ -18,8 +17,6 @@ pub enum FilePreview {
     Image {
         #[serde(rename = "mimeType")]
         mime_type: String,
-        #[serde(rename = "dataBase64")]
-        data_base64: String,
     },
     Unsupported {
         reason: String,
@@ -121,6 +118,12 @@ pub fn preview_read_file(path: &str) -> Result<FilePreview, String> {
         return Err("The selected path does not exist.".to_string());
     }
 
+    if file_path.is_dir() {
+        return Ok(FilePreview::Unsupported {
+            reason: "Folder previews are not supported yet.".to_string(),
+        });
+    }
+
     if !file_path.is_file() {
         return Err("Preview is only available for files.".to_string());
     }
@@ -135,10 +138,8 @@ pub fn preview_read_file(path: &str) -> Result<FilePreview, String> {
             });
         }
 
-        let image_bytes = fs::read(&file_path).map_err(|error| error.to_string())?;
         return Ok(FilePreview::Image {
             mime_type: image_format.mime_type().to_string(),
-            data_base64: STANDARD.encode(image_bytes),
         });
     }
 
@@ -181,7 +182,6 @@ mod tests {
         preview_read_file, preview_write_text_file, FilePreview, MAX_IMAGE_PREVIEW_BYTES,
         MAX_TEXT_PREVIEW_BYTES,
     };
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
     use serde_json::Value;
     use std::fs;
     use std::path::PathBuf;
@@ -244,18 +244,9 @@ mod tests {
 
         let preview = preview_read_file(&file_path.to_string_lossy()).expect("preview should load");
         match preview {
-            FilePreview::Image {
-                mime_type,
-                data_base64,
-            } => {
-                assert_eq!(mime_type, "image/png");
-                let decoded_bytes = STANDARD
-                    .decode(data_base64)
-                    .expect("image payload should contain valid base64");
-                assert_eq!(decoded_bytes, png_bytes);
-            }
+            FilePreview::Image { mime_type } => assert_eq!(mime_type, "image/png"),
             _ => panic!("expected image preview"),
-        }
+        };
 
         fs::remove_dir_all(&test_root).expect("should clean up temp root");
     }
@@ -273,7 +264,7 @@ mod tests {
         let preview = preview_read_file(&file_path.to_string_lossy()).expect("preview should load");
         match preview {
             FilePreview::Unsupported { reason } => {
-                assert_eq!(reason, "Image preview is limited to 8 MB.");
+                assert_eq!(reason, "Image preview is limited to 64 MB.");
             }
             _ => panic!("expected unsupported preview for large image"),
         }
@@ -300,16 +291,17 @@ mod tests {
     }
 
     #[test]
-    fn preview_read_file_rejects_directories() {
+    fn preview_read_file_marks_directories_as_unsupported() {
         let test_root = unique_test_root("grayspace_preview_dir");
         fs::create_dir_all(&test_root).expect("should create temp root");
 
-        let result = preview_read_file(&test_root.to_string_lossy());
-        assert!(result.is_err(), "directories should not be previewable");
-        assert_eq!(
-            result.expect_err("directory preview should fail"),
-            "Preview is only available for files."
-        );
+        let preview = preview_read_file(&test_root.to_string_lossy()).expect("preview should load");
+        match preview {
+            FilePreview::Unsupported { reason } => {
+                assert_eq!(reason, "Folder previews are not supported yet.");
+            }
+            _ => panic!("expected unsupported preview for directory"),
+        }
 
         fs::remove_dir_all(&test_root).expect("should clean up temp root");
     }
@@ -318,7 +310,6 @@ mod tests {
     fn image_preview_serializes_with_camel_case_fields() {
         let payload = serde_json::to_value(FilePreview::Image {
             mime_type: "image/png".to_string(),
-            data_base64: "AAAA".to_string(),
         })
         .expect("image preview should serialize");
 
@@ -332,18 +323,9 @@ mod tests {
             Some("image/png"),
             "mimeType should use camelCase"
         );
-        assert_eq!(
-            payload.get("dataBase64").and_then(Value::as_str),
-            Some("AAAA"),
-            "dataBase64 should use camelCase"
-        );
         assert!(
             payload.get("mime_type").is_none(),
             "snake_case mime_type key should not be present"
-        );
-        assert!(
-            payload.get("data_base64").is_none(),
-            "snake_case data_base64 key should not be present"
         );
     }
 

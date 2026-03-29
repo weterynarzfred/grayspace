@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import PanelsDndLayer from "../PanelsDndLayer";
 import PreviewPanel from "./PreviewPanel";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+  convertFileSrc: vi.fn((path) => `asset://localhost/${encodeURIComponent(path || "")}`),
 }));
 
 vi.mock("./CodeTextPreview", () => ({
@@ -38,6 +39,7 @@ describe("PreviewPanel", () => {
 
   beforeEach(() => {
     invoke.mockReset();
+    convertFileSrc.mockClear();
   });
 
   it("shows a placeholder when there is no selected file", () => {
@@ -79,7 +81,6 @@ describe("PreviewPanel", () => {
     invoke.mockResolvedValue({
       kind: "image",
       mimeType: "image/png",
-      dataBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
     });
 
     renderPreviewPanel({
@@ -91,8 +92,9 @@ describe("PreviewPanel", () => {
     const image = await screen.findByRole("img", { name: /preview of image\.png/i });
     expect(image).toHaveAttribute(
       "src",
-      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+      "asset://localhost/C%3A%5Cimage.png",
     );
+    expect(convertFileSrc).toHaveBeenCalledWith("C:\\image.png");
   });
 
   it("shows unsupported-type messages returned by the backend", async () => {
@@ -108,6 +110,19 @@ describe("PreviewPanel", () => {
     });
 
     expect(await screen.findByText("PDF document previews are not supported yet.")).toBeInTheDocument();
+  });
+
+  it("shows a friendly unsupported message for folders", async () => {
+    invoke.mockRejectedValue(new Error("Preview is only available for files."));
+
+    renderPreviewPanel({
+      tabSelectedFiles: {
+        selectedPaths: ["C:\\workspace"],
+      },
+    });
+
+    expect(await screen.findByText("Folder previews are not supported yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Preview is only available for files.")).not.toBeInTheDocument();
   });
 
   it("surfaces preview loading errors", async () => {
@@ -246,14 +261,12 @@ describe("PreviewPanel", () => {
           return {
             kind: "image",
             mimeType: "image/png",
-            dataBase64: "AAAA",
           };
         }
         if (payload?.path === "C:\\two.png") {
           return {
             kind: "image",
             mimeType: "image/png",
-            dataBase64: "BBBB",
           };
         }
       }
@@ -285,7 +298,7 @@ describe("PreviewPanel", () => {
     );
 
     const image = await screen.findByRole("img", { name: /preview of one\.png/i });
-    expect(image).toHaveAttribute("src", "data:image/png;base64,AAAA");
+    expect(image).toHaveAttribute("src", "asset://localhost/C%3A%5Cone.png");
     expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalledWith("preview_read_file", { path: "C:\\two.png" });
   });

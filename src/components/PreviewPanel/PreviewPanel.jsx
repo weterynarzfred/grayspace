@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelsDndHandlers } from "../PanelsDndLayer";
@@ -30,15 +30,19 @@ function getPathDisplayName(path) {
 }
 
 function getErrorMessage(error) {
+  if (typeof error === "string" && error) return error;
   if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && typeof error.message === "string" && error.message) {
+    return error.message;
+  }
+
+  const fallback = String(error ?? "");
+  if (fallback && fallback !== "[object Object]") return fallback;
   return "Failed to load preview.";
 }
 
-function buildImagePreviewSrc(preview) {
-  const mimeType = typeof preview?.mimeType === "string" ? preview.mimeType : "";
-  const dataBase64 = typeof preview?.dataBase64 === "string" ? preview.dataBase64 : "";
-  if (!mimeType || !dataBase64) return null;
-  return `data:${mimeType};base64,${dataBase64}`;
+function isFolderPreviewErrorMessage(message) {
+  return typeof message === "string" && /only available for files/i.test(message);
 }
 
 function PreviewPanel({
@@ -72,8 +76,9 @@ function PreviewPanel({
   const previewLabel = useMemo(() => getPathDisplayName(previewPath), [previewPath]);
   const imagePreviewSrc = useMemo(() => {
     if (previewState.status !== "ready" || previewState.preview?.kind !== "image") return null;
-    return buildImagePreviewSrc(previewState.preview);
-  }, [previewState]);
+    if (!previewPath) return null;
+    return convertFileSrc(previewPath);
+  }, [previewPath, previewState]);
   const isTextPreviewReady = previewState.status === "ready" && previewState.preview?.kind === "text";
   const isTextEditable = isTextPreviewReady && !previewState.preview?.truncated;
 
@@ -196,10 +201,22 @@ function PreviewPanel({
         });
       } catch (loadError) {
         if (cancelled) return;
+        const errorMessage = getErrorMessage(loadError);
+        if (isFolderPreviewErrorMessage(errorMessage)) {
+          setPreviewState({
+            status: "ready",
+            preview: {
+              kind: "unsupported",
+              reason: "Folder previews are not supported yet.",
+            },
+            error: "",
+          });
+          return;
+        }
         setPreviewState({
           status: "error",
           preview: null,
-          error: getErrorMessage(loadError),
+          error: errorMessage,
         });
       }
     }
