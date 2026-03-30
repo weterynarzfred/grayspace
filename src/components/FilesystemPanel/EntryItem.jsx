@@ -54,7 +54,10 @@ function EntryItem({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <span className={styles.entryName}>{label}</span>
+      <span className={styles.entryMain}>
+        <span className={styles.entryPreviewPlaceholder} aria-hidden />
+        <span className={styles.entryName}>{label}</span>
+      </span>
       <span className={styles.entryPath}>{meta}</span>
     </button>
   </li>;

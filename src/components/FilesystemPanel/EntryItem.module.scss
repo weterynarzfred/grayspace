@@ -3,6 +3,8 @@
 
 .entryItem {
   margin: 0;
+  content-visibility: auto;
+  contain-intrinsic-size: 28px;
 }
 
 .entryButton {
@@ -13,6 +15,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0 0.5rem;
+  min-height: 1.75rem;
   text-align: left;
 
   &:hover {
@@ -25,9 +28,27 @@
   }
 }
 
+.entryMain {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.4rem;
+  flex: 1 1 auto;
+}
+
+.entryPreviewPlaceholder {
+  flex: 0 0 auto;
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 1px solid $border-default;
+  border-radius: 2px;
+  background: $bg-panel;
+}
+
 .entryName {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: $font-size-small;
 }
 
@@ -49,6 +70,11 @@
   .entryPath {
     color: $text-accent;
   }
+
+  .entryPreviewPlaceholder {
+    border-color: $accent;
+    background: $bg-accent-2;
+  }
 }
 
 .file {
@@ -66,6 +92,7 @@
 }
 
 .entryPath {
+  flex: 0 0 auto;
   font-family: $font-mono;
   font-size: $font-size-mono;
   color: $text-secondary;

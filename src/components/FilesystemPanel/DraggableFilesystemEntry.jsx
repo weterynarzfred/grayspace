@@ -1,17 +1,21 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { memo, useMemo } from "react";
 import EntryItem from "./EntryItem";
 import { getDragEntryDndId, getEntryDndId } from "./dndIds";
 
 function DraggableFilesystemEntry({
   paneId = "",
   entry,
-  dragPaths = undefined,
+  selectedEntryPaths = [],
+  isSelectedForDrag = false,
   isSelected,
   isMovingEntry,
-  activeDragPaths = [],
-  onClick,
-  onDoubleClick,
+  activeDragPathSet = undefined,
+  onEntryClick,
+  onEntryDoubleClick,
 }) {
+  const selfDragPath = useMemo(() => [entry.path], [entry.path]);
+  const dragPaths = isSelectedForDrag ? selectedEntryPaths : selfDragPath;
   const draggableId = getDragEntryDndId(paneId, entry.path);
   const droppableId = getEntryDndId(entry.path);
   const {
@@ -46,8 +50,8 @@ function DraggableFilesystemEntry({
   const isDropTarget =
     entry.is_dir
     && isOver
-    && activeDragPaths.length > 0
-    && !activeDragPaths.includes(entry.path);
+    && activeDragPathSet?.size > 0
+    && !activeDragPathSet.has(entry.path);
   const isConfigEntry =
     entry.is_dir && (entry.name ?? "").toLowerCase() === ".grayspace";
   const metaLabel = isConfigEntry ? "config" : (entry.is_dir ? "Folder" : "File");
@@ -64,9 +68,9 @@ function DraggableFilesystemEntry({
     buttonRef={setNodeRef}
     dndAttributes={attributes}
     dndListeners={listeners}
-    onClick={onClick}
-    onDoubleClick={onDoubleClick}
+    onClick={(event) => onEntryClick?.(entry.path, event)}
+    onDoubleClick={() => onEntryDoubleClick?.(entry)}
   />;
 }
 
-export default DraggableFilesystemEntry;
+export default memo(DraggableFilesystemEntry);

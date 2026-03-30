@@ -816,6 +816,50 @@ describe("FilesystemPanel", () => {
     });
   });
 
+  it("window-renders only visible entries in large folders", async () => {
+    const makeEntryName = (index) => `file-${String(index).padStart(4, "0")}.txt`;
+    const largeEntries = Array.from({ length: 500 }, (_, index) => {
+      const name = makeEntryName(index);
+      return {
+        name,
+        path: `C:\\${name}`,
+        is_dir: false,
+      };
+    });
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
+      if (command === "list_directory" && payload?.path === "C:\\") return largeEntries;
+      if (command === "parent_path" && payload?.path === "C:\\") return null;
+      if (
+        command === "filesystem_watch_start"
+        || command === "filesystem_watch_stop"
+        || command === "start_external_drag"
+      ) {
+        return null;
+      }
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    expect(await screen.findByRole("button", { name: /file-0000\.txt/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /file-04\d\d\.txt/i })).not.toBeInTheDocument();
+
+    const panelList = screen.getByTestId("filesystem-panel-list");
+    panelList.scrollTop = 12000;
+    fireEvent.scroll(panelList);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: /file-04\d\d\.txt/i }).length)
+        .toBeGreaterThan(0);
+    });
+    expect(screen.queryByRole("button", { name: /file-0000\.txt/i })).not.toBeInTheDocument();
+  });
+
   it("imports external files dropped over the filesystem panel", async () => {
     renderFilesystemPanel();
 

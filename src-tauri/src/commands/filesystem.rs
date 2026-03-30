@@ -62,11 +62,7 @@ fn is_watch_event_relevant(kind: &EventKind) -> bool {
 }
 
 fn sort_entries(entries: &mut [FsEntry]) {
-    entries.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-        (true, false) => std::cmp::Ordering::Less,
-        (false, true) => std::cmp::Ordering::Greater,
-        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-    });
+    entries.sort_by_cached_key(|entry| (!entry.is_dir, entry.name.to_lowercase()));
 }
 
 fn infer_entry_type(path: &Path, is_dir: bool) -> String {
@@ -150,14 +146,17 @@ pub fn list_directory(path: &str) -> Result<Vec<FsEntry>, String> {
     let read_dir = fs::read_dir(path).map_err(|error| error.to_string())?;
     for entry in read_dir {
         let dir_entry = entry.map_err(|error| error.to_string())?;
-        let metadata = dir_entry.metadata().map_err(|error| error.to_string())?;
         let entry_path = dir_entry.path();
         let name = dir_entry.file_name().to_string_lossy().to_string();
+        let is_dir = dir_entry
+            .file_type()
+            .map_err(|error| error.to_string())?
+            .is_dir();
 
         entries.push(FsEntry {
             name,
             path: entry_path.to_string_lossy().to_string(),
-            is_dir: metadata.is_dir(),
+            is_dir,
         });
     }
 

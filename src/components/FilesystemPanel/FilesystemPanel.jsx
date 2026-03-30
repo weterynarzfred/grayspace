@@ -1,5 +1,5 @@
 import { DragOverlay, useDroppable } from "@dnd-kit/core";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { usePanelsDndHandlers } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
 import Breadcrumbs, { buildBreadcrumbs } from "./Breadcrumbs";
@@ -13,12 +13,15 @@ import useExternalFilesystemDrop from "./hooks/useExternalFilesystemDrop";
 import useExternalFilesystemDrag from "./hooks/useExternalFilesystemDrag";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import useFilesystemStatePersistence from "./hooks/useFilesystemStatePersistence";
+import useVirtualizedEntryWindow from "./hooks/useVirtualizedEntryWindow";
 import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
 import isEditableKeyboardTarget from "../../utils/isEditableKeyboardTarget";
 import styles from "./FilesystemPanel.module.scss";
 
 const UP_ENTRY_SELECTION_ID = "__up__";
+const ENTRY_WINDOWING_THRESHOLD = 200;
+const ENTRY_ROW_HEIGHT_PX = 29;
 
 function FilesystemPanel({
   tabId = "",
@@ -32,6 +35,7 @@ function FilesystemPanel({
 }) {
   const panelRef = useRef(null);
   const panelListRef = useRef(null);
+  const entryWindowAnchorRef = useRef(null);
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current);
   const { openConfirm } = useNotificationCenter();
@@ -100,9 +104,36 @@ function FilesystemPanel({
     onDragEnd: dnd.handleDragEnd,
     onDragCancel: dnd.handleDragCancel,
   });
-  const activeDragEntries = entries.filter(
-    (entry) => dnd.activeDragPaths.includes(entry.path),
+  const selectedPathSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
+  const selectedEntryPathSet = useMemo(
+    () => new Set(selectedEntryPaths),
+    [selectedEntryPaths],
   );
+  const activeDragPathSet = useMemo(() => new Set(dnd.activeDragPaths), [dnd.activeDragPaths]);
+  const activeDragEntries = useMemo(() => entries.filter(
+    (entry) => activeDragPathSet.has(entry.path),
+  ), [activeDragPathSet, entries]);
+  const isEntryWindowingEnabled =
+    isBrowsing && entries.length >= ENTRY_WINDOWING_THRESHOLD;
+  const {
+    startIndex: virtualStartIndex,
+    endIndex: virtualEndIndex,
+    topSpacerHeight,
+    bottomSpacerHeight,
+    scheduleRecompute: scheduleEntryWindowRecompute,
+  } = useVirtualizedEntryWindow({
+    itemCount: entries.length,
+    rowHeightPx: ENTRY_ROW_HEIGHT_PX,
+    isEnabled: isEntryWindowingEnabled,
+    scrollContainerRef: panelListRef,
+    listStartAnchorRef: entryWindowAnchorRef,
+  });
+  const visibleEntries = useMemo(() => entries.slice(virtualStartIndex, virtualEndIndex), [
+    entries,
+    virtualEndIndex,
+    virtualStartIndex,
+  ]);
+  const renderedEntries = isEntryWindowingEnabled ? visibleEntries : entries;
   const activeDragEntry = activeDragEntries[0] ?? null;
   const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
   const upDestinationPath =
@@ -130,6 +161,16 @@ function FilesystemPanel({
       selectedPaths: normalizedPaths,
     });
   }, [onTabSelectedFilesChange, tabId]);
+  const handleEntryClick = useCallback((entryPath, event) => {
+    const nextSelectedEntryPaths = selectEntry(entryPath, {
+      additive: event.metaKey || event.ctrlKey,
+      range: event.shiftKey,
+    });
+    emitTabSelectedFiles(nextSelectedEntryPaths);
+  }, [emitTabSelectedFiles, selectEntry]);
+  const handleEntryDoubleClick = useCallback((entry) => {
+    openEntry(entry);
+  }, [openEntry]);
 
   useEffect(() => {
     onCurrentPathChange?.(currentPath);
@@ -185,6 +226,10 @@ function FilesystemPanel({
     isEntryOperationInProgress,
     selectedEntryPaths.length,
   ]);
+  const handlePanelScroll = useCallback((event) => {
+    handlePanelListScroll(event);
+    scheduleEntryWindowRecompute();
+  }, [handlePanelListScroll, scheduleEntryWindowRecompute]);
 
   return <section
     ref={setPanelNodeRef}
@@ -209,7 +254,7 @@ function FilesystemPanel({
     <div
       ref={panelListRef}
       className={styles.panelList}
-      onScroll={handlePanelListScroll}
+      onScroll={handlePanelScroll}
       data-testid="filesystem-panel-list"
     >
 
@@ -219,7 +264,7 @@ function FilesystemPanel({
             key={drive.path}
             label={drive.name}
             meta={drive.path}
-            isSelected={selectedPaths.includes(drive.path)}
+            isSelected={selectedPathSet.has(drive.path)}
             onClick={() => setSelectedPath(drive.path)}
             onDoubleClick={() => selectDrive(drive.path)}
           />)}
@@ -241,33 +286,43 @@ function FilesystemPanel({
             <ul className={styles.entryList}>
               <UpEntryDropTarget
                 destinationPath={upDestinationPath}
-                isSelected={selectedPaths.includes(UP_ENTRY_SELECTION_ID)}
+                isSelected={selectedPathSet.has(UP_ENTRY_SELECTION_ID)}
                 isMovingEntry={isEntryOperationInProgress}
                 activeDragPaths={dnd.activeDragPaths}
                 onClick={() => setSelectedPath(UP_ENTRY_SELECTION_ID)}
                 onDoubleClick={goUp}
               />
-              {entries.map((entry) => <DraggableFilesystemEntry
+              <li
+                ref={entryWindowAnchorRef}
+                className={styles.windowingAnchor}
+                aria-hidden
+              />
+              {isEntryWindowingEnabled && topSpacerHeight > 0 && (
+                <li
+                  className={styles.windowingSpacer}
+                  style={{ height: `${topSpacerHeight}px` }}
+                  aria-hidden
+                />
+              )}
+              {renderedEntries.map((entry) => <DraggableFilesystemEntry
                 key={entry.path}
                 paneId={paneId}
                 entry={entry}
-                dragPaths={
-                  selectedEntryPaths.includes(entry.path)
-                    ? selectedEntryPaths
-                    : [entry.path]
-                }
-                isSelected={selectedPaths.includes(entry.path)}
+                selectedEntryPaths={selectedEntryPaths}
+                isSelectedForDrag={selectedEntryPathSet.has(entry.path)}
+                isSelected={selectedPathSet.has(entry.path)}
                 isMovingEntry={isEntryOperationInProgress}
-                activeDragPaths={dnd.activeDragPaths}
-                onClick={(event) => {
-                  const nextSelectedEntryPaths = selectEntry(entry.path, {
-                    additive: event.metaKey || event.ctrlKey,
-                    range: event.shiftKey,
-                  });
-                  emitTabSelectedFiles(nextSelectedEntryPaths);
-                }}
-                onDoubleClick={() => openEntry(entry)}
+                activeDragPathSet={activeDragPathSet}
+                onEntryClick={handleEntryClick}
+                onEntryDoubleClick={handleEntryDoubleClick}
               />)}
+              {isEntryWindowingEnabled && bottomSpacerHeight > 0 && (
+                <li
+                  className={styles.windowingSpacer}
+                  style={{ height: `${bottomSpacerHeight}px` }}
+                  aria-hidden
+                />
+              )}
             </ul>
           )}
           <DragOverlay dropAnimation={null}>
