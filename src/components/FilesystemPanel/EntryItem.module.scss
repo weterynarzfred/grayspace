@@ -36,21 +36,34 @@
   flex: 1 1 auto;
 }
 
-.entryPreviewPlaceholder {
+.entryIcon,
+.entryThumbnail {
   flex: 0 0 auto;
-  width: 1.75rem;
-  height: 1.75rem;
-  border: 1px solid $border-default;
-  background: $bg-panel;
+  width: 32px;
+  height: 32px;
+}
+
+.entryIcon {
+  color: $text-secondary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &::before {
+    text-align: center;
+    width: 100% !important;
+  }
+
+  &:global(.folder-icon)::before {
+    font-family: fontawesome;
+    font-size: 16px;
+    top: 1px;
+    content: "\f114";
+  }
 }
 
 .entryThumbnail {
-  flex: 0 0 auto;
-  width: 1.75rem;
-  height: 1.75rem;
-  border: 1px solid $border-default;
   object-fit: contain;
-  background: $bg-panel;
 }
 
 .entryName {
@@ -79,7 +92,7 @@
     color: $text-accent;
   }
 
-  .entryPreviewPlaceholder {
+  .entryIcon {
     border-color: $accent;
     background: $bg-accent-2;
   }

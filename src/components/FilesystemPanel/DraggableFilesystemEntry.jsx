@@ -62,6 +62,7 @@ function DraggableFilesystemEntry({
     meta={metaLabel}
     isSelected={isSelected}
     isFile={!entry.is_dir}
+    isDirectory={entry.is_dir}
     isConfig={isConfigEntry}
     isDraggable={!isMovingEntry}
     isDragging={isDragging}

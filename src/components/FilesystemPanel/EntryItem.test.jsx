@@ -90,4 +90,13 @@ describe("EntryItem", () => {
     expect(thumbnail).toBeTruthy();
     expect(thumbnail).toHaveAttribute("src", "asset://localhost/photo.png");
   });
+
+  it("renders a file icon when no thumbnail is available", () => {
+    render(<EntryItem label="notes.rs" meta="File" isFile />);
+
+    const button = screen.getByRole("button", { name: /notes\.rs/i });
+    const icon = button.querySelector(".icon");
+    expect(icon).toBeTruthy();
+    expect(icon.className).toMatch(/\b[a-z0-9_-]+-icon\b/i);
+  });
 });

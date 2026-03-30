@@ -271,6 +271,7 @@ function FilesystemPanel({
             label={drive.name}
             meta={drive.path}
             isSelected={selectedPathSet.has(drive.path)}
+            isDirectory
             onClick={() => setSelectedPath(drive.path)}
             onDoubleClick={() => selectDrive(drive.path)}
           />)}

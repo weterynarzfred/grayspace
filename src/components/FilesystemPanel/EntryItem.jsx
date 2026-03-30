@@ -1,3 +1,5 @@
+import { useMemo } from "react";
+import { resolveFilesystemIconClass } from "./fileIconResolver";
 import styles from "./EntryItem.module.scss";
 
 function EntryItem({
@@ -5,6 +7,7 @@ function EntryItem({
   meta,
   isSelected = false,
   isFile = false,
+  isDirectory = false,
   isConfig = false,
   isDraggable = false,
   isDragging = false,
@@ -24,6 +27,9 @@ function EntryItem({
   onDrop,
 }) {
   const hasDndListeners = Boolean(dndListeners && Object.keys(dndListeners).length > 0);
+  const entryIconClassName = useMemo(() => resolveFilesystemIconClass(label, {
+    isDirectory,
+  }), [isDirectory, label]);
   const buttonClassName = [
     styles.entryButton,
     isSelected ? styles.selected : "",
@@ -64,7 +70,10 @@ function EntryItem({
             draggable={false}
             className={styles.entryThumbnail}
           />
-          : <span className={styles.entryPreviewPlaceholder} aria-hidden />}
+          : <span
+            className={`${styles.entryIcon} icon ${entryIconClassName}`}
+            aria-hidden
+          />}
         <span className={styles.entryName}>{label}</span>
       </span>
       <span className={styles.entryPath}>{meta}</span>
