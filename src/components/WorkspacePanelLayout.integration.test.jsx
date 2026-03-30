@@ -198,6 +198,21 @@ describe("WorkspacePanelLayout integration", () => {
         return null;
       }
 
+      if (command === "thumbnail_resolve_batch") {
+        const items = payload?.request?.items ?? [];
+        return {
+          results: items.map((item, index) => ({
+            sourcePath: item?.sourcePath ?? "",
+            bucketPx: 64,
+            key: `thumb-wpl-${index}`,
+            status: "pending",
+            thumbnailPath: null,
+            mime: null,
+            error: null,
+          })),
+        };
+      }
+
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
         return null;
       }

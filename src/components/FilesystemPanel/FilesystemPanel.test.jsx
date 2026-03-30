@@ -216,6 +216,21 @@ describe("FilesystemPanel", () => {
         return null;
       }
 
+      if (command === "thumbnail_resolve_batch") {
+        const items = payload?.request?.items ?? [];
+        return {
+          results: items.map((item, index) => ({
+            sourcePath: item?.sourcePath ?? "",
+            bucketPx: 64,
+            key: `thumb-${index}`,
+            status: "pending",
+            thumbnailPath: null,
+            mime: null,
+            error: null,
+          })),
+        };
+      }
+
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
         return null;
       }
@@ -837,6 +852,20 @@ describe("FilesystemPanel", () => {
         || command === "start_external_drag"
       ) {
         return null;
+      }
+      if (command === "thumbnail_resolve_batch") {
+        const items = payload?.request?.items ?? [];
+        return {
+          results: items.map((item, index) => ({
+            sourcePath: item?.sourcePath ?? "",
+            bucketPx: 64,
+            key: `thumb-large-${index}`,
+            status: "pending",
+            thumbnailPath: null,
+            mime: null,
+            error: null,
+          })),
+        };
       }
       throw new Error(`Unhandled invoke: ${command}`);
     });

@@ -9,6 +9,7 @@ function EntryItem({
   isDraggable = false,
   isDragging = false,
   isDropTarget = false,
+  thumbnailSrc = "",
   buttonRef,
   buttonStyle,
   dndAttributes,
@@ -55,7 +56,15 @@ function EntryItem({
       onDrop={onDrop}
     >
       <span className={styles.entryMain}>
-        <span className={styles.entryPreviewPlaceholder} aria-hidden />
+        {thumbnailSrc
+          ? <img
+            src={thumbnailSrc}
+            alt=""
+            aria-hidden
+            draggable={false}
+            className={styles.entryThumbnail}
+          />
+          : <span className={styles.entryPreviewPlaceholder} aria-hidden />}
         <span className={styles.entryName}>{label}</span>
       </span>
       <span className={styles.entryPath}>{meta}</span>

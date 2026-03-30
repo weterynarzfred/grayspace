@@ -353,8 +353,7 @@ pub(super) fn close_layout_leaf(
 mod tests {
     use super::{
         close_layout_leaf, count_layout_leaves, layout_contains_pane, split_layout_leaf,
-        update_layout_split_ratio, update_pane_filesystem_state,
-        update_pane_panel_type,
+        update_layout_split_ratio, update_pane_filesystem_state, update_pane_panel_type,
         update_tab_selected_files, update_tab_workspace_root,
     };
     use crate::commands::workspace::model::WorkspaceModel;

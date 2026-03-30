@@ -1,6 +1,6 @@
 use super::{
-    delete_paths, filesystem_get_properties, handle_move_rename_error, import_paths, list_directory,
-    move_path, parent_path,
+    delete_paths, filesystem_get_properties, handle_move_rename_error, import_paths,
+    list_directory, move_path, parent_path,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -235,7 +235,10 @@ fn handle_move_rename_error_falls_back_to_copy_and_delete_for_file() {
     handle_move_rename_error(&source_file, &destination_file, rename_error)
         .expect("cross-device fallback should copy and delete source file");
 
-    assert!(!source_file.exists(), "source file should be removed after fallback");
+    assert!(
+        !source_file.exists(),
+        "source file should be removed after fallback"
+    );
     assert!(
         destination_file.exists(),
         "destination file should exist after fallback"
@@ -261,7 +264,10 @@ fn handle_move_rename_error_falls_back_to_copy_and_delete_for_directory() {
     handle_move_rename_error(&source_dir, &destination_path, rename_error)
         .expect("cross-device fallback should copy and delete source directory");
 
-    assert!(!source_dir.exists(), "source directory should be removed after fallback");
+    assert!(
+        !source_dir.exists(),
+        "source directory should be removed after fallback"
+    );
     assert!(
         destination_path.join("root.txt").exists(),
         "destination directory should contain copied root file"
@@ -289,9 +295,15 @@ fn handle_move_rename_error_returns_original_error_when_not_cross_device() {
     let rename_error = std::io::Error::from_raw_os_error(NON_CROSS_DEVICE_ERROR_CODE);
     let result = handle_move_rename_error(&source_file, &destination_file, rename_error);
 
-    assert!(result.is_err(), "non cross-device errors should be returned");
+    assert!(
+        result.is_err(),
+        "non cross-device errors should be returned"
+    );
     assert!(source_file.exists(), "source file should remain in place");
-    assert!(!destination_file.exists(), "destination file should not be created");
+    assert!(
+        !destination_file.exists(),
+        "destination file should not be created"
+    );
 
     fs::remove_dir_all(&test_root).expect("should clean up temp root");
 }

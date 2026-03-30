@@ -3,23 +3,25 @@ mod commands;
 use tauri::Manager;
 
 use commands::filesystem::{
-    delete_paths, filesystem_watch_start, filesystem_watch_stop,
-    filesystem_get_properties, handle_filesystem_window_destroyed, import_paths, list_directory,
-    list_drives, move_path, open_path, parent_path, start_external_drag, FilesystemWatchState,
+    delete_paths, filesystem_get_properties, filesystem_watch_start, filesystem_watch_stop,
+    handle_filesystem_window_destroyed, import_paths, list_directory, list_drives, move_path,
+    open_path, parent_path, start_external_drag, FilesystemWatchState,
 };
 use commands::preview::{preview_read_file, preview_write_text_file};
 use commands::terminal::{
     terminal_resize, terminal_run_command, terminal_set_cwd, terminal_start, terminal_stop,
     terminal_write, TerminalState,
 };
+use commands::thumbnail::{
+    thumbnail_clear_cache, thumbnail_prune_cache, thumbnail_resolve_batch, ThumbnailState,
+};
 use commands::workspace::{
     handle_runtime_window_destroyed, workspace_bootstrap, workspace_close_tab,
     workspace_close_tab_pane, workspace_close_window, workspace_detach_tab_to_new_window,
     workspace_get_snapshot, workspace_move_tab, workspace_new_tab, workspace_new_window,
     workspace_read_folder_config, workspace_set_active_tab, workspace_set_tab_active_pane,
-    workspace_set_tab_layout_split_ratio,
-    workspace_set_tab_pane_filesystem_state, workspace_set_tab_panel_type,
-    workspace_set_tab_selected_files, workspace_set_tab_terminal_cwd,
+    workspace_set_tab_layout_split_ratio, workspace_set_tab_pane_filesystem_state,
+    workspace_set_tab_panel_type, workspace_set_tab_selected_files, workspace_set_tab_terminal_cwd,
     workspace_set_tab_workspace_root, workspace_set_window_bounds, workspace_split_tab_pane,
     WorkspaceState,
 };
@@ -30,6 +32,7 @@ pub fn run() {
         .manage(TerminalState::default())
         .manage(WorkspaceState::default())
         .manage(FilesystemWatchState::default())
+        .manage(ThumbnailState::default())
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 let app_handle = window.app_handle();
@@ -56,6 +59,9 @@ pub fn run() {
             import_paths,
             preview_read_file,
             preview_write_text_file,
+            thumbnail_resolve_batch,
+            thumbnail_prune_cache,
+            thumbnail_clear_cache,
             filesystem_watch_start,
             filesystem_watch_stop,
             start_external_drag,

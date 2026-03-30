@@ -11,6 +11,7 @@ function DraggableFilesystemEntry({
   isSelected,
   isMovingEntry,
   activeDragPathSet = undefined,
+  thumbnailSrc = "",
   onEntryClick,
   onEntryDoubleClick,
 }) {
@@ -65,6 +66,7 @@ function DraggableFilesystemEntry({
     isDraggable={!isMovingEntry}
     isDragging={isDragging}
     isDropTarget={isDropTarget}
+    thumbnailSrc={!entry.is_dir ? thumbnailSrc : ""}
     buttonRef={setNodeRef}
     dndAttributes={attributes}
     dndListeners={listeners}

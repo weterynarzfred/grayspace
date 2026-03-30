@@ -24,3 +24,10 @@ serde_json = "1"
 portable-pty = "0.8"
 drag = "2.1.0"
 notify = "6.1"
+image = { version = "0.25", default-features = true }
+fast_image_resize = "5"
+sha2 = "0.10"
+webp = "0.3"
+
+[profile.dev.package."*"]
+opt-level = 2

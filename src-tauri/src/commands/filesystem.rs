@@ -268,7 +268,9 @@ pub fn move_path(source: &str, destination_dir: &str) -> Result<(), String> {
 
     match fs::rename(&source_path, &destination_path) {
         Ok(()) => Ok(()),
-        Err(rename_error) => handle_move_rename_error(&source_path, &destination_path, rename_error),
+        Err(rename_error) => {
+            handle_move_rename_error(&source_path, &destination_path, rename_error)
+        }
     }
 }
 

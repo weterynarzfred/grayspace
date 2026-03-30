@@ -9,9 +9,9 @@ use super::super::types::{
 };
 use super::basic_support::{
     close_layout_leaf, count_layout_leaves, find_first_layout_pane_id, layout_contains_pane,
-    select_tab_pane, select_tab_pane_mut, split_layout_leaf,
-    update_layout_split_ratio, update_pane_filesystem_state, update_pane_panel_type,
-    update_tab_selected_files, update_tab_workspace_root,
+    select_tab_pane, select_tab_pane_mut, split_layout_leaf, update_layout_split_ratio,
+    update_pane_filesystem_state, update_pane_panel_type, update_tab_selected_files,
+    update_tab_workspace_root,
 };
 use crate::commands::terminal::{stop_terminal_session_by_id, TerminalState};
 use std::fs;
@@ -284,7 +284,8 @@ pub fn workspace_set_tab_layout_split_ratio(
             .get_mut(&payload.tab_id)
             .ok_or_else(|| "Tab not found.".to_string())?;
 
-        let changed = update_layout_split_ratio(&mut tab.layout, &payload.split_path, payload.ratio)?;
+        let changed =
+            update_layout_split_ratio(&mut tab.layout, &payload.split_path, payload.ratio)?;
         if changed {
             model.bump_revision();
         }

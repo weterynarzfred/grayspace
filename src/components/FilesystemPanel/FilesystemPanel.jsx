@@ -13,6 +13,7 @@ import useExternalFilesystemDrop from "./hooks/useExternalFilesystemDrop";
 import useExternalFilesystemDrag from "./hooks/useExternalFilesystemDrag";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import useFilesystemStatePersistence from "./hooks/useFilesystemStatePersistence";
+import useFilesystemThumbnails from "./hooks/useFilesystemThumbnails";
 import useVirtualizedEntryWindow from "./hooks/useVirtualizedEntryWindow";
 import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
@@ -134,6 +135,11 @@ function FilesystemPanel({
     virtualStartIndex,
   ]);
   const renderedEntries = isEntryWindowingEnabled ? visibleEntries : entries;
+  const { thumbnailSrcByPath } = useFilesystemThumbnails({
+    currentPath,
+    entries,
+    visibleEntries: renderedEntries,
+  });
   const activeDragEntry = activeDragEntries[0] ?? null;
   const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
   const upDestinationPath =
@@ -313,6 +319,7 @@ function FilesystemPanel({
                 isSelected={selectedPathSet.has(entry.path)}
                 isMovingEntry={isEntryOperationInProgress}
                 activeDragPathSet={activeDragPathSet}
+                thumbnailSrc={thumbnailSrcByPath[entry.path] ?? ""}
                 onEntryClick={handleEntryClick}
                 onEntryDoubleClick={handleEntryDoubleClick}
               />)}

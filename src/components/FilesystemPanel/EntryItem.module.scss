@@ -38,10 +38,18 @@
 
 .entryPreviewPlaceholder {
   flex: 0 0 auto;
-  width: 0.8rem;
-  height: 0.8rem;
+  width: 1.75rem;
+  height: 1.75rem;
   border: 1px solid $border-default;
-  border-radius: 2px;
+  background: $bg-panel;
+}
+
+.entryThumbnail {
+  flex: 0 0 auto;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid $border-default;
+  object-fit: contain;
   background: $bg-panel;
 }
 
@@ -72,6 +80,11 @@
   }
 
   .entryPreviewPlaceholder {
+    border-color: $accent;
+    background: $bg-accent-2;
+  }
+
+  .entryThumbnail {
     border-color: $accent;
     background: $bg-accent-2;
   }

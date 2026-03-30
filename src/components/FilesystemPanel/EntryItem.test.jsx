@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import EntryItem from "./EntryItem";
 
 describe("EntryItem", () => {
@@ -73,5 +73,21 @@ describe("EntryItem", () => {
     const button = screen.getByRole("button", { name: /\.grayspace/i });
     expect(button.className).toMatch(/configEntry/i);
     expect(screen.getByText("config")).toBeInTheDocument();
+  });
+
+  it("renders a thumbnail image when thumbnailSrc is provided", () => {
+    render(
+      <EntryItem
+        label="photo.png"
+        meta="File"
+        isFile
+        thumbnailSrc="asset://localhost/photo.png"
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: /photo\.png/i });
+    const thumbnail = button.querySelector("img");
+    expect(thumbnail).toBeTruthy();
+    expect(thumbnail).toHaveAttribute("src", "asset://localhost/photo.png");
   });
 });
