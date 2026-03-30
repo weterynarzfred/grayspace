@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    grayspace_app_lib::run()
+  grayspace_app_lib::run()
 }
