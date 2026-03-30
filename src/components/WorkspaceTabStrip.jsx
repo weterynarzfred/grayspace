@@ -1,7 +1,13 @@
-import { useEffect, useRef, useState } from "react";
 import { DragOverlay } from "@dnd-kit/core";
 import WorkspaceTabItem from "./WorkspaceTabItem";
 import styles from "./WorkspaceTabStrip.module.scss";
+
+function getNotificationToneClassName(tone) {
+  if (tone === "error") return styles.notificationToneError;
+  if (tone === "warning") return styles.notificationToneWarning;
+  if (tone === "success") return styles.notificationToneSuccess;
+  return styles.notificationToneInfo;
+}
 
 function WorkspaceTabStrip({
   tabs,
@@ -10,7 +16,6 @@ function WorkspaceTabStrip({
   onActivateTab,
   onCloseTab,
   onCreateTab,
-  onCreateWindow,
   notifications = [],
   isNotificationsOpen = false,
   onToggleNotifications = undefined,
@@ -18,7 +23,6 @@ function WorkspaceTabStrip({
   onResolveNotificationConfirm = undefined,
 }) {
   const activeTabTitle = tabs.find(tab => tab.tabId === activeDragTabId)?.title ?? "";
-  const notificationsButtonRef = useRef(null);
   const hasNotifications = notifications.length > 0;
 
   return <header className={styles.tabStrip}>
@@ -37,7 +41,6 @@ function WorkspaceTabStrip({
       </button>
     </div>
     <button
-      ref={notificationsButtonRef}
       type="button"
       className={`${styles.notificationsButton} ${hasNotifications ? styles.notificationsButtonAlert : ""}`}
       onClick={() => onToggleNotifications?.()}
@@ -50,7 +53,7 @@ function WorkspaceTabStrip({
       {notifications.length === 0 ? <p className={styles.notificationsEmpty}>No notifications.</p> : null}
       {notifications.map(notification => <article
         key={notification.id}
-        className={`${styles.notificationCard} ${styles[`notificationTone${notification.tone === "error" ? "Error" : notification.tone === "warning" ? "Warning" : notification.tone === "success" ? "Success" : "Info"}`]}`}
+        className={`${styles.notificationCard} ${getNotificationToneClassName(notification.tone)}`}
       >
         <h3 className={styles.notificationTitle}>{notification.title || "Notification"}</h3>
         {notification.message ? <p className={styles.notificationMessage}>{notification.message}</p> : null}

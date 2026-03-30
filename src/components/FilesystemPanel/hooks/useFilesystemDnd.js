@@ -22,6 +22,11 @@ function useFilesystemDnd({
   const copyModifierPressedRef = useRef(false);
   const modifierTrackingCleanupRef = useRef(null);
 
+  function clearDragState() {
+    setActiveDragPaths([]);
+    setOwnedDragPaths([]);
+  }
+
   function startModifierTracking(initialCtrlKey = false) {
     stopModifierTracking();
     copyModifierPressedRef.current = Boolean(initialCtrlKey);
@@ -122,8 +127,7 @@ function useFilesystemDnd({
     externalDragStartedRef.current = false;
     const sourcePath = getEventSourcePath(event);
     if (!sourcePath) {
-      setActiveDragPaths([]);
-      setOwnedDragPaths([]);
+      clearDragState();
       return;
     }
 
@@ -155,8 +159,7 @@ function useFilesystemDnd({
       || destinationTarget.isDirectory === true
       || localDestinationEntry?.is_dir === true;
 
-    setActiveDragPaths([]);
-    setOwnedDragPaths([]);
+    clearDragState();
     stopModifierTracking();
     if (!isOwner) {
       return;
@@ -190,23 +193,20 @@ function useFilesystemDnd({
   }
 
   function handleDragCancel() {
-    setActiveDragPaths([]);
-    setOwnedDragPaths([]);
+    clearDragState();
     externalDragStartedRef.current = false;
     stopModifierTracking();
   }
 
   function markExternalDragStart() {
     externalDragStartedRef.current = true;
-    setActiveDragPaths([]);
-    setOwnedDragPaths([]);
+    clearDragState();
     stopModifierTracking();
   }
 
   function clearExternalDragStart() {
     externalDragStartedRef.current = false;
-    setActiveDragPaths([]);
-    setOwnedDragPaths([]);
+    clearDragState();
     stopModifierTracking();
   }
 

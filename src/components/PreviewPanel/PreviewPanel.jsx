@@ -43,21 +43,10 @@ function PreviewPanel({
         {isLocked ? previewLabel : <em>{previewLabel}</em>}
       </p> : null}
 
-      {!previewPath ? (
-        <p className={styles.muted}>Select a file to preview.</p>
-      ) : null}
-
-      {previewPath && previewState.status === "loading" ? (
-        <p className={styles.muted}>Loading preview...</p>
-      ) : null}
-
-      {previewPath && previewState.status === "error" ? (
-        <p className={styles.error}>{previewState.error}</p>
-      ) : null}
-
-      {saveStatusMessage ? (
-        <p className={saveStatus === "error" ? styles.error : styles.muted}>{saveStatusMessage}</p>
-      ) : null}
+      {!previewPath ? <p className={styles.muted}>Select a file to preview.</p> : null}
+      {previewPath && previewState.status === "loading" ? <p className={styles.muted}>Loading preview...</p> : null}
+      {previewPath && previewState.status === "error" ? <p className={styles.error}>{previewState.error}</p> : null}
+      {saveStatusMessage ? <p className={saveStatus === "error" ? styles.error : styles.muted}>{saveStatusMessage}</p> : null}
 
       {previewPath ? <div className={styles.previewActions}>
         <button

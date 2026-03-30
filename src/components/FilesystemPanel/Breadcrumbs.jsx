@@ -32,16 +32,14 @@ export function buildBreadcrumbs(currentPath, currentDrive) {
 }
 
 function StaticCrumbButton({ crumb, index, onSelect }) {
-  return (
-    <button
-      type="button"
-      className={styles.crumbButton}
-      onClick={() => onSelect(crumb.path)}
-    >
-      {index > 0 && <span className={styles.crumbSeparator}>/</span>}
-      <span>{crumb.label}</span>
-    </button>
-  );
+  return <button
+    type="button"
+    className={styles.crumbButton}
+    onClick={() => onSelect(crumb.path)}
+  >
+    {index > 0 && <span className={styles.crumbSeparator}>/</span>}
+    <span>{crumb.label}</span>
+  </button>;
 }
 
 function DroppableCrumbButton({
@@ -63,17 +61,15 @@ function DroppableCrumbButton({
     activeDragPaths.length > 0 &&
     !activeDragPaths.includes(crumb.path);
 
-  return (
-    <button
-      ref={setNodeRef}
-      type="button"
-      className={`${styles.crumbButton} ${isDropTarget ? styles.dropTarget : ""}`}
-      onClick={() => onSelect(crumb.path)}
-    >
-      {index > 0 && <span className={styles.crumbSeparator}>/</span>}
-      <span>{crumb.label}</span>
-    </button>
-  );
+  return <button
+    ref={setNodeRef}
+    type="button"
+    className={`${styles.crumbButton} ${isDropTarget ? styles.dropTarget : ""}`}
+    onClick={() => onSelect(crumb.path)}
+  >
+    {index > 0 && <span className={styles.crumbSeparator}>/</span>}
+    <span>{crumb.label}</span>
+  </button>;
 }
 
 function Breadcrumbs({
@@ -87,30 +83,24 @@ function Breadcrumbs({
   const crumbs = buildBreadcrumbs(currentPath, currentDrive);
   const hasDropTargets = typeof getDropIdForPath === "function";
 
-  return (
-    <nav className={styles.breadcrumbs} aria-label="Current path">
-      {crumbs.map((crumb, index) => (
-        hasDropTargets ? (
-          <DroppableCrumbButton
-            key={`${crumb.path}-${index}`}
-            crumb={crumb}
-            index={index}
-            onSelect={onSelect}
-            isMovingEntry={isMovingEntry}
-            activeDragPaths={activeDragPaths}
-            dropId={getDropIdForPath(crumb.path)}
-          />
-        ) : (
-          <StaticCrumbButton
-            key={`${crumb.path}-${index}`}
-            crumb={crumb}
-            index={index}
-            onSelect={onSelect}
-          />
-        )
-      ))}
-    </nav>
-  );
+  return <nav className={styles.breadcrumbs} aria-label="Current path">
+    {crumbs.map((crumb, index) =>
+      hasDropTargets ? <DroppableCrumbButton
+        key={`${crumb.path}-${index}`}
+        crumb={crumb}
+        index={index}
+        onSelect={onSelect}
+        isMovingEntry={isMovingEntry}
+        activeDragPaths={activeDragPaths}
+        dropId={getDropIdForPath(crumb.path)}
+      /> : <StaticCrumbButton
+        key={`${crumb.path}-${index}`}
+        crumb={crumb}
+        index={index}
+        onSelect={onSelect}
+      />
+    )}
+  </nav>;
 }
 
 export default Breadcrumbs;

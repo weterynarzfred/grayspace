@@ -40,6 +40,10 @@ function normalizeInitialFilesystemState(initialState) {
   };
 }
 
+function getErrorMessage(error, fallbackMessage) {
+  return error instanceof Error && error.message ? error.message : fallbackMessage;
+}
+
 function useFilesystemNavigation(initialFilesystemState = undefined) {
   const initialStateRef = useRef(
     normalizeInitialFilesystemState(initialFilesystemState),
@@ -87,7 +91,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
 
   const handleWatcherError = useCallback((watchError, watchedPath) => {
     if (currentPathRef.current !== watchedPath) return;
-    setError(watchError instanceof Error ? watchError.message : "Failed to refresh folder.");
+    setError(getErrorMessage(watchError, "Failed to refresh folder."));
   }, []);
 
   function clearSelection() {
@@ -108,7 +112,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
         const availableDrives = await invoke("list_drives");
         setDrives(availableDrives);
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load drives.");
+        setError(getErrorMessage(loadError, "Failed to load drives."));
       } finally {
         setIsLoadingDrives(false);
       }
@@ -137,8 +141,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
           applyLoadedEntries(nextEntries);
         }
       } catch (loadError) {
-        if (!cancelled)
-          setError(loadError instanceof Error ? loadError.message : "Failed to load folder contents.");
+        if (!cancelled) setError(getErrorMessage(loadError, "Failed to load folder contents."));
       } finally {
         if (!cancelled) setIsLoadingEntries(false);
       }
@@ -210,7 +213,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
       clearSelection();
       setError("");
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to navigate to parent folder.");
+      setError(getErrorMessage(loadError, "Failed to navigate to parent folder."));
     }
   }
 
@@ -261,7 +264,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     try {
       await invoke("open_path", { path: entry.path });
     } catch (openError) {
-      setError(openError instanceof Error ? openError.message : "Failed to open file.");
+      setError(getErrorMessage(openError, "Failed to open file."));
     }
   }
 
@@ -283,7 +286,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
         movedPaths.push(sourcePath);
       }
     } catch (moveError) {
-      setError(moveError instanceof Error ? moveError.message : "Failed to move item.");
+      setError(getErrorMessage(moveError, "Failed to move item."));
       moveErrorToThrow = moveError;
     } finally {
       if (activePath && movedPaths.length > 0) {
@@ -291,7 +294,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
           await refreshEntriesForPath(activePath);
         } catch (refreshError) {
           if (!moveErrorToThrow) {
-            setError(refreshError instanceof Error ? refreshError.message : "Failed to refresh folder.");
+            setError(getErrorMessage(refreshError, "Failed to refresh folder."));
             moveErrorToThrow = refreshError;
           }
         }
@@ -326,7 +329,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     try {
       await invoke("import_paths", { paths: normalizedSourcePaths, destinationDir });
     } catch (copyError) {
-      setError(copyError instanceof Error ? copyError.message : "Failed to copy item.");
+      setError(getErrorMessage(copyError, "Failed to copy item."));
       copyErrorToThrow = copyError;
     } finally {
       if (activePath) {
@@ -334,7 +337,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
           await refreshEntriesForPath(activePath);
         } catch (refreshError) {
           if (!copyErrorToThrow) {
-            setError(refreshError instanceof Error ? refreshError.message : "Failed to refresh folder.");
+            setError(getErrorMessage(refreshError, "Failed to refresh folder."));
             copyErrorToThrow = refreshError;
           }
         }
@@ -344,10 +347,6 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     }
 
     if (copyErrorToThrow) throw copyErrorToThrow;
-  }
-
-  async function moveEntry(sourcePath, destinationDir) {
-    await moveEntries([sourcePath], destinationDir);
   }
 
   async function deleteEntries(paths) {
@@ -373,7 +372,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
         ));
       }
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete item.");
+      setError(getErrorMessage(deleteError, "Failed to delete item."));
       throw deleteError;
     } finally {
       setIsDeletingEntries(false);
@@ -396,7 +395,7 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
         clearSelection();
       }
     } catch (importError) {
-      setError(importError instanceof Error ? importError.message : "Failed to import dropped items.");
+      setError(getErrorMessage(importError, "Failed to import dropped items."));
       throw importError;
     } finally {
       setIsImportingExternal(false);
@@ -422,7 +421,6 @@ function useFilesystemNavigation(initialFilesystemState = undefined) {
     goUp,
     selectEntry,
     openEntry,
-    moveEntry,
     moveEntries,
     copyEntries,
     deleteEntries,

@@ -5,7 +5,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { createContext, useContext, useEffect, useMemo, useRef } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef } from "react";
 
 const PanelsDndHandlersContext = createContext(null);
 
@@ -24,7 +24,7 @@ function PanelsDndLayer({ children }) {
     }),
   );
 
-  const registerHandlers = useMemo(() => handlers => {
+  const registerHandlers = useCallback(handlers => {
     handlerEntriesRef.current.add(handlers);
     return () => { handlerEntriesRef.current.delete(handlers); };
   }, []);
@@ -55,7 +55,7 @@ export function usePanelsDndHandlers(handlers) {
       onDragEnd: event => handlersRef.current.onDragEnd?.(event),
       onDragCancel: event => handlersRef.current.onDragCancel?.(event),
     });
-  }, [registerHandlers],);
+  }, [registerHandlers]);
 }
 
 export default PanelsDndLayer;

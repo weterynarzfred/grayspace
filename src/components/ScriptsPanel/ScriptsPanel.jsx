@@ -6,7 +6,7 @@ import shellStyles from "../PanelShell.module.scss";
 import styles from "./ScriptsPanel.module.scss";
 
 function getErrorMessage(error) {
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string") return error;
   return "Unknown scripts error.";
 }
@@ -32,7 +32,7 @@ function parseScriptsFromFolderConfig(rawConfigText) {
     }));
 }
 
-function ScriptsPanel({
+export default function ScriptsPanel({
   panelType = "Scripts",
   onPanelTypeChange = undefined,
   cwdHint = "",
@@ -85,7 +85,7 @@ function ScriptsPanel({
     };
   }, [cwdHint]);
 
-  const handleRunScript = useCallback(async (scriptName, command) => {
+  const handleRunScript = useCallback(async (name, command) => {
     if (!terminalSessionId) {
       setStatus("Terminal session unavailable for this pane.");
       return;
@@ -99,41 +99,29 @@ function ScriptsPanel({
         command,
       });
     } catch (error) {
-      setStatus(
-        `Failed to run "${scriptName}": ${getErrorMessage(error)}`,
-      );
+      setStatus(`Failed to run "${name}": ${getErrorMessage(error)}`);
     }
   }, [onPanelTypeChange, terminalSessionId]);
 
-  return (
-    <section className={shellStyles.panelContent} aria-label="Scripts panel">
-      <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
-        <span className={styles.cwdLabel} title={cwdHint || "No folder selected"}>
-          {cwdHint || "No folder selected"}
-        </span>
-      </PanelHeader>
-      <div className={`${shellStyles.panelBody} ${styles.panelBody}`}>
-        <h2 className={styles.title}>Scripts panel</h2>
-        {status ? <p className={styles.status}>{status}</p> : null}
-        {scripts.length ? (
-          <ul className={styles.scriptList}>
-            {scripts.map((script) => (
-              <li key={script.name} className={styles.scriptItem}>
-                <button
-                  type="button"
-                  className={styles.scriptButton}
-                  onClick={() => handleRunScript(script.name, script.command)}
-                >
-                  {script.name}
-                </button>
-                <code className={styles.command}>{script.command}</code>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
-    </section>
-  );
+  return <section className={shellStyles.panelContent} aria-label="Scripts panel">
+    <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
+      <span className={styles.cwdLabel} title={cwdHint || "No folder selected"}>
+        {cwdHint || "No folder selected"}
+      </span>
+    </PanelHeader>
+    <div className={`${shellStyles.panelBody} ${styles.panelBody}`}>
+      <h2 className={styles.title}>Scripts panel</h2>
+      {status ? <p className={styles.status}>{status}</p> : null}
+      {scripts.length ? <ul className={styles.scriptList}>
+        {scripts.map((script) => <li key={script.name} className={styles.scriptItem}>
+          <button
+            type="button"
+            className={styles.scriptButton}
+            onClick={() => handleRunScript(script.name, script.command)}
+          >{script.name}</button>
+          <code className={styles.command}>{script.command}</code>
+        </li>)}
+      </ul> : null}
+    </div>
+  </section>;
 }
-
-export default ScriptsPanel;

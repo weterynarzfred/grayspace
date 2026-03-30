@@ -17,7 +17,6 @@ export default function useWorkspaceLifecycle({
     let unlistenWorkspaceUpdated = null;
     let unlistenMoved = null;
     let unlistenResized = null;
-    const ignoreSyncBoundsError = () => {};
 
     const syncBounds = async (appWindow, windowId) => {
       if (!windowId) return;
@@ -42,7 +41,7 @@ export default function useWorkspaceLifecycle({
       await syncBounds(appWindow, bootstrap.windowId);
 
       const syncCurrentWindowBounds = () => {
-        syncBounds(appWindow, currentWindowIdRef.current).catch(ignoreSyncBoundsError);
+        syncBounds(appWindow, currentWindowIdRef.current).catch(() => {});
       };
 
       unlistenMoved = await appWindow.onMoved(syncCurrentWindowBounds);

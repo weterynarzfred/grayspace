@@ -35,31 +35,29 @@ function EntryItem({
     .filter(Boolean)
     .join(" ");
 
-  return (
-    <li className={styles.entryItem}>
-      <button
-        ref={buttonRef}
-        type="button"
-        className={buttonClassName}
-        aria-selected={isSelected}
-        draggable={isDraggable && !hasDndListeners}
-        style={buttonStyle}
-        {...dndAttributes}
-        {...dndListeners}
-        onClick={onClick}
-        onDoubleClick={onDoubleClick}
-        onDragStart={onDragStart}
-        onDragEnd={onDragEnd}
-        onDragOver={onDragOver}
-        onDragEnter={onDragEnter}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-      >
-        <span className={styles.entryName}>{label}</span>
-        <span className={styles.entryPath}>{meta}</span>
-      </button>
-    </li>
-  );
+  return <li className={styles.entryItem}>
+    <button
+      ref={buttonRef}
+      type="button"
+      className={buttonClassName}
+      aria-selected={isSelected}
+      draggable={isDraggable && !hasDndListeners}
+      style={buttonStyle}
+      {...dndAttributes}
+      {...dndListeners}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      <span className={styles.entryName}>{label}</span>
+      <span className={styles.entryPath}>{meta}</span>
+    </button>
+  </li>;
 }
 
 export default EntryItem;

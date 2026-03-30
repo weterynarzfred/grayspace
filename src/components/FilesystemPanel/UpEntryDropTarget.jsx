@@ -20,17 +20,15 @@ function UpEntryDropTarget({
     activeDragPaths.length > 0 &&
     !activeDragPaths.includes(destinationPath);
 
-  return (
-    <EntryItem
-      label=".."
-      meta="Up"
-      isSelected={isSelected}
-      isDropTarget={isDropTarget}
-      buttonRef={setNodeRef}
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-    />
-  );
+  return <EntryItem
+    label=".."
+    meta="Up"
+    isSelected={isSelected}
+    isDropTarget={isDropTarget}
+    buttonRef={setNodeRef}
+    onClick={onClick}
+    onDoubleClick={onDoubleClick}
+  />;
 }
 
 export default UpEntryDropTarget;

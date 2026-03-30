@@ -34,7 +34,7 @@ function WorkspaceTabItem({ tab, isActive, onActivate, onClose }) {
         onClose(tab.tabId);
       }}
       aria-label={`Close ${tab.title}`}
-    >×</button>
+    >&times;</button>
   </div>;
 }
 

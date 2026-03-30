@@ -101,26 +101,24 @@ function CodeTextPreview({
     return nextExtensions;
   }, [languageSupport, onSave]);
 
-  return (
-    <CodeMirror
-      key={filePath}
-      value={content}
-      className={className}
-      data-testid="preview-text-content"
-      readOnly={readOnly}
-      editable={!readOnly}
-      basicSetup={{
-        foldGutter: false,
-        dropCursor: false,
-        highlightActiveLine: false,
-        highlightActiveLineGutter: false,
-      }}
-      extensions={extensions}
-      onChange={(nextContent) => {
-        if (typeof onChange === "function") onChange(nextContent);
-      }}
-    />
-  );
+  return <CodeMirror
+    key={filePath}
+    value={content}
+    className={className}
+    data-testid="preview-text-content"
+    readOnly={readOnly}
+    editable={!readOnly}
+    basicSetup={{
+      foldGutter: false,
+      dropCursor: false,
+      highlightActiveLine: false,
+      highlightActiveLineGutter: false,
+    }}
+    extensions={extensions}
+    onChange={(nextContent) => {
+      if (typeof onChange === "function") onChange(nextContent);
+    }}
+  />;
 }
 
 export default CodeTextPreview;

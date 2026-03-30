@@ -35,35 +35,59 @@ function FilesystemPanel({
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current);
   const { openConfirm } = useNotificationCenter();
+  const {
+    currentDrive,
+    currentPath,
+    selectedPaths,
+    selectedEntryPaths,
+    entries,
+    drives,
+    isLoadingDrives,
+    isLoadingEntries,
+    isMovingEntry,
+    isDeletingEntries,
+    isImportingExternal,
+    error,
+    setSelectedPath,
+    selectDrive,
+    navigateToPath,
+    goUp,
+    selectEntry,
+    openEntry,
+    moveEntries,
+    copyEntries,
+    deleteEntries,
+    importExternalPaths,
+  } = nav;
   const { handlePanelListScroll } = useFilesystemStatePersistence({
     tabId,
     paneId,
     onFilesystemStateChange,
     panelListRef,
     initialFilesystemState: initialFilesystemStateRef.current,
-    currentDrive: nav.currentDrive,
-    currentPath: nav.currentPath,
-    selectedPaths: nav.selectedPaths,
+    currentDrive,
+    currentPath,
+    selectedPaths,
   });
-  const isBrowsing = nav.currentPath !== "";
+  const isBrowsing = currentPath !== "";
   const isEntryOperationInProgress =
-    nav.isMovingEntry
-    || nav.isDeletingEntries
-    || nav.isImportingExternal;
+    isMovingEntry
+    || isDeletingEntries
+    || isImportingExternal;
   const isExternalDragEnabled = isBrowsing && !isEntryOperationInProgress;
   const dnd = useFilesystemDnd({
     paneId,
-    entries: nav.entries,
-    selectedPaths: nav.selectedEntryPaths,
-    currentPath: nav.currentPath,
+    entries,
+    selectedPaths: selectedEntryPaths,
+    currentPath,
     isMovingEntry: isEntryOperationInProgress,
-    moveEntries: nav.moveEntries,
-    copyEntries: nav.copyEntries,
+    moveEntries,
+    copyEntries,
   });
   const { isExternalDragOver } = useExternalFilesystemDrop({
     panelRef,
     isEnabled: isExternalDragEnabled,
-    onDropPaths: nav.importExternalPaths,
+    onDropPaths: importExternalPaths,
   });
   useExternalFilesystemDrag({
     dragPaths: dnd.externalDragPaths,
@@ -76,22 +100,22 @@ function FilesystemPanel({
     onDragEnd: dnd.handleDragEnd,
     onDragCancel: dnd.handleDragCancel,
   });
-  const activeDragEntries = nav.entries.filter(
+  const activeDragEntries = entries.filter(
     (entry) => dnd.activeDragPaths.includes(entry.path),
   );
   const activeDragEntry = activeDragEntries[0] ?? null;
-  const breadcrumbs = buildBreadcrumbs(nav.currentPath, nav.currentDrive);
+  const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
   const upDestinationPath =
     breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
   const {
     isOver: isPanelDropOver,
     setNodeRef: setPanelDropNodeRef,
   } = useDroppable({
-    id: dnd.getPanelDropId(nav.currentPath),
+    id: dnd.getPanelDropId(currentPath),
     disabled: !isBrowsing || isEntryOperationInProgress,
     data: {
       kind: "panel",
-      path: nav.currentPath,
+      path: currentPath,
       isDirectory: true,
     },
   });
@@ -99,29 +123,23 @@ function FilesystemPanel({
     panelRef.current = node;
     setPanelDropNodeRef(node);
   }, [setPanelDropNodeRef]);
-  const selectedEntryPaths = nav.selectedEntryPaths;
-  const filesystemEntries = nav.entries;
-  const deleteEntries = nav.deleteEntries;
-
   const emitTabSelectedFiles = useCallback((nextSelectedPaths) => {
-    if (typeof onTabSelectedFilesChange !== "function" || !tabId) return;
-
+    if (!tabId) return;
     const normalizedPaths = uniqueNonEmptyPaths(nextSelectedPaths);
-    onTabSelectedFilesChange({
+    onTabSelectedFilesChange?.({
       selectedPaths: normalizedPaths,
     });
   }, [onTabSelectedFilesChange, tabId]);
 
   useEffect(() => {
-    if (typeof onCurrentPathChange === "function")
-      onCurrentPathChange(nav.currentPath);
-  }, [nav.currentPath, onCurrentPathChange]);
+    onCurrentPathChange?.(currentPath);
+  }, [currentPath, onCurrentPathChange]);
 
   const handleDeleteSelectedEntries = useCallback(async () => {
     const selectedPaths = uniqueNonEmptyPaths(selectedEntryPaths);
     if (!isBrowsing || selectedPaths.length === 0 || isEntryOperationInProgress) return;
 
-    const selectedEntries = filesystemEntries.filter((entry) => selectedPaths.includes(entry.path));
+    const selectedEntries = entries.filter((entry) => selectedPaths.includes(entry.path));
     const confirmMessage = selectedEntries.length === 1
       ? `Delete "${selectedEntries[0].name}" permanently?`
       : `Delete ${selectedEntries.length} selected items permanently?`;
@@ -145,7 +163,7 @@ function FilesystemPanel({
   }, [
     emitTabSelectedFiles,
     deleteEntries,
-    filesystemEntries,
+    entries,
     isBrowsing,
     isEntryOperationInProgress,
     openConfirm,
@@ -180,12 +198,12 @@ function FilesystemPanel({
     >
       <FilesystemStatusMessages
         isBrowsing={isBrowsing}
-        isLoadingDrives={nav.isLoadingDrives}
-        isLoadingEntries={nav.isLoadingEntries}
-        isMovingEntry={nav.isMovingEntry}
-        isDeletingEntries={nav.isDeletingEntries}
-        isImportingExternal={nav.isImportingExternal}
-        error={nav.error}
+        isLoadingDrives={isLoadingDrives}
+        isLoadingEntries={isLoadingEntries}
+        isMovingEntry={isMovingEntry}
+        isDeletingEntries={isDeletingEntries}
+        isImportingExternal={isImportingExternal}
+        error={error}
       />
     </PanelHeader>
     <div
@@ -195,65 +213,61 @@ function FilesystemPanel({
       data-testid="filesystem-panel-list"
     >
 
-      {!isBrowsing && !nav.isLoadingDrives && !nav.error && (
+      {!isBrowsing && !isLoadingDrives && !error && (
         <ul className={styles.entryList}>
-          {nav.drives.map((drive) => (
-            <EntryItem
-              key={drive.path}
-              label={drive.name}
-              meta={drive.path}
-              isSelected={nav.selectedPaths.includes(drive.path)}
-              onClick={() => nav.setSelectedPath(drive.path)}
-              onDoubleClick={() => nav.selectDrive(drive.path)}
-            />
-          ))}
+          {drives.map((drive) => <EntryItem
+            key={drive.path}
+            label={drive.name}
+            meta={drive.path}
+            isSelected={selectedPaths.includes(drive.path)}
+            onClick={() => setSelectedPath(drive.path)}
+            onDoubleClick={() => selectDrive(drive.path)}
+          />)}
         </ul>
       )}
 
       {isBrowsing && (
         <>
           <Breadcrumbs
-            currentPath={nav.currentPath}
-            currentDrive={nav.currentDrive}
-            onSelect={nav.navigateToPath}
+            currentPath={currentPath}
+            currentDrive={currentDrive}
+            onSelect={navigateToPath}
             activeDragPaths={dnd.activeDragPaths}
-            isMovingEntry={nav.isMovingEntry}
+            isMovingEntry={isMovingEntry}
             getDropIdForPath={dnd.getBreadcrumbDropId}
           />
 
-          {!nav.isLoadingEntries && !nav.error && (
+          {!isLoadingEntries && !error && (
             <ul className={styles.entryList}>
               <UpEntryDropTarget
                 destinationPath={upDestinationPath}
-                isSelected={nav.selectedPaths.includes(UP_ENTRY_SELECTION_ID)}
+                isSelected={selectedPaths.includes(UP_ENTRY_SELECTION_ID)}
                 isMovingEntry={isEntryOperationInProgress}
                 activeDragPaths={dnd.activeDragPaths}
-                onClick={() => nav.setSelectedPath(UP_ENTRY_SELECTION_ID)}
-                onDoubleClick={nav.goUp}
+                onClick={() => setSelectedPath(UP_ENTRY_SELECTION_ID)}
+                onDoubleClick={goUp}
               />
-              {nav.entries.map((entry) => (
-                <DraggableFilesystemEntry
-                  key={entry.path}
-                  paneId={paneId}
-                  entry={entry}
-                  dragPaths={
-                    selectedEntryPaths.includes(entry.path)
-                      ? selectedEntryPaths
-                      : [entry.path]
-                  }
-                  isSelected={nav.selectedPaths.includes(entry.path)}
-                  isMovingEntry={isEntryOperationInProgress}
-                  activeDragPaths={dnd.activeDragPaths}
-                  onClick={(event) => {
-                    const selectedEntryPaths = nav.selectEntry(entry.path, {
-                      additive: event.metaKey || event.ctrlKey,
-                      range: event.shiftKey,
-                    });
-                    emitTabSelectedFiles(selectedEntryPaths);
-                  }}
-                  onDoubleClick={() => nav.openEntry(entry)}
-                />
-              ))}
+              {entries.map((entry) => <DraggableFilesystemEntry
+                key={entry.path}
+                paneId={paneId}
+                entry={entry}
+                dragPaths={
+                  selectedEntryPaths.includes(entry.path)
+                    ? selectedEntryPaths
+                    : [entry.path]
+                }
+                isSelected={selectedPaths.includes(entry.path)}
+                isMovingEntry={isEntryOperationInProgress}
+                activeDragPaths={dnd.activeDragPaths}
+                onClick={(event) => {
+                  const nextSelectedEntryPaths = selectEntry(entry.path, {
+                    additive: event.metaKey || event.ctrlKey,
+                    range: event.shiftKey,
+                  });
+                  emitTabSelectedFiles(nextSelectedEntryPaths);
+                }}
+                onDoubleClick={() => openEntry(entry)}
+              />)}
             </ul>
           )}
           <DragOverlay dropAnimation={null}>

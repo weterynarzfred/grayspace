@@ -93,28 +93,26 @@ function WorkspacePanelLayout({
     >
       {splitPreview?.paneId === paneId ? <div
         className={`${styles.splitPreview} ${splitPreview.direction === "right"
-            ? styles.splitPreviewVertical
-            : styles.splitPreviewHorizontal
+          ? styles.splitPreviewVertical
+          : styles.splitPreviewHorizontal
           }`}
         data-testid={`split-preview-${paneId}`}
         data-direction={splitPreview.direction}
         aria-hidden="true"
       /> : null}
       <div className={styles.cornerHandles}>
-        {CORNER_HANDLES.map(handle => (
-          <button
-            key={handle.id}
-            type="button"
-            className={`${styles.cornerHandle} ${styles[handle.className]}`}
-            aria-label={handle.ariaLabel}
-            title={handle.title}
-            onPointerDown={event => handleCornerHandlePointerDown(event, paneId)}
-            onPointerMove={handleCornerHandlePointerMove}
-            onPointerUp={handleCornerHandlePointerUp}
-            onPointerCancel={handleCornerHandlePointerCancel}
-            onLostPointerCapture={handleCornerHandleLostPointerCapture}
-          />
-        ))}
+        {CORNER_HANDLES.map(handle => <button
+          key={handle.id}
+          type="button"
+          className={`${styles.cornerHandle} ${styles[handle.className]}`}
+          aria-label={handle.ariaLabel}
+          title={handle.title}
+          onPointerDown={event => handleCornerHandlePointerDown(event, paneId)}
+          onPointerMove={handleCornerHandlePointerMove}
+          onPointerUp={handleCornerHandlePointerUp}
+          onPointerCancel={handleCornerHandlePointerCancel}
+          onLostPointerCapture={handleCornerHandleLostPointerCapture}
+        />)}
       </div>
       <PaneHeaderActionsProvider value={paneHeaderActions}>
         <PanelComponent

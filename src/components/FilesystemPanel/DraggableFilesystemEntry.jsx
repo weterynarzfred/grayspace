@@ -52,23 +52,21 @@ function DraggableFilesystemEntry({
     entry.is_dir && (entry.name ?? "").toLowerCase() === ".grayspace";
   const metaLabel = isConfigEntry ? "config" : (entry.is_dir ? "Folder" : "File");
 
-  return (
-    <EntryItem
-      label={entry.name}
-      meta={metaLabel}
-      isSelected={isSelected}
-      isFile={!entry.is_dir}
-      isConfig={isConfigEntry}
-      isDraggable={!isMovingEntry}
-      isDragging={isDragging}
-      isDropTarget={isDropTarget}
-      buttonRef={setNodeRef}
-      dndAttributes={attributes}
-      dndListeners={listeners}
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-    />
-  );
+  return <EntryItem
+    label={entry.name}
+    meta={metaLabel}
+    isSelected={isSelected}
+    isFile={!entry.is_dir}
+    isConfig={isConfigEntry}
+    isDraggable={!isMovingEntry}
+    isDragging={isDragging}
+    isDropTarget={isDropTarget}
+    buttonRef={setNodeRef}
+    dndAttributes={attributes}
+    dndListeners={listeners}
+    onClick={onClick}
+    onDoubleClick={onDoubleClick}
+  />;
 }
 
 export default DraggableFilesystemEntry;

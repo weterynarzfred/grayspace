@@ -25,6 +25,7 @@ function getPathDisplayName(path) {
 }
 
 function getErrorMessage(error) {
+  if (typeof error === "string") return error;
   if (error instanceof Error && error.message) return error.message;
   return "Failed to load properties.";
 }
@@ -64,19 +65,13 @@ function PropertiesPanel({
   onPanelTypeChange = undefined,
   tabSelectedFiles = undefined,
 }) {
-  const selectedPropertiesPath = useMemo(
-    () => getPrimarySelectedPath(getSelectedPathsFromState(tabSelectedFiles)),
-    [tabSelectedFiles],
-  );
+  const selectedPropertiesPath = getPrimarySelectedPath(getSelectedPathsFromState(tabSelectedFiles));
   const [lockedPath, setLockedPath] = useState("");
   const [detailsState, setDetailsState] = useState(INITIAL_DETAILS_STATE);
   const isLocked = Boolean(lockedPath);
   const propertiesPath = isLocked ? lockedPath : selectedPropertiesPath;
   const propertiesLabel = useMemo(() => getPathDisplayName(propertiesPath), [propertiesPath]);
-  const propertiesDropId = useMemo(
-    () => `properties-drop:${paneId || "properties"}`,
-    [paneId],
-  );
+  const propertiesDropId = `properties-drop:${paneId || "properties"}`;
   const {
     isOver: isDropOver,
     setNodeRef: setDropNodeRef,
@@ -98,15 +93,12 @@ function PropertiesPanel({
     setLockedPath(propertiesPath);
   }, [isLocked, propertiesPath]);
 
-  const handleDropPath = useCallback((droppedPath) => {
-    if (!droppedPath) return;
-    setLockedPath(droppedPath);
-  }, []);
-
   usePanelsDndHandlers({
     onDragEnd: (event) => {
       if (event?.over?.id !== propertiesDropId) return;
-      handleDropPath(getFirstDraggedPathFromDndEvent(event));
+      const droppedPath = getFirstDraggedPathFromDndEvent(event);
+      if (!droppedPath) return;
+      setLockedPath(droppedPath);
     },
   });
 
@@ -151,56 +143,42 @@ function PropertiesPanel({
   }, [propertiesPath]);
 
   const details = detailsState.details;
-  const detailsRows = useMemo(() => ([
+  const detailsRows = [
     { key: "size", value: formatSize(details?.sizeBytes) },
     { key: "type", value: details?.entryType || "Unknown" },
     { key: "date modified", value: formatDate(details?.dateModifiedMs) },
     { key: "date created", value: formatDate(details?.dateCreatedMs) },
-  ]), [details]);
+  ];
 
-  return (
-    <section
-      ref={setDropNodeRef}
-      className={`${shellStyles.panelContent} ${styles.panelContent} ${isDropOver ? styles.panelDropTarget : ""}`}
-      aria-label="Properties panel"
-    >
-      <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
-        {propertiesLabel ? <p className={styles.pathLabel}></p> :
-          <p className={styles.muted}>Select a file to inspect.</p>
-        }
-        {propertiesPath ? <button
-          type="button"
-          className={`${styles.lockButton} ${isLocked ? styles.lockButtonLocked : ""}`}
-          onClick={handleToggleLock}
-        >{isLocked ? "unlock" : "lock"}</button> : null}
-      </PanelHeader>
-      <div className={shellStyles.panelBody}>
-        {propertiesPath ? (
-          <>
-            <p className={styles.pathValue} title={propertiesPath}>{propertiesPath}</p>
-            {detailsState.status === "loading" ? (
-              <p className={styles.muted}>Loading properties...</p>
-            ) : null}
-            {detailsState.status === "error" ? (
-              <p className={styles.error}>{detailsState.error}</p>
-            ) : null}
-            {detailsState.status === "ready" ? (
-              <dl className={styles.detailsList}>
-                {detailsRows.map(({ key, value }) => (
-                  <div key={key} className={styles.detailRow}>
-                    <dt className={styles.detailKey}>{key}</dt>
-                    <dd className={styles.detailValue}>{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            ) : null}
-          </>
-        ) : (
-          <p className={styles.muted}>No file selected.</p>
-        )}
-      </div>
-    </section>
-  );
+  return <section
+    ref={setDropNodeRef}
+    className={`${shellStyles.panelContent} ${styles.panelContent} ${isDropOver ? styles.panelDropTarget : ""}`}
+    aria-label="Properties panel"
+  >
+    <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
+      {propertiesLabel
+        ? <p className={styles.pathLabel}>{isLocked ? propertiesLabel : <em>{propertiesLabel}</em>}</p>
+        : <p className={styles.muted}>Select a file to inspect.</p>}
+      {propertiesPath ? <button
+        type="button"
+        className={`${styles.lockButton} ${isLocked ? styles.lockButtonLocked : ""}`}
+        onClick={handleToggleLock}
+      >{isLocked ? "unlock" : "lock"}</button> : null}
+    </PanelHeader>
+    <div className={shellStyles.panelBody}>
+      {propertiesPath ? <>
+        <p className={styles.pathValue} title={propertiesPath}>{propertiesPath}</p>
+        {detailsState.status === "loading" ? <p className={styles.muted}>Loading properties...</p> : null}
+        {detailsState.status === "error" ? <p className={styles.error}>{detailsState.error}</p> : null}
+        {detailsState.status === "ready" ? <dl className={styles.detailsList}>
+          {detailsRows.map(({ key, value }) => <div key={key} className={styles.detailRow}>
+            <dt className={styles.detailKey}>{key}</dt>
+            <dd className={styles.detailValue}>{value}</dd>
+          </div>)}
+        </dl> : null}
+      </> : <p className={styles.muted}>No file selected.</p>}
+    </div>
+  </section>;
 }
 
 export default PropertiesPanel;

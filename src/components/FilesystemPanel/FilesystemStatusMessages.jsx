@@ -37,9 +37,7 @@ function buildStatusMessages({
       tone: "muted",
     });
   }
-  if (error) {
-    messages.push({ id: "error", text: error, tone: "error" });
-  }
+  if (error) messages.push({ id: "error", text: error, tone: "error" });
 
   return messages;
 }
@@ -63,11 +61,10 @@ function FilesystemStatusMessages({
     error,
   });
 
-  return messages.map((message) => (
-    <p key={message.id} className={message.tone === "error" ? styles.error : styles.muted}>
-      {message.text}
-    </p>
-  ));
+  return messages.map(message => <p
+    key={message.id}
+    className={message.tone === "error" ? styles.error : styles.muted}
+  >{message.text}</p>);
 }
 
 export default FilesystemStatusMessages;

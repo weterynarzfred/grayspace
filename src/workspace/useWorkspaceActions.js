@@ -1,10 +1,9 @@
 import { useCallback, useRef } from "react";
-import { ensureWorkspaceWindowCreated, getErrorMessage } from "./appRuntime";
+import { getErrorMessage } from "./appRuntime";
 import {
   workspaceCloseTab,
   workspaceCloseTabPane,
   workspaceNewTab,
-  workspaceNewWindow,
   workspaceSetActiveTab,
   workspaceSetTabActivePane,
   workspaceSetTabLayoutSplitRatio,
@@ -15,8 +14,7 @@ import {
   workspaceSplitTabPane,
 } from "./workspaceApi";
 
-function resolveTabPaneId(tab, preferredPaneId = "") {
-  if (preferredPaneId && tab?.paneStates?.[preferredPaneId]) return preferredPaneId;
+function resolveTabPaneId(tab) {
   if (tab?.activePaneId && tab?.paneStates?.[tab.activePaneId]) return tab.activePaneId;
   return Object.keys(tab?.paneStates ?? {})[0] ?? "";
 }
@@ -60,20 +58,7 @@ export default function useWorkspaceActions({
     workspaceNewTab(currentWindow.windowId).catch(handleWorkspaceCommandError);
   }, [currentWindow, handleWorkspaceCommandError]);
 
-  const handleCreateWindow = useCallback(async () => {
-    if (!currentWindow) return;
-    try {
-      const createdWindow = await workspaceNewWindow({
-        x: currentWindow.bounds.x + 40,
-        y: currentWindow.bounds.y + 40,
-      });
-      await ensureWorkspaceWindowCreated(createdWindow);
-    } catch (error) {
-      handleWorkspaceCommandError(error);
-    }
-  }, [currentWindow, handleWorkspaceCommandError]);
-
-  const handleCloseTab = useCallback((tabId) => {
+  const handleCloseTab = useCallback(tabId => {
     if (!currentWindow) return;
     workspaceCloseTab(currentWindow.windowId, tabId).catch(handleWorkspaceCommandError);
   }, [currentWindow, handleWorkspaceCommandError]);
@@ -129,11 +114,12 @@ export default function useWorkspaceActions({
       if (!shouldClose) return;
     }
 
-    workspaceCloseTabPane(tabId, paneId)
-      .then(() => {
-        paneDirtyStateRef.current.delete(paneStateKey);
-      })
-      .catch(handleTabScopedCommandError);
+    try {
+      await workspaceCloseTabPane(tabId, paneId);
+      paneDirtyStateRef.current.delete(paneStateKey);
+    } catch (error) {
+      handleTabScopedCommandError(error);
+    }
   }, [activeTab, handleTabScopedCommandError, openConfirm]);
 
   const handlePaneDirtyStateChange = useCallback((tabId, paneId, dirtyState, panelType) => {
@@ -147,11 +133,13 @@ export default function useWorkspaceActions({
       return;
     }
 
+    const scope = typeof dirtyState?.scope === "string" ? dirtyState.scope : "";
+    const message = typeof dirtyState?.message === "string" ? dirtyState.message : "";
     paneDirtyStateRef.current.set(paneStateKey, {
       hasUnsavedChanges,
       panelType: panelType ?? "",
-      scope: typeof dirtyState?.scope === "string" ? dirtyState.scope : "",
-      message: typeof dirtyState?.message === "string" ? dirtyState.message : "",
+      scope,
+      message,
     });
   }, []);
 
@@ -176,7 +164,6 @@ export default function useWorkspaceActions({
     handleWorkspaceCommandError,
     handleSetActiveTab,
     handleCreateTab,
-    handleCreateWindow,
     handleCloseTab,
     handleChangePanelType,
     handleSetTabCwdHint,

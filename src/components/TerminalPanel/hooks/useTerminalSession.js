@@ -10,6 +10,8 @@ function getErrorMessage(error) {
   return "Unknown terminal error.";
 }
 
+const ignoreError = () => {};
+
 function useTerminalSession(cwdHint = "", sessionId = "") {
   const terminalHostRef = useRef(null);
   const terminalRef = useRef(null);
@@ -56,7 +58,7 @@ function useTerminalSession(cwdHint = "", sessionId = "") {
       fitAddonRef.current.fit();
       const cols = Math.max(terminalRef.current.cols, 2);
       const rows = Math.max(terminalRef.current.rows, 1);
-      await invoke("terminal_resize", { sessionId, cols, rows }).catch(() => { });
+      await invoke("terminal_resize", { sessionId, cols, rows }).catch(ignoreError);
     };
 
     const startSession = async () => {
@@ -77,7 +79,7 @@ function useTerminalSession(cwdHint = "", sessionId = "") {
         setStatus("");
 
         dataSubscription = terminal.onData(data => {
-          invoke("terminal_write", { sessionId, data }).catch(() => { });
+          invoke("terminal_write", { sessionId, data }).catch(ignoreError);
         });
 
         await syncSize();
@@ -111,7 +113,7 @@ function useTerminalSession(cwdHint = "", sessionId = "") {
 
       if (typeof ResizeObserver !== "undefined") {
         resizeObserver = new ResizeObserver(() => {
-          syncSize().catch(() => { });
+          syncSize().catch(ignoreError);
         });
         resizeObserver.observe(terminalHostRef.current);
       }

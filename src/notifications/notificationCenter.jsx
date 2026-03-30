@@ -26,10 +26,7 @@ export function NotificationCenterProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationResolversRef = useRef(new Map());
-  const notificationsRef = useRef([]);
   const previousNotificationCountRef = useRef(0);
-
-  notificationsRef.current = notifications;
 
   useEffect(() => {
     const previousCount = previousNotificationCountRef.current;
@@ -51,20 +48,14 @@ export function NotificationCenterProvider({ children }) {
   }, []);
 
   const dismissNotification = useCallback((notificationId) => {
-    const notification = notificationsRef.current.find(
-      (entry) => entry.id === notificationId,
-    );
-
     setNotifications((previousNotifications) => (
       previousNotifications.filter((entry) => entry.id !== notificationId)
     ));
 
-    if (notification?.kind === "confirm") {
-      const resolver = notificationResolversRef.current.get(notificationId);
-      if (resolver) {
-        resolver(false);
-        notificationResolversRef.current.delete(notificationId);
-      }
+    const resolver = notificationResolversRef.current.get(notificationId);
+    if (resolver) {
+      resolver(false);
+      notificationResolversRef.current.delete(notificationId);
     }
   }, []);
 
@@ -142,11 +133,9 @@ export function NotificationCenterProvider({ children }) {
     toggleNotifications,
   ]);
 
-  return (
-    <NotificationCenterContext.Provider value={value}>
-      {children}
-    </NotificationCenterContext.Provider>
-  );
+  return <NotificationCenterContext.Provider value={value}>
+    {children}
+  </NotificationCenterContext.Provider>;
 }
 
 export function useNotificationCenter() {

@@ -9,19 +9,15 @@ function PanelHeader({ panelType, onPanelTypeChange, children }) {
     : styles.header;
 
   return <header className={headerClassName}>
-    <PanelTypeSwitcher
-      panelType={panelType}
-      onPanelTypeChange={onPanelTypeChange}
-    />
+    <PanelTypeSwitcher panelType={panelType} onPanelTypeChange={onPanelTypeChange} />
     {children ? <div className={styles.content}>{children}</div> : null}
-    {paneActions ? <div className={styles.actions}>
-      {paneActions.canClose ? <button
+    {paneActions?.canClose ? <div className={styles.actions}>
+      <button
         type="button"
         className={styles.actionButton}
         onClick={paneActions.onClose}
-        disabled={!paneActions.canClose}
-        title={paneActions.canClose ? "Close Pane" : "Cannot close the last pane"}
-      >×</button> : null}
+        title="Close Pane"
+      >&times;</button>
     </div> : null}
   </header>;
 }

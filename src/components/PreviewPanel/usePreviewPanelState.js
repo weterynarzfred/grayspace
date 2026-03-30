@@ -12,6 +12,10 @@ import {
   isFolderPreviewErrorMessage,
 } from "./previewPanelUtils";
 
+function isMediaPreviewKind(kind) {
+  return kind === "image" || kind === "audio" || kind === "video";
+}
+
 function usePreviewPanelState({
   paneId = "",
   tabSelectedFiles = undefined,
@@ -29,20 +33,21 @@ function usePreviewPanelState({
   const latestSaveRequestRef = useRef(0);
   const latestPreviewPathRef = useRef(selectedPreviewPath);
   const isLocked = Boolean(lockedPath);
-  const shouldAutoLockToCurrentPath =
+  const previousPreviewPath = latestPreviewPathRef.current;
+  const shouldStickToPreviousPath =
     !isLocked
     && saveStatus === "dirty"
-    && latestPreviewPathRef.current
-    && selectedPreviewPath !== latestPreviewPathRef.current;
+    && previousPreviewPath
+    && selectedPreviewPath !== previousPreviewPath;
   const previewPath = isLocked
     ? lockedPath
-    : (shouldAutoLockToCurrentPath ? latestPreviewPathRef.current : selectedPreviewPath);
+    : (shouldStickToPreviousPath ? previousPreviewPath : selectedPreviewPath);
   const previewDropId = useMemo(() => `preview-drop:${paneId || "preview"}`, [paneId]);
   const previewLabel = useMemo(() => getPathDisplayName(previewPath), [previewPath]);
   const mediaPreviewSrc = useMemo(() => {
     if (previewState.status !== "ready") return null;
     const previewKind = previewState.preview?.kind;
-    if (!["image", "audio", "video"].includes(previewKind)) return null;
+    if (!isMediaPreviewKind(previewKind)) return null;
     if (!previewPath) return null;
     return convertFileSrc(previewPath);
   }, [previewPath, previewState]);
@@ -110,9 +115,9 @@ function usePreviewPanelState({
   }, [previewPath]);
 
   useEffect(() => {
-    if (!shouldAutoLockToCurrentPath || isLocked) return;
+    if (!shouldStickToPreviousPath || isLocked) return;
     setLockedPath(latestPreviewPathRef.current);
-  }, [isLocked, shouldAutoLockToCurrentPath]);
+  }, [isLocked, shouldStickToPreviousPath]);
 
   const handleTextContentChange = useCallback((nextContent) => {
     if (!isTextEditable || !previewPath) return;
