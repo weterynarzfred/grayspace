@@ -45,30 +45,35 @@ export function getLayoutPanelSize(layoutByPanel, panelId) {
   return panelSize;
 }
 
-export function collectSameAxisSegments(node, nodePath, axis, output = []) {
-  if (!node || typeof node !== "object") return output;
-
-  if (node.kind === "split" && getSplitAxis(node) === axis) {
-    collectSameAxisSegments(node.first, `${nodePath}-first`, axis, output);
-    collectSameAxisSegments(node.second, `${nodePath}-second`, axis, output);
-    return output;
-  }
-
-  output.push({ node, nodePath });
-  return output;
-}
-
-export function collectSameAxisSegmentSizes(node, axis, branchSize = 100, output = []) {
+export function collectSameAxisSegmentsWithSizes(
+  node,
+  nodePath,
+  axis,
+  branchSize = 100,
+  output = [],
+) {
   if (!node || typeof node !== "object") return output;
 
   if (node.kind === "split" && getSplitAxis(node) === axis) {
     const firstRatio = clampSplitPercent(node.ratio) / 100;
-    collectSameAxisSegmentSizes(node.first, axis, branchSize * firstRatio, output);
-    collectSameAxisSegmentSizes(node.second, axis, branchSize * (1 - firstRatio), output);
+    collectSameAxisSegmentsWithSizes(
+      node.first,
+      `${nodePath}-first`,
+      axis,
+      branchSize * firstRatio,
+      output,
+    );
+    collectSameAxisSegmentsWithSizes(
+      node.second,
+      `${nodePath}-second`,
+      axis,
+      branchSize * (1 - firstRatio),
+      output,
+    );
     return output;
   }
 
-  output.push(branchSize);
+  output.push({ node, nodePath, size: branchSize });
   return output;
 }
 

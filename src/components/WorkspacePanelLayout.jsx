@@ -4,8 +4,7 @@ import { PaneHeaderActionsProvider } from "./paneHeaderActionsContext";
 import { PANEL_COMPONENTS } from "./panelTypes";
 import usePaneSplitPreview from "./usePaneSplitPreview";
 import {
-  collectSameAxisSegments,
-  collectSameAxisSegmentSizes,
+  collectSameAxisSegmentsWithSizes,
   collectSameAxisSplitRatioUpdates,
   formatPercent,
   getLayoutPaneId,
@@ -44,6 +43,13 @@ const CORNER_HANDLES = [
     title: "Drag to split pane (Alt+V / Alt+H)",
   },
 ];
+
+function getSplitPreviewClassName(direction) {
+  return `${styles.splitPreview} ${direction === "right"
+    ? styles.splitPreviewVertical
+    : styles.splitPreviewHorizontal
+  }`;
+}
 
 function WorkspacePanelLayout({
   tab,
@@ -92,10 +98,7 @@ function WorkspacePanelLayout({
       onPointerDownCapture={() => onPaneActivate?.(tabId, paneId)}
     >
       {splitPreview?.paneId === paneId ? <div
-        className={`${styles.splitPreview} ${splitPreview.direction === "right"
-          ? styles.splitPreviewVertical
-          : styles.splitPreviewHorizontal
-          }`}
+        className={getSplitPreviewClassName(splitPreview.direction)}
         data-testid={`split-preview-${paneId}`}
         data-direction={splitPreview.direction}
         aria-hidden="true"
@@ -178,8 +181,7 @@ function WorkspacePanelLayout({
       ? `${styles.resizeHandle} ${styles.resizeHandleHorizontal}`
       : `${styles.resizeHandle} ${styles.resizeHandleVertical}`;
     const splitGroupId = getSplitGroupId(tabId, nodePath);
-    const flatSegments = collectSameAxisSegments(node, nodePath, axis);
-    const flatSegmentSizes = collectSameAxisSegmentSizes(node, axis);
+    const flatSegments = collectSameAxisSegmentsWithSizes(node, nodePath, axis);
     const panelMinSizePercent = getPanelMinSizePercent(flatSegments.length);
     const handleLayoutChanged = (layoutByPanel) => {
       if (!onSplitRatioChange || !tabId) return;
@@ -209,7 +211,7 @@ function WorkspacePanelLayout({
     const groupChildren = [];
     flatSegments.forEach((segment, index) => {
       const panelId = getSegmentPanelId(splitGroupId, index);
-      const defaultSize = formatPercent(flatSegmentSizes[index] ?? 0);
+      const defaultSize = formatPercent(segment.size ?? 0);
 
       groupChildren.push(
         <Panel
