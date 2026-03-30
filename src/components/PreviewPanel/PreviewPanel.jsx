@@ -12,7 +12,7 @@ function PreviewPanel({
   onPaneDirtyStateChange = undefined,
 }) {
   const {
-    imagePreviewSrc,
+    mediaPreviewSrc,
     isDropOver,
     isLocked,
     isTextEditable,
@@ -94,11 +94,37 @@ function PreviewPanel({
       {previewPath
         && previewState.status === "ready"
         && previewState.preview?.kind === "image" ? (
-        imagePreviewSrc ? <img
+        mediaPreviewSrc ? <img
           className={styles.imagePreview}
-          src={imagePreviewSrc}
+          src={mediaPreviewSrc}
           alt={`Preview of ${previewLabel}`}
         /> : <p className={styles.muted}>Failed to render image preview.</p>
+      ) : null}
+
+      {previewPath
+        && previewState.status === "ready"
+        && previewState.preview?.kind === "video" ? (
+        mediaPreviewSrc ? <video
+          key={previewPath}
+          className={styles.videoPreview}
+          src={mediaPreviewSrc}
+          controls
+          preload="metadata"
+          data-testid="preview-video"
+        /> : <p className={styles.muted}>Failed to render video preview.</p>
+      ) : null}
+
+      {previewPath
+        && previewState.status === "ready"
+        && previewState.preview?.kind === "audio" ? (
+        mediaPreviewSrc ? <audio
+          key={previewPath}
+          className={styles.audioPreview}
+          src={mediaPreviewSrc}
+          controls
+          preload="metadata"
+          data-testid="preview-audio"
+        /> : <p className={styles.muted}>Failed to render audio preview.</p>
       ) : null}
 
       {previewPath

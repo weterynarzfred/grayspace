@@ -39,8 +39,10 @@ function usePreviewPanelState({
     : (shouldAutoLockToCurrentPath ? latestPreviewPathRef.current : selectedPreviewPath);
   const previewDropId = useMemo(() => `preview-drop:${paneId || "preview"}`, [paneId]);
   const previewLabel = useMemo(() => getPathDisplayName(previewPath), [previewPath]);
-  const imagePreviewSrc = useMemo(() => {
-    if (previewState.status !== "ready" || previewState.preview?.kind !== "image") return null;
+  const mediaPreviewSrc = useMemo(() => {
+    if (previewState.status !== "ready") return null;
+    const previewKind = previewState.preview?.kind;
+    if (!["image", "audio", "video"].includes(previewKind)) return null;
     if (!previewPath) return null;
     return convertFileSrc(previewPath);
   }, [previewPath, previewState]);
@@ -220,7 +222,7 @@ function usePreviewPanelState({
   }, [onPaneDirtyStateChange]);
 
   return {
-    imagePreviewSrc,
+    mediaPreviewSrc,
     isDropOver,
     isLocked,
     isTextEditable,

@@ -97,6 +97,40 @@ describe("PreviewPanel", () => {
     expect(convertFileSrc).toHaveBeenCalledWith("C:\\image.png");
   });
 
+  it("loads and renders video previews", async () => {
+    invoke.mockResolvedValue({
+      kind: "video",
+      mimeType: "video/mp4",
+    });
+
+    renderPreviewPanel({
+      tabSelectedFiles: {
+        selectedPaths: ["C:\\movie.mp4"],
+      },
+    });
+
+    const video = await screen.findByTestId("preview-video");
+    expect(video).toHaveAttribute("src", "asset://localhost/C%3A%5Cmovie.mp4");
+    expect(convertFileSrc).toHaveBeenCalledWith("C:\\movie.mp4");
+  });
+
+  it("loads and renders audio previews", async () => {
+    invoke.mockResolvedValue({
+      kind: "audio",
+      mimeType: "audio/mpeg",
+    });
+
+    renderPreviewPanel({
+      tabSelectedFiles: {
+        selectedPaths: ["C:\\song.mp3"],
+      },
+    });
+
+    const audio = await screen.findByTestId("preview-audio");
+    expect(audio).toHaveAttribute("src", "asset://localhost/C%3A%5Csong.mp3");
+    expect(convertFileSrc).toHaveBeenCalledWith("C:\\song.mp3");
+  });
+
   it("shows unsupported-type messages returned by the backend", async () => {
     invoke.mockResolvedValue({
       kind: "unsupported",
