@@ -80,7 +80,7 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - [x] filesystem watcher for auto-updates
 - [x] breadcrumbs
 - [ ] back/forward history
-- [ ] file/folder icons
+- [x] file/folder icons
 - [ ] thumbnails with customizable display size
 - [ ] filters, including custom js ones defined by user
 - [ ] show files from subfolders with filters (eg ignoring node_modules or .git)
