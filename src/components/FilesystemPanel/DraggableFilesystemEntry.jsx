@@ -13,6 +13,7 @@ function DraggableFilesystemEntry({
   isMovingEntry,
   activeDragPathSet = undefined,
   activeDropDestinationPath = "",
+  isWorkspaceFolder = false,
   thumbnailSrc = "",
   nestingDepth = 0,
   isExpanded = false,
@@ -59,9 +60,10 @@ function DraggableFilesystemEntry({
     && destinationPath === activeDropDestinationPath
     && activeDragPathSet?.size > 0
     && !activeDragPathSet.has(destinationPath);
-  const isConfigEntry =
+  const isConfigFolder =
     entry.is_dir && (entry.name ?? "").toLowerCase() === ".grayspace";
-  const metaLabel = isConfigEntry ? "config" : (entry.is_dir ? "Folder" : "File");
+  const shouldUseConfigStyle = isConfigFolder || isWorkspaceFolder;
+  const metaLabel = isConfigFolder ? "config" : (entry.is_dir ? "Folder" : "File");
 
   return <EntryItem
     label={entry.name}
@@ -69,7 +71,7 @@ function DraggableFilesystemEntry({
     isSelected={isSelected}
     isFile={!entry.is_dir}
     isDirectory={entry.is_dir}
-    isConfig={isConfigEntry}
+    isConfig={shouldUseConfigStyle}
     isDraggable={!isMovingEntry}
     isDragging={isDragging}
     isDropTarget={isDropTarget}

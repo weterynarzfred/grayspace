@@ -168,6 +168,24 @@ pub fn list_directory(path: &str) -> Result<Vec<FsEntry>, String> {
 }
 
 #[tauri::command]
+pub fn filesystem_resolve_workspace_folders(paths: Vec<String>) -> HashMap<String, bool> {
+  let mut result = HashMap::new();
+
+  for raw_path in paths {
+    let trimmed_path = raw_path.trim();
+    if trimmed_path.is_empty() {
+      continue;
+    }
+
+    let folder_path = PathBuf::from(trimmed_path);
+    let has_workspace_folder = folder_path.is_dir() && folder_path.join(".grayspace").is_dir();
+    result.insert(trimmed_path.to_string(), has_workspace_folder);
+  }
+
+  result
+}
+
+#[tauri::command]
 pub fn filesystem_get_properties(path: &str) -> Result<FsPathProperties, String> {
   let normalized_path = path.trim();
   if normalized_path.is_empty() {

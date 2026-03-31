@@ -4,7 +4,11 @@ import useFilesystemBrowsingState from "./useFilesystemBrowsingState";
 import useFilesystemEntryOperations from "./useFilesystemEntryOperations";
 import useFilesystemSelectionState from "./useFilesystemSelectionState";
 
-export default function useFilesystemNavigation(initialFilesystemState = undefined) {
+export default function useFilesystemNavigation(
+  initialFilesystemState = undefined,
+  options = {},
+) {
+  const { tabId = "" } = options;
   const initialStateRef = useRef(
     normalizeInitialFilesystemState(initialFilesystemState),
   );
@@ -67,6 +71,7 @@ export default function useFilesystemNavigation(initialFilesystemState = undefin
     deleteEntries,
     importExternalPaths,
   } = useFilesystemEntryOperations({
+    tabId,
     currentPath,
     currentPathRef,
     clearSelection,

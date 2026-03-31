@@ -234,6 +234,13 @@ pub struct TabWorkspaceRootPayload {
   pub workspace_root: Option<String>,
 }
 
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TabOpenWorkspaceFolderPayload {
+  pub tab_id: String,
+  pub workspace_root: String,
+}
+
 impl Default for FilesystemPaneState {
   fn default() -> Self {
     Self {

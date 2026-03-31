@@ -1,4 +1,4 @@
-import { useReducer, useRef, useState } from "react";
+import { useMemo, useReducer, useRef, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -19,6 +19,7 @@ import {
 import useTabDragDrop from "./workspace/useTabDragDrop";
 import useWorkspaceLifecycle from "./workspace/useWorkspaceLifecycle";
 import useWorkspaceActions from "./workspace/useWorkspaceActions";
+import useWorkspaceTabTitles from "./workspace/useWorkspaceTabTitles";
 import usePaneSplitShortcuts from "./workspace/usePaneSplitShortcuts";
 import { useNotificationCenter } from "./notifications/notificationCenter";
 
@@ -49,6 +50,11 @@ function App() {
 
   const currentWindow = selectCurrentWindow(viewState.snapshot, viewState.currentWindowId);
   const tabs = selectTabsForWindow(viewState.snapshot, currentWindow);
+  const tabTitlesByTabId = useWorkspaceTabTitles(tabs);
+  const titledTabs = useMemo(() => tabs.map((tab) => ({
+    ...tab,
+    title: tabTitlesByTabId[tab.tabId] ?? tab.title,
+  })), [tabTitlesByTabId, tabs]);
   const activeTab = selectActiveTab(viewState.snapshot, currentWindow);
 
   const workspaceActions = useWorkspaceActions({
@@ -94,7 +100,7 @@ function App() {
         onDragCancel={handleTabDragCancel}
       >
         <WorkspaceTabStrip
-          tabs={tabs}
+          tabs={titledTabs}
           activeTabId={currentWindow.activeTabId}
           activeDragTabId={activeDragTabId}
           onActivateTab={workspaceActions.handleSetActiveTab}

@@ -11,6 +11,7 @@ import {
   workspaceSetTabPanelType,
   workspaceSetTabSelectedFiles,
   workspaceSetTabTerminalCwd,
+  workspaceSetTabWorkspaceRoot,
   workspaceSplitTabPane,
 } from "./workspaceApi";
 
@@ -21,6 +22,22 @@ function resolveTabPaneId(tab) {
 
 function getPaneStateKey(tabId, paneId) {
   return `${tabId}::${paneId}`;
+}
+
+function normalizePathForComparison(path) {
+  if (typeof path !== "string" || !path.trim()) return "";
+  return path
+    .trim()
+    .replace(/[\\/]+$/, "")
+    .replace(/\\/g, "/")
+    .toLowerCase();
+}
+
+function isPathInsideRoot(path, rootPath) {
+  const normalizedPath = normalizePathForComparison(path);
+  const normalizedRootPath = normalizePathForComparison(rootPath);
+  if (!normalizedPath || !normalizedRootPath) return false;
+  return normalizedPath === normalizedRootPath || normalizedPath.startsWith(`${normalizedRootPath}/`);
 }
 
 export default function useWorkspaceActions({
@@ -68,10 +85,22 @@ export default function useWorkspaceActions({
     workspaceSetTabPanelType(tabId, paneId, panelType).catch(handleTabScopedCommandError);
   }, [handleTabScopedCommandError]);
 
-  const handleSetTabCwdHint = useCallback((tabId, _paneId, path) => {
+  const handleSetTabCwdHint = useCallback((tabId, paneId, path) => {
     if (!tabId) return;
-    workspaceSetTabTerminalCwd(tabId, path ?? "").catch(handleTabScopedCommandError);
-  }, [handleTabScopedCommandError]);
+    const nextPath = path ?? "";
+    workspaceSetTabTerminalCwd(tabId, nextPath).catch(handleTabScopedCommandError);
+
+    if (activeTab?.tabId !== tabId) return;
+    if (paneId && activeTab?.activePaneId && paneId !== activeTab.activePaneId) return;
+
+    const workspaceRoot = typeof activeTab?.workspaceRoot === "string"
+      ? activeTab.workspaceRoot
+      : "";
+    if (!workspaceRoot) return;
+    if (isPathInsideRoot(nextPath, workspaceRoot)) return;
+
+    workspaceSetTabWorkspaceRoot(tabId, null).catch(handleTabScopedCommandError);
+  }, [activeTab, handleTabScopedCommandError]);
 
   const handleSetPaneFilesystemState = useCallback((tabId, paneId, filesystemState) => {
     if (!tabId) return;

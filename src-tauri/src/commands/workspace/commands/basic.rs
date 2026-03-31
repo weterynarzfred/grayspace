@@ -2,6 +2,7 @@ use super::super::model::WorkspaceState;
 use super::super::runtime_effects::{emit_workspace_updated, publish_snapshot};
 use super::super::types::{
   NewWindowOptions, TabActivePanePayload, TabClosePanePayload, TabCwdPayload,
+  TabOpenWorkspaceFolderPayload,
   TabLayoutSplitRatioPayload, TabPaneFilesystemStatePayload, TabPanelTypePayload,
   TabSelectedFilesPayload, TabSplitPanePayload, TabWorkspaceRootPayload, WindowBounds,
   WorkspaceBootstrapPayload, WorkspacePaneSplitPayload, WorkspaceSnapshot,
@@ -446,6 +447,112 @@ pub fn workspace_set_tab_workspace_root(
     }
     model.snapshot()
   };
+  publish_snapshot(&app_handle, &snapshot, false);
+  Ok(snapshot)
+}
+
+fn infer_drive_from_path(path: &str) -> String {
+  let normalized_path = path.trim();
+  if normalized_path.is_empty() {
+    return String::new();
+  }
+
+  #[cfg(target_os = "windows")]
+  {
+    use std::path::{Component, Prefix};
+
+    let path_buf = PathBuf::from(normalized_path);
+    let mut drive = String::new();
+
+    for component in path_buf.components() {
+      match component {
+        Component::Prefix(prefix_component) => {
+          drive = match prefix_component.kind() {
+            Prefix::Disk(letter) | Prefix::VerbatimDisk(letter) => {
+              format!("{}:\\", char::from(letter).to_ascii_uppercase())
+            }
+            _ => prefix_component.as_os_str().to_string_lossy().to_string(),
+          };
+        }
+        Component::RootDir => break,
+        _ => break,
+      }
+    }
+
+    return drive;
+  }
+
+  #[cfg(not(target_os = "windows"))]
+  {
+    if normalized_path.starts_with('/') {
+      return "/".to_string();
+    }
+    return String::new();
+  }
+}
+
+#[tauri::command]
+pub fn workspace_open_workspace_folder_from_tab(
+  app_handle: AppHandle,
+  state: State<WorkspaceState>,
+  payload: TabOpenWorkspaceFolderPayload,
+) -> Result<WorkspaceSnapshot, String> {
+  let normalized_workspace_root = payload.workspace_root.trim().to_string();
+  if normalized_workspace_root.is_empty() {
+    return Err("Workspace folder path is required.".to_string());
+  }
+
+  let workspace_root_path = PathBuf::from(&normalized_workspace_root);
+  if !workspace_root_path.is_dir() {
+    return Err("Workspace folder does not exist.".to_string());
+  }
+
+  let snapshot = {
+    let mut model = state
+      .inner
+      .lock()
+      .map_err(|_| "Workspace state is unavailable.".to_string())?;
+
+    if !model.tabs.contains_key(&payload.tab_id) {
+      return Err("Tab not found.".to_string());
+    }
+
+    let source_window_id = model
+      .windows
+      .iter()
+      .find_map(|(window_id, window)| {
+        window
+          .tab_order
+          .iter()
+          .any(|tab_id| tab_id == &payload.tab_id)
+          .then_some(window_id.clone())
+      })
+      .ok_or_else(|| "Window not found.".to_string())?;
+
+    let mut new_tab = model.create_default_tab();
+    let new_tab_id = new_tab.tab_id.clone();
+    let active_pane_id = new_tab.active_pane_id.clone();
+    new_tab.workspace_root = Some(normalized_workspace_root.clone());
+    new_tab.terminal_cwd_hint = normalized_workspace_root.clone();
+
+    if let Some(active_pane) = new_tab.pane_states.get_mut(&active_pane_id) {
+      active_pane.filesystem_state.current_drive = infer_drive_from_path(&normalized_workspace_root);
+      active_pane.filesystem_state.current_path = normalized_workspace_root.clone();
+      active_pane.filesystem_state.selected_paths.clear();
+      active_pane.filesystem_state.scroll_top = 0.0;
+    }
+
+    model.tabs.insert(new_tab_id.clone(), new_tab);
+    let source_window = model
+      .windows
+      .get_mut(&source_window_id)
+      .ok_or_else(|| "Window not found.".to_string())?;
+    source_window.tab_order.push(new_tab_id.clone());
+    source_window.active_tab_id = new_tab_id;
+    model.bump_revision();
+    model.snapshot()
+  };
+
   publish_snapshot(&app_handle, &snapshot, false);
   Ok(snapshot)
 }

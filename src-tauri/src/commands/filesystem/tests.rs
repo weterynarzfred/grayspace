@@ -1,6 +1,6 @@
 use super::{
-  delete_paths, filesystem_get_properties, handle_move_rename_error, import_paths, list_directory,
-  move_path, parent_path,
+  delete_paths, filesystem_get_properties, filesystem_resolve_workspace_folders,
+  handle_move_rename_error, import_paths, list_directory, move_path, parent_path,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -85,6 +85,35 @@ fn list_directory_returns_error_for_missing_path() {
 
   let result = list_directory(&missing_path);
   assert!(result.is_err());
+}
+
+#[test]
+fn filesystem_resolve_workspace_folders_detects_direct_grayspace_child() {
+  let test_root = unique_test_root("grayspace_workspace_marker");
+  let workspace_dir = test_root.join("workspace");
+  let plain_dir = test_root.join("plain");
+  let non_existing_dir = test_root.join("missing");
+
+  fs::create_dir_all(workspace_dir.join(".grayspace")).expect("should create workspace marker");
+  fs::create_dir_all(&plain_dir).expect("should create plain directory");
+
+  let result = filesystem_resolve_workspace_folders(vec![
+    workspace_dir.to_string_lossy().to_string(),
+    plain_dir.to_string_lossy().to_string(),
+    non_existing_dir.to_string_lossy().to_string(),
+  ]);
+
+  assert_eq!(
+    result.get(&workspace_dir.to_string_lossy().to_string()),
+    Some(&true)
+  );
+  assert_eq!(result.get(&plain_dir.to_string_lossy().to_string()), Some(&false));
+  assert_eq!(
+    result.get(&non_existing_dir.to_string_lossy().to_string()),
+    Some(&false)
+  );
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
 }
 
 #[test]

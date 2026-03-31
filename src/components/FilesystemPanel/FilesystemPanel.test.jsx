@@ -124,8 +124,10 @@ describe("FilesystemPanel", () => {
       "C:\\Users": [
         { name: "Projects", path: "C:\\Users\\Projects", is_dir: true },
         { name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false },
+        { name: ".grayspace", path: "C:\\Users\\.grayspace", is_dir: true },
       ],
       "C:\\Users\\Projects": [],
+      "C:\\Users\\.grayspace": [],
     };
 
     invoke.mockReset();
@@ -142,6 +144,18 @@ describe("FilesystemPanel", () => {
         return entries.map((entry) => ({ ...entry }));
       }
 
+      if (command === "filesystem_resolve_workspace_folders") {
+        const paths = payload?.paths ?? [];
+        const result = {};
+        paths.forEach((workspacePath) => {
+          const children = directoryState[workspacePath] ?? [];
+          result[workspacePath] = children.some(
+            (entry) => entry.is_dir && entry.name === ".grayspace",
+          );
+        });
+        return result;
+      }
+
       if (command === "parent_path") {
         if (payload?.path === "C:\\") {
           return null;
@@ -150,6 +164,10 @@ describe("FilesystemPanel", () => {
       }
 
       if (command === "open_path" && payload?.path === "C:\\notes.txt") {
+        return null;
+      }
+
+      if (command === "workspace_open_workspace_folder_from_tab") {
         return null;
       }
 
@@ -273,6 +291,20 @@ describe("FilesystemPanel", () => {
     expect(within(configButton).getByText("config")).toBeInTheDocument();
   });
 
+  it("marks folders with direct .grayspace children using config style", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    await waitFor(() => {
+      expect(usersButton.className).toMatch(/configEntry/);
+    });
+    expect(within(usersButton).queryByText("config")).not.toBeInTheDocument();
+    expect(within(usersButton).getByText("Folder")).toBeInTheDocument();
+  });
+
   it("uses breadcrumbs to jump back to a parent path", async () => {
     renderFilesystemPanel();
 
@@ -366,6 +398,17 @@ describe("FilesystemPanel", () => {
     invoke.mockImplementation(async (command, payload) => {
       if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
       if (command === "list_directory") return (directoryState[payload?.path] ?? []).map(entry => ({ ...entry }));
+      if (command === "filesystem_resolve_workspace_folders") {
+        const paths = payload?.paths ?? [];
+        const result = {};
+        paths.forEach((workspacePath) => {
+          const children = directoryState[workspacePath] ?? [];
+          result[workspacePath] = children.some(
+            (entry) => entry.is_dir && entry.name === ".grayspace",
+          );
+        });
+        return result;
+      }
       if (command === "parent_path") {
         if (payload?.path === "C:\\") return null;
         return path.win32.dirname(payload?.path ?? "");
@@ -490,6 +533,27 @@ describe("FilesystemPanel", () => {
     fireEvent.doubleClick(fileButton);
 
     expect(invoke).toHaveBeenCalledWith("open_path", { path: "C:\\notes.txt" });
+  });
+
+  it("opens workspace folders in a new tab when tabId is present", async () => {
+    renderFilesystemPanel({ tabId: "tab-1" });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const workspaceFolderButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.doubleClick(workspaceFolderButton);
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("workspace_open_workspace_folder_from_tab", {
+        payload: {
+          tabId: "tab-1",
+          workspaceRoot: "C:\\Users",
+        },
+      });
+    });
+    expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 
   it("moves an entry when dropped onto a folder", async () => {
@@ -930,7 +994,7 @@ describe("FilesystemPanel", () => {
     const usersButton = await screen.findByRole("button", { name: /Users/i });
     fireEvent.doubleClick(usersButton);
 
-    expect(await screen.findByRole("button", { name: /Users/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
 
     const upButton = screen.getByRole("button", { name: /\.\.\s*Up/i });
     fireEvent.click(upButton);
@@ -1030,6 +1094,14 @@ describe("FilesystemPanel", () => {
         || command === "start_external_drag"
       ) {
         return null;
+      }
+      if (command === "filesystem_resolve_workspace_folders") {
+        const paths = payload?.paths ?? [];
+        const result = {};
+        paths.forEach((workspacePath) => {
+          result[workspacePath] = false;
+        });
+        return result;
       }
       if (command === "thumbnail_resolve_batch") {
         const items = payload?.request?.items ?? [];

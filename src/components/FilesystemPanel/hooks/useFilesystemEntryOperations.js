@@ -1,9 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback } from "react";
+import { workspaceOpenWorkspaceFolderFromTab } from "../../../workspace/workspaceApi";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 import { getNavigationErrorMessage } from "./filesystemNavigationUtils";
 
 export default function useFilesystemEntryOperations({
+  tabId = "",
   currentPath = "",
   currentPathRef,
   clearSelection,
@@ -15,8 +17,38 @@ export default function useFilesystemEntryOperations({
   setIsDeletingEntries,
   setIsImportingExternal,
 }) {
-  const openEntry = useCallback(async (entry) => {
+  const resolveIsWorkspaceFolder = useCallback(async (entryPath, isWorkspaceFolderHint = false) => {
+    if (!entryPath) return false;
+    if (isWorkspaceFolderHint) return true;
+
+    try {
+      const workspaceResult = await invoke("filesystem_resolve_workspace_folders", {
+        paths: [entryPath],
+      });
+      return workspaceResult?.[entryPath] === true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const openEntry = useCallback(async (entry, options = {}) => {
     if (entry.is_dir) {
+      const shouldOpenAsWorkspace = await resolveIsWorkspaceFolder(
+        entry.path,
+        options?.isWorkspaceFolder === true,
+      );
+
+      if (shouldOpenAsWorkspace && tabId) {
+        try {
+          await workspaceOpenWorkspaceFolderFromTab(tabId, entry.path);
+          clearSelection();
+          setError("");
+        } catch (workspaceOpenError) {
+          setError(getNavigationErrorMessage(workspaceOpenError, "Failed to open workspace."));
+        }
+        return;
+      }
+
       setCurrentPath(entry.path);
       clearSelection();
       setError("");
@@ -28,7 +60,7 @@ export default function useFilesystemEntryOperations({
     } catch (openError) {
       setError(getNavigationErrorMessage(openError, "Failed to open file."));
     }
-  }, [clearSelection, setCurrentPath, setError]);
+  }, [clearSelection, resolveIsWorkspaceFolder, setCurrentPath, setError, tabId]);
 
   const moveEntries = useCallback(async (sourcePaths, destinationDir) => {
     const normalizedSourcePaths = uniqueNonEmptyPaths(sourcePaths);

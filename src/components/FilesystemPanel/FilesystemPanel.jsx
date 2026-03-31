@@ -15,6 +15,7 @@ import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import useFilesystemStatePersistence from "./hooks/useFilesystemStatePersistence";
 import useFilesystemThumbnails from "./hooks/useFilesystemThumbnails";
 import useFilesystemTree from "./hooks/useFilesystemTree";
+import useFilesystemWorkspaceFolders from "./hooks/useFilesystemWorkspaceFolders";
 import useVirtualizedEntryWindow from "./hooks/useVirtualizedEntryWindow";
 import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
@@ -39,7 +40,7 @@ function FilesystemPanel({
   const panelListRef = useRef(null);
   const entryWindowAnchorRef = useRef(null);
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
-  const nav = useFilesystemNavigation(initialFilesystemStateRef.current);
+  const nav = useFilesystemNavigation(initialFilesystemStateRef.current, { tabId });
   const { openConfirm } = useNotificationCenter();
   const {
     currentDrive,
@@ -175,6 +176,9 @@ function FilesystemPanel({
     entries: flattenedEntries,
     visibleEntries,
   });
+  const workspaceFolderPathSet = useFilesystemWorkspaceFolders({
+    entries: flattenedEntries,
+  });
   const activeDragEntry = activeDragEntries[0] ?? null;
   const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
   const upDestinationPath =
@@ -211,8 +215,10 @@ function FilesystemPanel({
     emitTabSelectedFiles(nextSelectedEntryPaths);
   }, [emitTabSelectedFiles, flattenedEntryPaths, selectEntry]);
   const handleEntryDoubleClick = useCallback((entry) => {
-    openEntry(entry);
-  }, [openEntry]);
+    openEntry(entry, {
+      isWorkspaceFolder: workspaceFolderPathSet.has(entry.path),
+    });
+  }, [openEntry, workspaceFolderPathSet]);
 
   useEffect(() => {
     onCurrentPathChange?.(currentPath);
@@ -358,6 +364,7 @@ function FilesystemPanel({
                   isMovingEntry={isEntryOperationInProgress}
                   activeDragPathSet={activeDragPathSet}
                   activeDropDestinationPath={dnd.activeDropDestinationPath}
+                  isWorkspaceFolder={workspaceFolderPathSet.has(row.entry.path)}
                   thumbnailSrc={thumbnailSrcByPath[row.entry.path] ?? ""}
                   nestingDepth={row.depth}
                   isExpanded={row.isExpanded}
