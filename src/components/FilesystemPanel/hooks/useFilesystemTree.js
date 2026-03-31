@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useFilesystemDirectoryWatcher from "./useFilesystemDirectoryWatcher";
 
 function flattenEntries({
@@ -37,18 +37,65 @@ function flattenEntries({
   return rows;
 }
 
+function normalizePathForComparison(path) {
+  if (typeof path !== "string" || !path.trim()) return "";
+  return path
+    .trim()
+    .replace(/[\\/]+$/, "")
+    .replace(/\\/g, "/")
+    .toLowerCase();
+}
+
+function isPathInsideRoot(path, rootPath) {
+  const normalizedPath = normalizePathForComparison(path);
+  const normalizedRootPath = normalizePathForComparison(rootPath);
+  if (!normalizedRootPath) return false;
+  return normalizedPath === normalizedRootPath || normalizedPath.startsWith(`${normalizedRootPath}/`);
+}
+
+function buildExpandedByPath(expandedPaths, rootPath) {
+  const nextExpandedByPath = {};
+  if (!Array.isArray(expandedPaths)) return nextExpandedByPath;
+  expandedPaths.forEach((path) => {
+    if (typeof path !== "string" || !path) return;
+    if (!isPathInsideRoot(path, rootPath)) return;
+    nextExpandedByPath[path] = true;
+  });
+  return nextExpandedByPath;
+}
+
+function prunePathMapByRoot(pathMap, rootPath) {
+  const nextPathMap = {};
+  let hasPruned = false;
+  Object.entries(pathMap).forEach(([path, value]) => {
+    if (!isPathInsideRoot(path, rootPath)) {
+      hasPruned = true;
+      return;
+    }
+    nextPathMap[path] = value;
+  });
+  return hasPruned ? nextPathMap : pathMap;
+}
+
 export default function useFilesystemTree({
   currentPath = "",
   rootEntries = [],
+  initialExpandedPaths = [],
+  onExpandedPathsChange = undefined,
 }) {
-  const [expandedByPath, setExpandedByPath] = useState({});
+  const [expandedByPath, setExpandedByPath] = useState(() => (
+    buildExpandedByPath(initialExpandedPaths, currentPath)
+  ));
   const [directoryEntriesByPath, setDirectoryEntriesByPath] = useState({});
   const [loadingByPath, setLoadingByPath] = useState({});
+  const lastRootPathRef = useRef(currentPath);
 
   useEffect(() => {
-    setExpandedByPath({});
-    setDirectoryEntriesByPath({});
-    setLoadingByPath({});
+    if (lastRootPathRef.current === currentPath) return;
+    lastRootPathRef.current = currentPath;
+    setExpandedByPath((prev) => prunePathMapByRoot(prev, currentPath));
+    setDirectoryEntriesByPath((prev) => prunePathMapByRoot(prev, currentPath));
+    setLoadingByPath((prev) => prunePathMapByRoot(prev, currentPath));
   }, [currentPath]);
 
   const ensureDirectoryEntriesLoaded = useCallback(async (directoryPath) => {
@@ -104,6 +151,22 @@ export default function useFilesystemTree({
     Object.keys(expandedByPath).filter((path) => expandedByPath[path] === true)
   ), [expandedByPath]);
 
+  useEffect(() => {
+    expandedDirectoryPaths.forEach((directoryPath) => {
+      if (directoryEntriesByPath[directoryPath] || loadingByPath[directoryPath]) return;
+      void ensureDirectoryEntriesLoaded(directoryPath);
+    });
+  }, [
+    directoryEntriesByPath,
+    ensureDirectoryEntriesLoaded,
+    expandedDirectoryPaths,
+    loadingByPath,
+  ]);
+
+  useEffect(() => {
+    onExpandedPathsChange?.(expandedDirectoryPaths);
+  }, [expandedDirectoryPaths, onExpandedPathsChange]);
+
   const refreshExpandedDirectory = useCallback(async (watchedPath) => {
     if (!watchedPath || expandedByPath[watchedPath] !== true) return;
 
@@ -129,6 +192,7 @@ export default function useFilesystemTree({
 
   return {
     treeRows,
+    expandedDirectoryPaths,
     toggleDirectoryExpanded,
   };
 }

@@ -117,6 +117,7 @@ describe("FilesystemPanel", () => {
     const directoryState = {
       "C:\\": [
         { name: "Users", path: "C:\\Users", is_dir: true },
+        { name: "Temp", path: "C:\\Temp", is_dir: true },
         { name: "notes.txt", path: "C:\\notes.txt", is_dir: false },
         { name: "draft.md", path: "C:\\draft.md", is_dir: false },
         { name: ".grayspace", path: "C:\\.grayspace", is_dir: true },
@@ -128,6 +129,7 @@ describe("FilesystemPanel", () => {
       ],
       "C:\\Users\\Projects": [],
       "C:\\Users\\.grayspace": [],
+      "C:\\Temp": [],
     };
 
     invoke.mockReset();
@@ -168,6 +170,10 @@ describe("FilesystemPanel", () => {
       }
 
       if (command === "workspace_open_workspace_folder_from_tab") {
+        return null;
+      }
+
+      if (command === "workspace_open_folder_from_tab") {
         return null;
       }
 
@@ -303,6 +309,19 @@ describe("FilesystemPanel", () => {
     });
     expect(within(usersButton).queryByText("config")).not.toBeInTheDocument();
     expect(within(usersButton).getByText("Folder")).toBeInTheDocument();
+  });
+
+  it("marks workspace folders in breadcrumbs", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.doubleClick(usersButton);
+
+    const workspaceCrumb = await screen.findByRole("button", { name: "Users" });
+    expect(workspaceCrumb.className).toMatch(/workspaceCrumb/);
   });
 
   it("uses breadcrumbs to jump back to a parent path", async () => {
@@ -554,6 +573,27 @@ describe("FilesystemPanel", () => {
     });
     expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+  });
+
+  it("opens non-workspace folders in a new tab on middle click", async () => {
+    renderFilesystemPanel({ tabId: "tab-1" });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const tempFolderButton = await screen.findByRole("button", { name: /Temp/i });
+    fireEvent.mouseDown(tempFolderButton, { button: 1 });
+    fireEvent.mouseUp(tempFolderButton, { button: 1 });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("workspace_open_folder_from_tab", {
+        payload: {
+          tabId: "tab-1",
+          path: "C:\\Temp",
+        },
+      });
+    });
+    expect(screen.getByRole("button", { name: /Temp/i })).toBeInTheDocument();
   });
 
   it("moves an entry when dropped onto a folder", async () => {
@@ -1006,6 +1046,35 @@ describe("FilesystemPanel", () => {
     expect(await screen.findByText("notes.txt")).toBeInTheDocument();
   });
 
+  it("requires confirmation before leaving workspace root via up navigation", async () => {
+    openConfirmMock.mockResolvedValue(false);
+    renderFilesystemPanel({
+      tabId: "tab-1",
+      paneId: "left",
+      tabWorkspaceRoot: "C:\\Users",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\Users",
+        selectedPaths: [],
+        scrollTop: 0,
+      },
+    });
+
+    expect(await screen.findByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+
+    const upButton = screen.getByRole("button", { name: /\.\.\s*Up/i });
+    fireEvent.doubleClick(upButton);
+
+    await waitFor(() => {
+      expect(openConfirmMock).toHaveBeenCalledWith(expect.objectContaining({
+        title: "Leave workspace?",
+        confirmLabel: "Leave workspace",
+      }));
+    });
+    expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+  });
+
   it("uses breadcrumb root to return to drive selection", async () => {
     renderFilesystemPanel();
 
@@ -1016,6 +1085,28 @@ describe("FilesystemPanel", () => {
     fireEvent.click(drivesCrumb);
 
     expect(await screen.findByText("Select a drive")).toBeInTheDocument();
+  });
+
+  it("hydrates expanded folder paths from persisted filesystem state", async () => {
+    renderFilesystemPanel({
+      tabId: "tab-1",
+      paneId: "left",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\",
+        selectedPaths: [],
+        expandedPaths: ["C:\\Users"],
+        scrollTop: 0,
+      },
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("list_directory", { path: "C:\\Users" });
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Projects/i })).toBeInTheDocument();
+    });
   });
 
   it("hydrates filesystem state and restores scroll per pane", async () => {

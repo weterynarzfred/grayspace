@@ -88,6 +88,12 @@ export function workspaceOpenWorkspaceFolderFromTab(tabId, workspaceRoot) {
   });
 }
 
+export function workspaceOpenFolderFromTab(tabId, path) {
+  return invoke("workspace_open_folder_from_tab", {
+    payload: { tabId, path },
+  });
+}
+
 export function workspaceMoveTab(sourceWindowId, targetWindowId, tabId, targetIndex = null) {
   return invoke("workspace_move_tab", {
     payload: { sourceWindowId, targetWindowId, tabId, targetIndex },

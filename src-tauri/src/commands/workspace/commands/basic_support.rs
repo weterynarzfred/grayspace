@@ -73,14 +73,17 @@ fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState
     current_drive,
     current_path,
     selected_paths,
+    expanded_paths,
     scroll_top,
   } = state;
   let normalized_selected_paths = normalize_selected_paths(selected_paths);
+  let normalized_expanded_paths = normalize_selected_paths(expanded_paths);
 
   FilesystemPaneState {
     current_drive,
     current_path,
     selected_paths: normalized_selected_paths,
+    expanded_paths: normalized_expanded_paths,
     scroll_top: if scroll_top.is_finite() {
       scroll_top.max(0.0)
     } else {
@@ -381,6 +384,7 @@ mod tests {
         current_drive: "C:\\".to_string(),
         current_path: "C:\\Users".to_string(),
         selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
+        expanded_paths: vec!["C:\\Users".to_string()],
         scroll_top: 125.7,
       },
     ));
@@ -393,6 +397,7 @@ mod tests {
         current_drive: "C:\\".to_string(),
         current_path: "C:\\Users".to_string(),
         selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
+        expanded_paths: vec!["C:\\Users".to_string()],
         scroll_top: f64::NAN,
       },
     ));
@@ -419,6 +424,11 @@ mod tests {
           "C:\\Users\\alpha.txt".to_string(),
           "C:\\Users\\beta.txt".to_string(),
         ],
+        expanded_paths: vec![
+          "C:\\Users".to_string(),
+          "C:\\Users".to_string(),
+          "C:\\Users\\Projects".to_string(),
+        ],
         scroll_top: 1.0,
       },
     ));
@@ -429,6 +439,10 @@ mod tests {
         "C:\\Users\\alpha.txt".to_string(),
         "C:\\Users\\beta.txt".to_string(),
       ]
+    );
+    assert_eq!(
+      active_pane.filesystem_state.expanded_paths,
+      vec!["C:\\Users".to_string(), "C:\\Users\\Projects".to_string()]
     );
   }
 

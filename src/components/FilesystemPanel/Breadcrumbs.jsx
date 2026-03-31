@@ -28,10 +28,10 @@ export function buildBreadcrumbs(currentPath, currentDrive) {
   return crumbs;
 }
 
-function StaticCrumbButton({ crumb, index, onSelect }) {
+function StaticCrumbButton({ crumb, onSelect, isWorkspaceFolder = false }) {
   return <button
     type="button"
-    className={styles.crumbButton}
+    className={`${styles.crumbButton} ${isWorkspaceFolder ? styles.workspaceCrumb : ""}`}
     onClick={() => onSelect(crumb.path)}
   >
     <span>{crumb.label}</span>
@@ -45,6 +45,7 @@ function DroppableCrumbButton({
   isMovingEntry,
   activeDragPaths,
   dropId,
+  isWorkspaceFolder = false,
 }) {
   const hasDestinationPath = Boolean(crumb.path);
   const { isOver, setNodeRef } = useDroppable({
@@ -60,7 +61,7 @@ function DroppableCrumbButton({
   return <button
     ref={setNodeRef}
     type="button"
-    className={`${styles.crumbButton} ${isDropTarget ? styles.dropTarget : ""}`}
+    className={`${styles.crumbButton} ${isWorkspaceFolder ? styles.workspaceCrumb : ""} ${isDropTarget ? styles.dropTarget : ""}`}
     onClick={() => onSelect(crumb.path)}
   >
     <span>{crumb.label}</span>
@@ -74,6 +75,7 @@ function Breadcrumbs({
   activeDragPaths = [],
   isMovingEntry = false,
   getDropIdForPath,
+  workspaceFolderPathSet = new Set(),
 }) {
   const crumbs = buildBreadcrumbs(currentPath, currentDrive);
   const hasDropTargets = typeof getDropIdForPath === "function";
@@ -88,11 +90,12 @@ function Breadcrumbs({
         isMovingEntry={isMovingEntry}
         activeDragPaths={activeDragPaths}
         dropId={getDropIdForPath(crumb.path)}
+        isWorkspaceFolder={workspaceFolderPathSet.has(crumb.path)}
       /> : <StaticCrumbButton
         key={`${crumb.path}-${index}`}
         crumb={crumb}
-        index={index}
         onSelect={onSelect}
+        isWorkspaceFolder={workspaceFolderPathSet.has(crumb.path)}
       />
     )}
   </nav>;

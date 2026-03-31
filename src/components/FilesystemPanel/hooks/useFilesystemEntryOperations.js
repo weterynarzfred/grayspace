@@ -1,6 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback } from "react";
-import { workspaceOpenWorkspaceFolderFromTab } from "../../../workspace/workspaceApi";
+import {
+  workspaceOpenFolderFromTab,
+  workspaceOpenWorkspaceFolderFromTab,
+} from "../../../workspace/workspaceApi";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 import { getNavigationErrorMessage } from "./filesystemNavigationUtils";
 
@@ -37,6 +40,22 @@ export default function useFilesystemEntryOperations({
         entry.path,
         options?.isWorkspaceFolder === true,
       );
+      const shouldOpenInNewTab = Boolean(options?.forceOpenInNewTab && tabId);
+
+      if (shouldOpenInNewTab) {
+        try {
+          if (shouldOpenAsWorkspace) {
+            await workspaceOpenWorkspaceFolderFromTab(tabId, entry.path);
+          } else {
+            await workspaceOpenFolderFromTab(tabId, entry.path);
+          }
+          clearSelection();
+          setError("");
+        } catch (openInNewTabError) {
+          setError(getNavigationErrorMessage(openInNewTabError, "Failed to open folder in new tab."));
+        }
+        return;
+      }
 
       if (shouldOpenAsWorkspace && tabId) {
         try {

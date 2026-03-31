@@ -1,5 +1,5 @@
 import { DragOverlay, useDroppable } from "@dnd-kit/core";
-import { Fragment, useCallback, useEffect, useMemo, useRef } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelsDndHandlers } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
 import Breadcrumbs, { buildBreadcrumbs } from "./Breadcrumbs";
@@ -26,10 +26,27 @@ const UP_ENTRY_SELECTION_ID = "__up__";
 const ENTRY_WINDOWING_THRESHOLD = 200;
 const ENTRY_ROW_HEIGHT_PX = 29;
 
+function normalizePathForComparison(path) {
+  if (typeof path !== "string" || !path.trim()) return "";
+  return path
+    .trim()
+    .replace(/[\\/]+$/, "")
+    .replace(/\\/g, "/")
+    .toLowerCase();
+}
+
+function isPathInsideRoot(path, rootPath) {
+  const normalizedPath = normalizePathForComparison(path);
+  const normalizedRootPath = normalizePathForComparison(rootPath);
+  if (!normalizedRootPath) return false;
+  return normalizedPath === normalizedRootPath || normalizedPath.startsWith(`${normalizedRootPath}/`);
+}
+
 function FilesystemPanel({
   tabId = "",
   paneId = "",
   panelType = "Filesystem",
+  tabWorkspaceRoot = "",
   onPanelTypeChange = undefined,
   onCurrentPathChange = undefined,
   onFilesystemStateChange = undefined,
@@ -40,6 +57,7 @@ function FilesystemPanel({
   const panelListRef = useRef(null);
   const entryWindowAnchorRef = useRef(null);
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
+  const [expandedPaths, setExpandedPaths] = useState(initialFilesystemStateRef.current.expandedPaths);
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current, { tabId });
   const { openConfirm } = useNotificationCenter();
   const {
@@ -57,7 +75,6 @@ function FilesystemPanel({
     setSelectedPath,
     selectDrive,
     navigateToPath,
-    goUp,
     selectEntry,
     openEntry,
     moveEntries,
@@ -74,6 +91,7 @@ function FilesystemPanel({
     currentDrive,
     currentPath,
     selectedPaths,
+    expandedPaths,
   });
   const isBrowsing = currentPath !== "";
   const isEntryOperationInProgress =
@@ -87,6 +105,8 @@ function FilesystemPanel({
   } = useFilesystemTree({
     currentPath,
     rootEntries: entries,
+    initialExpandedPaths: initialFilesystemStateRef.current.expandedPaths,
+    onExpandedPathsChange: setExpandedPaths,
   });
   const flattenedEntries = useMemo(
     () => treeRows.map((row) => row.entry),
@@ -176,11 +196,14 @@ function FilesystemPanel({
     entries: flattenedEntries,
     visibleEntries,
   });
+  const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
   const workspaceFolderPathSet = useFilesystemWorkspaceFolders({
     entries: flattenedEntries,
+    paths: breadcrumbs
+      .map((crumb) => crumb.path)
+      .filter((path) => typeof path === "string" && path),
   });
   const activeDragEntry = activeDragEntries[0] ?? null;
-  const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
   const upDestinationPath =
     breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
   const {
@@ -216,6 +239,40 @@ function FilesystemPanel({
   }, [emitTabSelectedFiles, flattenedEntryPaths, selectEntry]);
   const handleEntryDoubleClick = useCallback((entry) => {
     openEntry(entry, {
+      isWorkspaceFolder: workspaceFolderPathSet.has(entry.path),
+    });
+  }, [openEntry, workspaceFolderPathSet]);
+  const canLeaveWorkspaceWithoutConfirm = useCallback((nextPath) => {
+    if (!tabWorkspaceRoot) return true;
+    return isPathInsideRoot(nextPath, tabWorkspaceRoot);
+  }, [tabWorkspaceRoot]);
+  const confirmWorkspaceExitIfNeeded = useCallback(async (nextPath) => {
+    if (canLeaveWorkspaceWithoutConfirm(nextPath)) return true;
+    const shouldLeaveWorkspace = await openConfirm({
+      title: "Leave workspace?",
+      message: "This will clear workspace context for this tab.",
+      tone: "warning",
+      confirmLabel: "Leave workspace",
+      cancelLabel: "Stay",
+      autoOpen: true,
+    });
+    return shouldLeaveWorkspace;
+  }, [canLeaveWorkspaceWithoutConfirm, openConfirm]);
+  const handleBreadcrumbSelect = useCallback(async (nextPath) => {
+    if (!await confirmWorkspaceExitIfNeeded(nextPath)) return;
+    navigateToPath(nextPath);
+  }, [confirmWorkspaceExitIfNeeded, navigateToPath]);
+  const handleGoUpDoubleClick = useCallback(async () => {
+    if (!await confirmWorkspaceExitIfNeeded(upDestinationPath)) return;
+    navigateToPath(upDestinationPath);
+  }, [confirmWorkspaceExitIfNeeded, navigateToPath, upDestinationPath]);
+  const handleEntryMiddleClick = useCallback((entry, event) => {
+    if (!entry?.is_dir) return;
+    if (event.button !== 1) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openEntry(entry, {
+      forceOpenInNewTab: true,
       isWorkspaceFolder: workspaceFolderPathSet.has(entry.path),
     });
   }, [openEntry, workspaceFolderPathSet]);
@@ -325,10 +382,11 @@ function FilesystemPanel({
           <Breadcrumbs
             currentPath={currentPath}
             currentDrive={currentDrive}
-            onSelect={navigateToPath}
+            onSelect={handleBreadcrumbSelect}
             activeDragPaths={dnd.activeDragPaths}
             isMovingEntry={isMovingEntry}
             getDropIdForPath={dnd.getBreadcrumbDropId}
+            workspaceFolderPathSet={workspaceFolderPathSet}
           />
 
           {!isLoadingEntries && !error && (
@@ -339,7 +397,7 @@ function FilesystemPanel({
                 isMovingEntry={isEntryOperationInProgress}
                 activeDragPaths={dnd.activeDragPaths}
                 onClick={() => setSelectedPath(UP_ENTRY_SELECTION_ID)}
-                onDoubleClick={goUp}
+                onDoubleClick={handleGoUpDoubleClick}
               />
               <li
                 ref={entryWindowAnchorRef}
@@ -371,6 +429,7 @@ function FilesystemPanel({
                   onToggleExpand={row.entry.is_dir ? () => toggleDirectoryExpanded(row.entry.path) : undefined}
                   onEntryClick={handleEntryClick}
                   onEntryDoubleClick={handleEntryDoubleClick}
+                  onEntryMiddleClick={handleEntryMiddleClick}
                 />
                 {row.isLoadingChildren && (
                   <EntryItem

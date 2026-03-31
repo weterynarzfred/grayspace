@@ -92,7 +92,7 @@ function WorkspacePanelLayout({
     };
 
     return <div
-      key={paneState?.paneId ?? `${tabId || "tab"}-${paneId}`}
+      key={`${tabId || "tab"}::${paneState?.paneId ?? paneId}`}
       className={`${styles.paneViewport} ${isActivePane ? styles.activePane : ""}`}
       data-pane-id={paneId}
       onPointerDownCapture={() => onPaneActivate?.(tabId, paneId)}
@@ -136,6 +136,7 @@ function WorkspacePanelLayout({
             onPaneDirtyStateChange?.(tabId, paneId, dirtyState, panelType)
           }
           filesystemState={paneState?.filesystemState}
+          tabWorkspaceRoot={tab?.workspaceRoot ?? ""}
           tabSelectedFiles={tab?.selectedFiles}
           cwdHint={cwdHint}
           terminalSessionId={paneState?.terminalSessionId ?? ""}

@@ -15,6 +15,7 @@ export default function useFilesystemStatePersistence({
   currentDrive = "",
   currentPath = "",
   selectedPaths = [],
+  expandedPaths = [],
 }) {
   const initialFilesystemStateRef = useRef(
     normalizeFilesystemPaneState(initialFilesystemState),
@@ -31,6 +32,7 @@ export default function useFilesystemStatePersistence({
     const hasChanged = normalizedState.currentDrive !== lastState.currentDrive
       || normalizedState.currentPath !== lastState.currentPath
       || !arePathArraysEqual(normalizedState.selectedPaths, lastState.selectedPaths)
+      || !arePathArraysEqual(normalizedState.expandedPaths, lastState.expandedPaths)
       || normalizedState.scrollTop !== lastState.scrollTop;
 
     if (!hasChanged) return;
@@ -44,11 +46,13 @@ export default function useFilesystemStatePersistence({
       currentDrive,
       currentPath,
       selectedPaths,
+      expandedPaths,
       scrollTop: latestScrollTopRef.current,
     });
   }, [
     currentDrive,
     currentPath,
+    expandedPaths,
     persistFilesystemState,
     selectedPaths,
   ]);

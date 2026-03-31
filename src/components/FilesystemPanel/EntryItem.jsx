@@ -23,6 +23,7 @@ function EntryItem({
   onToggleExpand,
   onClick,
   onDoubleClick,
+  onAuxClick,
   onDragStart,
   onDragEnd,
   onDragOver,
@@ -61,6 +62,16 @@ function EntryItem({
     event.stopPropagation();
   }
 
+  function handleButtonMouseDown(event) {
+    if (event.button !== 1) return;
+    event.preventDefault();
+  }
+
+  function handleButtonMouseUp(event) {
+    if (event.button !== 1) return;
+    onAuxClick?.(event);
+  }
+
   return <li className={styles.entryItem}>
     <button
       ref={buttonRef}
@@ -73,6 +84,8 @@ function EntryItem({
       {...dndListeners}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onMouseDown={handleButtonMouseDown}
+      onMouseUp={handleButtonMouseUp}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}

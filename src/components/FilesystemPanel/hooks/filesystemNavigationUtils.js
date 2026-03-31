@@ -25,10 +25,12 @@ export function getRangeSelectionPaths(entryPaths, startPath, endPath) {
 export function normalizeInitialFilesystemState(initialState) {
   const state = initialState ?? {};
   const selectedPaths = getSelectedPathsFromState(state);
+  const expandedPaths = uniqueNonEmptyPaths(state.expandedPaths);
   return {
     currentDrive: typeof state.currentDrive === "string" ? state.currentDrive : "",
     currentPath: typeof state.currentPath === "string" ? state.currentPath : "",
     selectedPaths,
+    expandedPaths,
     selectionAnchorPath: selectedPaths[selectedPaths.length - 1] ?? "",
   };
 }

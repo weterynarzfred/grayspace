@@ -1,20 +1,53 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 
-export default function useFilesystemWorkspaceFolders({ entries = [] }) {
-  const directoryPaths = useMemo(
-    () => entries
+function mapsAreEqual(a, b) {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => a[key] === b[key]);
+}
+
+export default function useFilesystemWorkspaceFolders({ entries = [], paths = [] }) {
+  const directoryPaths = useMemo(() => {
+    const nextDirectoryPathSet = new Set();
+
+    entries
       .filter((entry) => entry?.is_dir && typeof entry?.path === "string" && entry.path)
-      .map((entry) => entry.path),
-    [entries],
-  );
+      .forEach((entry) => {
+        nextDirectoryPathSet.add(entry.path);
+      });
+    paths
+      .filter((path) => typeof path === "string" && path)
+      .forEach((path) => {
+        nextDirectoryPathSet.add(path);
+      });
+
+    return Array.from(nextDirectoryPathSet);
+  }, [entries, paths]);
+  const directoryPathsKey = useMemo(() => directoryPaths.join("\u0000"), [directoryPaths]);
   const [workspaceByPath, setWorkspaceByPath] = useState({});
 
   useEffect(() => {
+    const trackedPaths = directoryPathsKey ? directoryPathsKey.split("\u0000") : [];
+    setWorkspaceByPath((previous) => {
+      const next = {};
+      trackedPaths.forEach((path) => {
+        if (previous[path] === undefined) return;
+        next[path] = previous[path];
+      });
+      return mapsAreEqual(previous, next) ? previous : next;
+    });
+  }, [directoryPathsKey]);
+
+  const unresolvedPaths = useMemo(() => directoryPaths.filter(
+    (path) => workspaceByPath[path] === undefined,
+  ), [directoryPaths, workspaceByPath]);
+  const unresolvedPathsKey = useMemo(() => unresolvedPaths.join("\u0000"), [unresolvedPaths]);
+
+  useEffect(() => {
+    const unresolvedPaths = unresolvedPathsKey ? unresolvedPathsKey.split("\u0000") : [];
     let isCancelled = false;
-    const unresolvedPaths = directoryPaths.filter(
-      (path) => workspaceByPath[path] === undefined,
-    );
     if (unresolvedPaths.length === 0) return undefined;
 
     async function resolveWorkspaceFolders() {
@@ -24,14 +57,28 @@ export default function useFilesystemWorkspaceFolders({ entries = [] }) {
         });
         if (isCancelled || typeof resolved !== "object" || resolved === null) return;
 
-        setWorkspaceByPath((prev) => ({ ...prev, ...resolved }));
+        setWorkspaceByPath((previous) => {
+          const next = { ...previous };
+          Object.entries(resolved).forEach(([path, isWorkspace]) => {
+            if (next[path] === isWorkspace) return;
+            next[path] = isWorkspace;
+          });
+          return mapsAreEqual(previous, next) ? previous : next;
+        });
       } catch {
         if (isCancelled) return;
         const fallback = {};
         unresolvedPaths.forEach((path) => {
           fallback[path] = false;
         });
-        setWorkspaceByPath((prev) => ({ ...prev, ...fallback }));
+        setWorkspaceByPath((previous) => {
+          const next = { ...previous };
+          Object.entries(fallback).forEach(([path, isWorkspace]) => {
+            if (next[path] === isWorkspace) return;
+            next[path] = isWorkspace;
+          });
+          return mapsAreEqual(previous, next) ? previous : next;
+        });
       }
     }
 
@@ -40,7 +87,7 @@ export default function useFilesystemWorkspaceFolders({ entries = [] }) {
     return () => {
       isCancelled = true;
     };
-  }, [directoryPaths, workspaceByPath]);
+  }, [unresolvedPathsKey]);
 
   return useMemo(() => {
     const workspaceFolderPathSet = new Set();

@@ -20,6 +20,7 @@ function DraggableFilesystemEntry({
   onToggleExpand = undefined,
   onEntryClick,
   onEntryDoubleClick,
+  onEntryMiddleClick = undefined,
 }) {
   const selfDragPath = useMemo(() => [entry.path], [entry.path]);
   const dragPaths = isSelectedForDrag ? selectedEntryPaths : selfDragPath;
@@ -85,6 +86,7 @@ function DraggableFilesystemEntry({
     dndListeners={listeners}
     onClick={(event) => onEntryClick?.(entry.path, event)}
     onDoubleClick={() => onEntryDoubleClick?.(entry)}
+    onAuxClick={(event) => onEntryMiddleClick?.(entry, event)}
   />;
 }
 

@@ -23,6 +23,12 @@ function WorkspaceTabItem({ tab, isActive, onActivate, onClose }) {
       type="button"
       className={styles.tabButton}
       onClick={() => onActivate(tab.tabId)}
+      onAuxClick={(event) => {
+        if (event.button !== 1) return;
+        event.preventDefault();
+        event.stopPropagation();
+        onClose(tab.tabId);
+      }}
       {...attributes}
       {...listeners}
     >{tab.title}</button>

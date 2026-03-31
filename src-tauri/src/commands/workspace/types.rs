@@ -107,6 +107,8 @@ pub struct FilesystemPaneState {
   pub current_path: String,
   #[serde(default)]
   pub selected_paths: Vec<String>,
+  #[serde(default)]
+  pub expanded_paths: Vec<String>,
   pub scroll_top: f64,
 }
 
@@ -241,12 +243,20 @@ pub struct TabOpenWorkspaceFolderPayload {
   pub workspace_root: String,
 }
 
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TabOpenFolderPayload {
+  pub tab_id: String,
+  pub path: String,
+}
+
 impl Default for FilesystemPaneState {
   fn default() -> Self {
     Self {
       current_drive: String::new(),
       current_path: String::new(),
       selected_paths: Vec::new(),
+      expanded_paths: Vec::new(),
       scroll_top: 0.0,
     }
   }
