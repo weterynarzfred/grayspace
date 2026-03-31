@@ -3,9 +3,20 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import PanelsDndLayer from "../PanelsDndLayer";
 import PreviewPanel from "./PreviewPanel";
 
+let filesystemWatchCallback;
+
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
   convertFileSrc: vi.fn((path) => `asset://localhost/${encodeURIComponent(path || "")}`),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async (eventName, handler) => {
+    if (eventName === "filesystem-watch-event") filesystemWatchCallback = handler;
+    return () => {
+      if (filesystemWatchCallback === handler) filesystemWatchCallback = undefined;
+    };
+  }),
 }));
 
 vi.mock("./CodeTextPreview", () => ({
@@ -38,6 +49,7 @@ describe("PreviewPanel", () => {
   }
 
   beforeEach(() => {
+    filesystemWatchCallback = undefined;
     invoke.mockReset();
     convertFileSrc.mockClear();
   });
@@ -173,6 +185,10 @@ describe("PreviewPanel", () => {
 
   it("saves text edits only when save is triggered", async () => {
     invoke.mockImplementation(async (command) => {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+        return null;
+      }
+
       if (command === "preview_read_file") {
         return {
           kind: "text",
@@ -231,6 +247,10 @@ describe("PreviewPanel", () => {
 
   it("auto-locks when selection changes while text edits are unsaved", async () => {
     invoke.mockImplementation(async (command, payload) => {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+        return null;
+      }
+
       if (command === "preview_read_file") {
         if (payload?.path === "C:\\notes.txt") {
           return {
@@ -290,6 +310,10 @@ describe("PreviewPanel", () => {
 
   it("keeps non-text previews pinned when manually locked", async () => {
     invoke.mockImplementation(async (command, payload) => {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+        return null;
+      }
+
       if (command === "preview_read_file") {
         if (payload?.path === "C:\\one.png") {
           return {
@@ -335,5 +359,48 @@ describe("PreviewPanel", () => {
     expect(image).toHaveAttribute("src", "asset://localhost/C%3A%5Cone.png");
     expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalledWith("preview_read_file", { path: "C:\\two.png" });
+  });
+
+  it("starts a watcher for the preview file parent directory", async () => {
+    invoke.mockImplementation(async (command) => {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+        return null;
+      }
+
+      if (command === "preview_read_file") {
+        return {
+          kind: "text",
+          content: "preview content",
+          truncated: false,
+        };
+      }
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { unmount } = renderPreviewPanel({
+      tabSelectedFiles: {
+        selectedPaths: ["C:\\notes.txt"],
+      },
+    });
+
+    await screen.findByTestId("preview-text-content");
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith(
+        "filesystem_watch_start",
+        expect.objectContaining({ path: "C:\\" }),
+      );
+      expect(typeof filesystemWatchCallback).toBe("function");
+    });
+
+    unmount();
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith(
+        "filesystem_watch_stop",
+        expect.objectContaining({ watchId: expect.any(String) }),
+      );
+    });
   });
 });

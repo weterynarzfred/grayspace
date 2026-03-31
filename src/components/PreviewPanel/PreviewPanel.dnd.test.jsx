@@ -13,6 +13,10 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async () => () => {}),
+}));
+
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({ children, onDragStart, onDragEnd, onDragCancel }) => {
     dndCallbacks.onDragStart = onDragStart;
@@ -41,6 +45,10 @@ describe("PreviewPanel drag and drop", () => {
     dndCallbacks.onDragCancel = undefined;
     invoke.mockReset();
     invoke.mockImplementation(async (command, payload) => {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+        return null;
+      }
+
       if (command === "preview_read_file") {
         return {
           kind: "text",

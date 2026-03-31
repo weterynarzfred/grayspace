@@ -5,7 +5,9 @@ import { usePanelsDndHandlers } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
 import { getFirstDraggedPathFromDndEvent } from "../dndEventPaths";
+import useFilesystemDirectoryWatcher from "../FilesystemPanel/hooks/useFilesystemDirectoryWatcher";
 import { getPrimarySelectedPath, getSelectedPathsFromState } from "../../utils/pathSelection";
+import { getParentDirectoryPath, isSamePath } from "../../utils/pathWatch";
 import styles from "./PropertiesPanel.module.scss";
 
 const INITIAL_DETAILS_STATE = {
@@ -67,10 +69,12 @@ function PropertiesPanel({
 }) {
   const selectedPropertiesPath = getPrimarySelectedPath(getSelectedPathsFromState(tabSelectedFiles));
   const [lockedPath, setLockedPath] = useState("");
+  const [detailsReloadVersion, setDetailsReloadVersion] = useState(0);
   const [detailsState, setDetailsState] = useState(INITIAL_DETAILS_STATE);
   const isLocked = Boolean(lockedPath);
   const propertiesPath = isLocked ? lockedPath : selectedPropertiesPath;
   const propertiesLabel = useMemo(() => getPathDisplayName(propertiesPath), [propertiesPath]);
+  const propertiesDirectoryPath = useMemo(() => getParentDirectoryPath(propertiesPath), [propertiesPath]);
   const propertiesDropId = `properties-drop:${paneId || "properties"}`;
   const {
     isOver: isDropOver,
@@ -100,6 +104,24 @@ function PropertiesPanel({
       if (!droppedPath) return;
       setLockedPath(droppedPath);
     },
+  });
+
+  const handlePropertiesFileWatchChange = useCallback((_watchedPath, changedPath) => {
+    if (!propertiesPath) return;
+
+    const hasKnownPath = typeof changedPath === "string" && changedPath.length > 0;
+    const isPropertiesPathChange = hasKnownPath && isSamePath(changedPath, propertiesPath);
+    const isDirectoryLevelChange = hasKnownPath
+      && propertiesDirectoryPath
+      && isSamePath(changedPath, propertiesDirectoryPath);
+    if (hasKnownPath && !isPropertiesPathChange && !isDirectoryLevelChange) return;
+
+    setDetailsReloadVersion(version => version + 1);
+  }, [propertiesDirectoryPath, propertiesPath]);
+
+  useFilesystemDirectoryWatcher({
+    watchPaths: propertiesDirectoryPath ? [propertiesDirectoryPath] : [],
+    onDirectoryChange: handlePropertiesFileWatchChange,
   });
 
   useEffect(() => {
@@ -140,7 +162,7 @@ function PropertiesPanel({
     return () => {
       cancelled = true;
     };
-  }, [propertiesPath]);
+  }, [propertiesPath, detailsReloadVersion]);
 
   const details = detailsState.details;
   const detailsRows = [

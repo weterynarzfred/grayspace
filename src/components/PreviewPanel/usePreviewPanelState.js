@@ -3,6 +3,8 @@ import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelsDndHandlers } from "../PanelsDndLayer";
 import { getFirstDraggedPathFromDndEvent } from "../dndEventPaths";
+import useFilesystemDirectoryWatcher from "../FilesystemPanel/hooks/useFilesystemDirectoryWatcher";
+import { getParentDirectoryPath, isSamePath } from "../../utils/pathWatch";
 import {
   getErrorMessage,
   getPathDisplayName,
@@ -29,6 +31,7 @@ function usePreviewPanelState({
   const [textContent, setTextContent] = useState("");
   const [saveStatus, setSaveStatus] = useState("idle");
   const [saveError, setSaveError] = useState("");
+  const [previewReloadVersion, setPreviewReloadVersion] = useState(0);
   const [previewState, setPreviewState] = useState(INITIAL_PREVIEW_STATE);
   const latestSaveRequestRef = useRef(0);
   const latestPreviewPathRef = useRef(selectedPreviewPath);
@@ -44,6 +47,7 @@ function usePreviewPanelState({
     : (shouldStickToPreviousPath ? previousPreviewPath : selectedPreviewPath);
   const previewDropId = useMemo(() => `preview-drop:${paneId || "preview"}`, [paneId]);
   const previewLabel = useMemo(() => getPathDisplayName(previewPath), [previewPath]);
+  const previewDirectoryPath = useMemo(() => getParentDirectoryPath(previewPath), [previewPath]);
   const mediaPreviewSrc = useMemo(() => {
     if (previewState.status !== "ready") return null;
     const previewKind = previewState.preview?.kind;
@@ -108,6 +112,25 @@ function usePreviewPanelState({
       if (!droppedPath) return;
       setLockedPath(droppedPath);
     },
+  });
+
+  const handlePreviewFileWatchChange = useCallback((_watchedPath, changedPath) => {
+    if (!previewPath) return;
+    if (saveStatus === "dirty" || saveStatus === "saving") return;
+
+    const hasKnownPath = typeof changedPath === "string" && changedPath.length > 0;
+    const isPreviewPathChange = hasKnownPath && isSamePath(changedPath, previewPath);
+    const isDirectoryLevelChange = hasKnownPath
+      && previewDirectoryPath
+      && isSamePath(changedPath, previewDirectoryPath);
+    if (hasKnownPath && !isPreviewPathChange && !isDirectoryLevelChange) return;
+
+    setPreviewReloadVersion(version => version + 1);
+  }, [previewDirectoryPath, previewPath, saveStatus]);
+
+  useFilesystemDirectoryWatcher({
+    watchPaths: previewDirectoryPath ? [previewDirectoryPath] : [],
+    onDirectoryChange: handlePreviewFileWatchChange,
   });
 
   useEffect(() => {
@@ -196,7 +219,7 @@ function usePreviewPanelState({
     return () => {
       cancelled = true;
     };
-  }, [previewPath]);
+  }, [previewPath, previewReloadVersion]);
 
   const saveStatusMessage = useMemo(() => getSaveStatusMessage({
     isTextPreviewReady,

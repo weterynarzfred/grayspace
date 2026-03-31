@@ -22,7 +22,7 @@ export default function useFilesystemDirectoryWatcher({
   onDirectoryChange = undefined,
   onWatcherError = undefined,
 }) {
-  const watchRefreshTimeoutsRef = useRef(new Map());
+  const watchRefreshStateRef = useRef(new Map());
 
   const normalizedWatchPaths = Array.isArray(watchPaths)
     ? watchPaths
@@ -45,23 +45,32 @@ export default function useFilesystemDirectoryWatcher({
 
     const scheduleRefresh = (watchId, watchedPath, changedPath) => {
       if (!watchId || !watchedPath) return;
-      if (watchRefreshTimeoutsRef.current.has(watchId)) return;
+
+      const existingRefresh = watchRefreshStateRef.current.get(watchId);
+      if (existingRefresh) {
+        if (existingRefresh.changedPath !== changedPath) existingRefresh.changedPath = "";
+        return;
+      }
 
       const timeoutHandle = setTimeout(() => {
-        watchRefreshTimeoutsRef.current.delete(watchId);
-        Promise.resolve(onDirectoryChange?.(watchedPath, changedPath)).catch(refreshError => {
+        const refreshState = watchRefreshStateRef.current.get(watchId);
+        watchRefreshStateRef.current.delete(watchId);
+        Promise.resolve(onDirectoryChange?.(watchedPath, refreshState?.changedPath ?? "")).catch(refreshError => {
           if (!isDisposed && typeof onWatcherError === "function")
             onWatcherError(refreshError, watchedPath);
         });
       }, WATCH_REFRESH_DEBOUNCE_MS);
-      watchRefreshTimeoutsRef.current.set(watchId, timeoutHandle);
+      watchRefreshStateRef.current.set(watchId, {
+        timeoutHandle,
+        changedPath,
+      });
     };
 
     const clearAllRefreshTimeouts = () => {
-      for (const timeoutHandle of watchRefreshTimeoutsRef.current.values()) {
-        clearTimeout(timeoutHandle);
+      for (const refreshState of watchRefreshStateRef.current.values()) {
+        clearTimeout(refreshState.timeoutHandle);
       }
-      watchRefreshTimeoutsRef.current.clear();
+      watchRefreshStateRef.current.clear();
     };
 
     const initializeWatcher = async () => {
