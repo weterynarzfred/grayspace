@@ -7,10 +7,11 @@ function flattenEntries({
   expandedByPath,
   directoryEntriesByPath,
   loadingPaths,
+  rootPath,
 }) {
   const rows = [];
 
-  function walk(entries, depth) {
+  function walk(entries, depth, parentPath) {
     entries.forEach((entry) => {
       const isDirectory = Boolean(entry?.is_dir);
       const entryPath = typeof entry?.path === "string" ? entry.path : "";
@@ -21,17 +22,18 @@ function flattenEntries({
       rows.push({
         entry,
         depth,
+        parentPath,
         isExpanded,
         isLoadingChildren,
       });
 
       if (isExpanded && cachedChildren.length > 0) {
-        walk(cachedChildren, depth + 1);
+        walk(cachedChildren, depth + 1, entryPath);
       }
     });
   }
 
-  walk(rootEntries, 0);
+  walk(rootEntries, 0, rootPath);
   return rows;
 }
 
@@ -122,7 +124,8 @@ export default function useFilesystemTree({
     expandedByPath,
     directoryEntriesByPath,
     loadingPaths: loadingByPath,
-  }), [directoryEntriesByPath, expandedByPath, loadingByPath, rootEntries]);
+    rootPath: currentPath,
+  }), [currentPath, directoryEntriesByPath, expandedByPath, loadingByPath, rootEntries]);
 
   return {
     treeRows,

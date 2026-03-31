@@ -91,6 +91,13 @@ function FilesystemPanel({
     () => treeRows.map((row) => row.entry),
     [treeRows],
   );
+  const entryParentByPath = useMemo(() => {
+    const byPath = {};
+    treeRows.forEach((row) => {
+      byPath[row.entry.path] = row.parentPath;
+    });
+    return byPath;
+  }, [treeRows]);
   const flattenedEntryPaths = useMemo(
     () => flattenedEntries.map((entry) => entry.path),
     [flattenedEntries],
@@ -106,8 +113,8 @@ function FilesystemPanel({
   const dnd = useFilesystemDnd({
     paneId,
     entries: flattenedEntries,
+    entryParentByPath,
     selectedPaths: selectedEntryPaths,
-    currentPath,
     isMovingEntry: isEntryOperationInProgress,
     moveEntries,
     copyEntries,
@@ -125,6 +132,7 @@ function FilesystemPanel({
   });
   usePanelsDndHandlers({
     onDragStart: dnd.handleDragStart,
+    onDragOver: dnd.handleDragOver,
     onDragEnd: dnd.handleDragEnd,
     onDragCancel: dnd.handleDragCancel,
   });
@@ -343,11 +351,13 @@ function FilesystemPanel({
                 <DraggableFilesystemEntry
                   paneId={paneId}
                   entry={row.entry}
+                  dropDestinationPath={row.entry.is_dir ? row.entry.path : row.parentPath}
                   selectedEntryPaths={selectedEntryPaths}
                   isSelectedForDrag={selectedEntryPathSet.has(row.entry.path)}
                   isSelected={selectedPathSet.has(row.entry.path)}
                   isMovingEntry={isEntryOperationInProgress}
                   activeDragPathSet={activeDragPathSet}
+                  activeDropDestinationPath={dnd.activeDropDestinationPath}
                   thumbnailSrc={thumbnailSrcByPath[row.entry.path] ?? ""}
                   nestingDepth={row.depth}
                   isExpanded={row.isExpanded}
