@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import useFilesystemDirectoryWatcher from "./useFilesystemDirectoryWatcher";
 
 function flattenEntries({
   rootEntries,
@@ -97,6 +98,25 @@ export default function useFilesystemTree({
     });
   }, [ensureDirectoryEntriesLoaded]);
 
+  const expandedDirectoryPaths = useMemo(() => (
+    Object.keys(expandedByPath).filter((path) => expandedByPath[path] === true)
+  ), [expandedByPath]);
+
+  const refreshExpandedDirectory = useCallback(async (watchedPath) => {
+    if (!watchedPath || expandedByPath[watchedPath] !== true) return;
+
+    const refreshedEntries = await invoke("list_directory", { path: watchedPath });
+    setDirectoryEntriesByPath((prev) => ({
+      ...prev,
+      [watchedPath]: refreshedEntries,
+    }));
+  }, [expandedByPath]);
+
+  useFilesystemDirectoryWatcher({
+    watchPaths: expandedDirectoryPaths,
+    onDirectoryChange: refreshExpandedDirectory,
+  });
+
   const treeRows = useMemo(() => flattenEntries({
     rootEntries,
     expandedByPath,
@@ -109,4 +129,3 @@ export default function useFilesystemTree({
     toggleDirectoryExpanded,
   };
 }
-

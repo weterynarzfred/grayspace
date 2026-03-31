@@ -350,6 +350,70 @@ describe("FilesystemPanel", () => {
     });
   });
 
+  it("refreshes expanded folder rows when that folder watcher emits a change", async () => {
+    const directoryState = {
+      "C:\\": [
+        { name: "Users", path: "C:\\Users", is_dir: true },
+      ],
+      "C:\\Users": [
+        { name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false },
+      ],
+    };
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
+      if (command === "list_directory") return (directoryState[payload?.path] ?? []).map(entry => ({ ...entry }));
+      if (command === "parent_path") {
+        if (payload?.path === "C:\\") return null;
+        return path.win32.dirname(payload?.path ?? "");
+      }
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+      if (command === "thumbnail_resolve_batch") return { results: [] };
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+
+    directoryState["C:\\Users"].push({
+      name: "later.txt",
+      path: "C:\\Users\\later.txt",
+      is_dir: false,
+    });
+
+    const usersWatchStartCall = invoke.mock.calls.find(([command, args]) => (
+      command === "filesystem_watch_start" && args?.path === "C:\\Users"
+    ));
+    const usersWatchId = usersWatchStartCall?.[1]?.watchId;
+    expect(typeof usersWatchId).toBe("string");
+
+    filesystemWatchCallback?.({
+      payload: {
+        watchId: usersWatchId,
+        changedPath: "C:\\Users\\later.txt",
+      },
+    });
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 160);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /later\.txt/i })).toBeInTheDocument();
+    });
+  });
+
   it("reports tab-level selection only for explicit entry clicks", async () => {
     const onTabSelectedFilesChange = vi.fn();
     renderFilesystemPanel({
