@@ -8,6 +8,9 @@ function EntryItem({
   isSelected = false,
   isFile = false,
   isDirectory = false,
+  nestingDepth = 0,
+  showExpander = false,
+  isExpanded = false,
   isConfig = false,
   isDraggable = false,
   isDragging = false,
@@ -17,6 +20,7 @@ function EntryItem({
   buttonStyle,
   dndAttributes,
   dndListeners,
+  onToggleExpand,
   onClick,
   onDoubleClick,
   onDragStart,
@@ -30,6 +34,10 @@ function EntryItem({
   const entryIconClassName = useMemo(() => resolveFilesystemIconClass(label, {
     isDirectory,
   }), [isDirectory, label]);
+  const resolvedButtonStyle = {
+    ...(buttonStyle ?? {}),
+    "--entry-depth": nestingDepth,
+  };
   const buttonClassName = [
     styles.entryButton,
     isSelected ? styles.selected : "",
@@ -42,6 +50,17 @@ function EntryItem({
     .filter(Boolean)
     .join(" ");
 
+  function handleExpanderClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    onToggleExpand?.();
+  }
+
+  function handleExpanderDoubleClick(event) {
+    event.preventDefault();
+    event.stopPropagation();
+  }
+
   return <li className={styles.entryItem}>
     <button
       ref={buttonRef}
@@ -49,7 +68,7 @@ function EntryItem({
       className={buttonClassName}
       aria-selected={isSelected}
       draggable={isDraggable && !hasDndListeners}
-      style={buttonStyle}
+      style={resolvedButtonStyle}
       {...dndAttributes}
       {...dndListeners}
       onClick={onClick}
@@ -62,6 +81,19 @@ function EntryItem({
       onDrop={onDrop}
     >
       <span className={styles.entryMain}>
+        {showExpander
+          ? <span
+            className={`${styles.entryExpander} ${isExpanded ? styles.expanded : ""}`}
+            data-entry-expander
+            aria-hidden
+            onClick={handleExpanderClick}
+            onDoubleClick={handleExpanderDoubleClick}
+          >
+            <svg viewBox="0 0 10 10">
+              <path d="M3 1L7 5L3 9" />
+            </svg>
+          </span>
+          : <span className={styles.entryExpanderSpacer} aria-hidden />}
         {thumbnailSrc
           ? <img
             src={thumbnailSrc}

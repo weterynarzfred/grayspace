@@ -316,6 +316,40 @@ describe("FilesystemPanel", () => {
     expect(folderButton).toHaveAttribute("aria-selected", "false");
   });
 
+  it("expands a folder inline without changing root, then double click makes it root", async () => {
+    const onCurrentPathChange = vi.fn();
+    renderFilesystemPanel({ onCurrentPathChange });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Projects/i })).toBeInTheDocument();
+    });
+    expect(onCurrentPathChange).toHaveBeenLastCalledWith("C:\\");
+
+    fireEvent.doubleClick(usersExpander);
+
+    await waitFor(() => {
+      expect(onCurrentPathChange).toHaveBeenLastCalledWith("C:\\");
+      expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+    });
+
+    fireEvent.doubleClick(usersButton);
+
+    await waitFor(() => {
+      expect(onCurrentPathChange).toHaveBeenLastCalledWith("C:\\Users");
+      expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+  });
+
   it("reports tab-level selection only for explicit entry clicks", async () => {
     const onTabSelectedFilesChange = vi.fn();
     renderFilesystemPanel({

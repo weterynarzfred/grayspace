@@ -12,6 +12,9 @@ function DraggableFilesystemEntry({
   isMovingEntry,
   activeDragPathSet = undefined,
   thumbnailSrc = "",
+  nestingDepth = 0,
+  isExpanded = false,
+  onToggleExpand = undefined,
   onEntryClick,
   onEntryDoubleClick,
 }) {
@@ -68,6 +71,10 @@ function DraggableFilesystemEntry({
     isDragging={isDragging}
     isDropTarget={isDropTarget}
     thumbnailSrc={!entry.is_dir ? thumbnailSrc : ""}
+    nestingDepth={nestingDepth}
+    showExpander={entry.is_dir}
+    isExpanded={isExpanded}
+    onToggleExpand={onToggleExpand}
     buttonRef={setNodeRef}
     dndAttributes={attributes}
     dndListeners={listeners}

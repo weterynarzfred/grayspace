@@ -53,9 +53,12 @@ export default function useFilesystemNavigation(initialFilesystemState = undefin
   }, [entries, selectedPaths]);
 
   const selectEntry = useCallback((entryPath, options = {}) => {
-    const entryPaths = entries.map(entry => entry.path);
-    return selectEntryState(entryPath, options, entryPaths, selectedEntryPaths);
-  }, [entries, selectEntryState, selectedEntryPaths]);
+    const entryPaths = Array.isArray(options.entryPaths) && options.entryPaths.length > 0
+      ? options.entryPaths
+      : entries.map(entry => entry.path);
+    const selectedVisiblePaths = selectedPaths.filter(path => entryPaths.includes(path));
+    return selectEntryState(entryPath, options, entryPaths, selectedVisiblePaths);
+  }, [entries, selectEntryState, selectedPaths]);
 
   const {
     openEntry,

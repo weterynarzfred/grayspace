@@ -14,7 +14,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
-  padding: 0 0.5rem;
+  padding: 0 0.5rem 0 calc(var(--entry-depth) * 1rem);
   min-height: 1.75rem;
   text-align: left;
 
@@ -32,8 +32,42 @@
   display: flex;
   align-items: center;
   min-width: 0;
-  gap: 0.4rem;
   flex: 1 1 auto;
+}
+
+.entryExpander,
+.entryExpanderSpacer {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: -7px;
+}
+
+.entryExpander {
+  color: $text-secondary;
+  cursor: pointer;
+
+  svg {
+    display: block;
+    width: 0.6rem;
+    height: auto;
+    transition: 0.2s;
+
+    path {
+      stroke: $text-secondary;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+  }
+}
+
+.expanded svg {
+  transform: rotate(90deg);
 }
 
 .entryIcon,

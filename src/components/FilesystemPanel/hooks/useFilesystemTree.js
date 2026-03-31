@@ -1,0 +1,112 @@
+import { invoke } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+function flattenEntries({
+  rootEntries,
+  expandedByPath,
+  directoryEntriesByPath,
+  loadingPaths,
+}) {
+  const rows = [];
+
+  function walk(entries, depth) {
+    entries.forEach((entry) => {
+      const isDirectory = Boolean(entry?.is_dir);
+      const entryPath = typeof entry?.path === "string" ? entry.path : "";
+      const isExpanded = isDirectory && expandedByPath[entryPath] === true;
+      const cachedChildren = directoryEntriesByPath[entryPath] ?? [];
+      const isLoadingChildren = isExpanded && loadingPaths[entryPath] === true;
+
+      rows.push({
+        entry,
+        depth,
+        isExpanded,
+        isLoadingChildren,
+      });
+
+      if (isExpanded && cachedChildren.length > 0) {
+        walk(cachedChildren, depth + 1);
+      }
+    });
+  }
+
+  walk(rootEntries, 0);
+  return rows;
+}
+
+export default function useFilesystemTree({
+  currentPath = "",
+  rootEntries = [],
+}) {
+  const [expandedByPath, setExpandedByPath] = useState({});
+  const [directoryEntriesByPath, setDirectoryEntriesByPath] = useState({});
+  const [loadingByPath, setLoadingByPath] = useState({});
+
+  useEffect(() => {
+    setExpandedByPath({});
+    setDirectoryEntriesByPath({});
+    setLoadingByPath({});
+  }, [currentPath]);
+
+  const ensureDirectoryEntriesLoaded = useCallback(async (directoryPath) => {
+    if (!directoryPath) return;
+    if (directoryEntriesByPath[directoryPath] || loadingByPath[directoryPath]) return;
+
+    setLoadingByPath((prev) => ({
+      ...prev,
+      [directoryPath]: true,
+    }));
+
+    try {
+      const loadedEntries = await invoke("list_directory", { path: directoryPath });
+      setDirectoryEntriesByPath((prev) => ({
+        ...prev,
+        [directoryPath]: loadedEntries,
+      }));
+    } catch {
+      setDirectoryEntriesByPath((prev) => ({
+        ...prev,
+        [directoryPath]: [],
+      }));
+    } finally {
+      setLoadingByPath((prev) => {
+        if (!prev[directoryPath]) return prev;
+        const next = { ...prev };
+        delete next[directoryPath];
+        return next;
+      });
+    }
+  }, [directoryEntriesByPath, loadingByPath]);
+
+  const toggleDirectoryExpanded = useCallback((directoryPath) => {
+    if (!directoryPath) return;
+
+    setExpandedByPath((prev) => {
+      const isExpanded = prev[directoryPath] === true;
+      if (isExpanded) {
+        const next = { ...prev };
+        delete next[directoryPath];
+        return next;
+      }
+
+      void ensureDirectoryEntriesLoaded(directoryPath);
+      return {
+        ...prev,
+        [directoryPath]: true,
+      };
+    });
+  }, [ensureDirectoryEntriesLoaded]);
+
+  const treeRows = useMemo(() => flattenEntries({
+    rootEntries,
+    expandedByPath,
+    directoryEntriesByPath,
+    loadingPaths: loadingByPath,
+  }), [directoryEntriesByPath, expandedByPath, loadingByPath, rootEntries]);
+
+  return {
+    treeRows,
+    toggleDirectoryExpanded,
+  };
+}
+
