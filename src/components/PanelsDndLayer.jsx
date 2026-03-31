@@ -35,6 +35,7 @@ function PanelsDndLayer({ children }) {
       collisionDetection={pointerWithin}
       autoScroll={false}
       onDragStart={event => callHandlers(handlerEntriesRef.current, "onDragStart", event)}
+      onDragOver={event => callHandlers(handlerEntriesRef.current, "onDragOver", event)}
       onDragEnd={event => callHandlers(handlerEntriesRef.current, "onDragEnd", event)}
       onDragCancel={event => callHandlers(handlerEntriesRef.current, "onDragCancel", event)}
     >{children}</DndContext>
@@ -52,6 +53,7 @@ export function usePanelsDndHandlers(handlers) {
 
     return registerHandlers({
       onDragStart: event => handlersRef.current.onDragStart?.(event),
+      onDragOver: event => handlersRef.current.onDragOver?.(event),
       onDragEnd: event => handlersRef.current.onDragEnd?.(event),
       onDragCancel: event => handlersRef.current.onDragCancel?.(event),
     });

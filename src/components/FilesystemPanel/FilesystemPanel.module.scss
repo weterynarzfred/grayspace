@@ -1,4 +1,5 @@
 @use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
 
 .panelContent {
   background: $bg-panel;
@@ -11,13 +12,11 @@
 }
 
 .panelDropTarget {
-  outline: 1px dashed $accent-active;
-  outline-offset: -1px;
+  @include drop-target-outline;
 }
 
 .externalDropTarget {
-  outline: 1px dashed $accent-active;
-  outline-offset: -1px;
+  @include drop-target-outline;
 }
 
 .entryList {
@@ -62,7 +61,7 @@
   border: 1px solid $accent-active;
   background: $bg-surface;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
-  opacity: 0.95;
+  opacity: 0.6;
   pointer-events: none;
 }
 

@@ -21,8 +21,7 @@
 }
 
 .panelDropTarget {
-  outline: 1px dashed $accent-active;
-  outline-offset: -1px;
+  @include drop-target-outline;
 }
 
 .panelBody {

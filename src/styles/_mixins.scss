@@ -5,6 +5,11 @@
   outline-offset: 0px;
 }
 
+@mixin drop-target-outline {
+  outline: 1px dashed $accent-active;
+  outline-offset: -1px;
+}
+
 @mixin interactive-tile {
   background-color: $bg-surface;
   cursor: pointer;

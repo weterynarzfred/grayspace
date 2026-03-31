@@ -20,10 +20,5 @@
 }
 
 .dropTarget {
-  border-color: $accent-active;
-  background: rgba($accent-active, 0.3);
-}
-
-.crumbSeparator {
-  color: $text-secondary;
+  @include drop-target-outline;
 }

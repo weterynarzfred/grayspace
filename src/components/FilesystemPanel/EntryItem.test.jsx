@@ -99,4 +99,51 @@ describe("EntryItem", () => {
     expect(icon).toBeTruthy();
     expect(icon.className).toMatch(/\b[a-z0-9_-]+-icon\b/i);
   });
+
+  it("toggles expansion without selecting the entry when clicking expander", () => {
+    const handleClick = vi.fn();
+    const handleToggleExpand = vi.fn();
+
+    render(
+      <EntryItem
+        label="Users"
+        meta="Folder"
+        isDirectory
+        showExpander
+        onClick={handleClick}
+        onToggleExpand={handleToggleExpand}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: /Users/i });
+    const expander = button.querySelector("[data-entry-expander]");
+    expect(expander).toBeTruthy();
+
+    fireEvent.click(expander);
+
+    expect(handleToggleExpand).toHaveBeenCalledTimes(1);
+    expect(handleClick).not.toHaveBeenCalled();
+  });
+
+  it("does not trigger row double click when double clicking expander", () => {
+    const handleDoubleClick = vi.fn();
+
+    render(
+      <EntryItem
+        label="Users"
+        meta="Folder"
+        isDirectory
+        showExpander
+        onDoubleClick={handleDoubleClick}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: /Users/i });
+    const expander = button.querySelector("[data-entry-expander]");
+    expect(expander).toBeTruthy();
+
+    fireEvent.doubleClick(expander);
+
+    expect(handleDoubleClick).not.toHaveBeenCalled();
+  });
 });

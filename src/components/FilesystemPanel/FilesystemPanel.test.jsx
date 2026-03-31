@@ -1,5 +1,5 @@
 import path from "node:path";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import PanelsDndLayer from "../PanelsDndLayer";
 import FilesystemPanel from "./FilesystemPanel";
@@ -10,6 +10,7 @@ const { openConfirmMock } = vi.hoisted(() => ({
 
 const dndCallbacks = {
   onDragStart: undefined,
+  onDragOver: undefined,
   onDragEnd: undefined,
   onDragCancel: undefined,
 };
@@ -52,8 +53,9 @@ vi.mock("@tauri-apps/api/window", () => ({
 }));
 
 vi.mock("@dnd-kit/core", () => ({
-  DndContext: ({ children, onDragStart, onDragEnd, onDragCancel }) => {
+  DndContext: ({ children, onDragStart, onDragOver, onDragEnd, onDragCancel }) => {
     dndCallbacks.onDragStart = onDragStart;
+    dndCallbacks.onDragOver = onDragOver;
     dndCallbacks.onDragEnd = onDragEnd;
     dndCallbacks.onDragCancel = onDragCancel;
     return <>{children}</>;
@@ -106,6 +108,7 @@ describe("FilesystemPanel", () => {
     externalDropCallback = undefined;
     filesystemWatchCallback = undefined;
     dndCallbacks.onDragStart = undefined;
+    dndCallbacks.onDragOver = undefined;
     dndCallbacks.onDragEnd = undefined;
     dndCallbacks.onDragCancel = undefined;
     openConfirmMock.mockReset();
@@ -316,6 +319,104 @@ describe("FilesystemPanel", () => {
     expect(folderButton).toHaveAttribute("aria-selected", "false");
   });
 
+  it("expands a folder inline without changing root, then double click makes it root", async () => {
+    const onCurrentPathChange = vi.fn();
+    renderFilesystemPanel({ onCurrentPathChange });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Projects/i })).toBeInTheDocument();
+    });
+    expect(onCurrentPathChange).toHaveBeenLastCalledWith("C:\\");
+
+    fireEvent.doubleClick(usersExpander);
+
+    await waitFor(() => {
+      expect(onCurrentPathChange).toHaveBeenLastCalledWith("C:\\");
+      expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+    });
+
+    fireEvent.doubleClick(usersButton);
+
+    await waitFor(() => {
+      expect(onCurrentPathChange).toHaveBeenLastCalledWith("C:\\Users");
+      expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+  });
+
+  it("refreshes expanded folder rows when that folder watcher emits a change", async () => {
+    const directoryState = {
+      "C:\\": [
+        { name: "Users", path: "C:\\Users", is_dir: true },
+      ],
+      "C:\\Users": [
+        { name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false },
+      ],
+    };
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
+      if (command === "list_directory") return (directoryState[payload?.path] ?? []).map(entry => ({ ...entry }));
+      if (command === "parent_path") {
+        if (payload?.path === "C:\\") return null;
+        return path.win32.dirname(payload?.path ?? "");
+      }
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+      if (command === "thumbnail_resolve_batch") return { results: [] };
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+
+    directoryState["C:\\Users"].push({
+      name: "later.txt",
+      path: "C:\\Users\\later.txt",
+      is_dir: false,
+    });
+
+    const usersWatchStartCall = invoke.mock.calls.find(([command, args]) => (
+      command === "filesystem_watch_start" && args?.path === "C:\\Users"
+    ));
+    const usersWatchId = usersWatchStartCall?.[1]?.watchId;
+    expect(typeof usersWatchId).toBe("string");
+
+    filesystemWatchCallback?.({
+      payload: {
+        watchId: usersWatchId,
+        changedPath: "C:\\Users\\later.txt",
+      },
+    });
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 160);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /later\.txt/i })).toBeInTheDocument();
+    });
+  });
+
   it("reports tab-level selection only for explicit entry clicks", async () => {
     const onTabSelectedFilesChange = vi.fn();
     renderFilesystemPanel({
@@ -454,7 +555,37 @@ describe("FilesystemPanel", () => {
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 
-  it("does not move an entry when dropped onto a file entry", async () => {
+  it("moves an entry when dropped onto a file row inside an expanded folder", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+      expect(typeof dndCallbacks.onDragEnd).toBe("function");
+    });
+
+    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+    await dndCallbacks.onDragEnd?.({
+      active: { id: "entry:C:\\notes.txt" },
+      over: { id: "entry:C:\\Users\\todo.txt" },
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("move_path", {
+        source: "C:\\notes.txt",
+        destinationDir: "C:\\Users",
+      });
+    });
+  });
+
+  it("does not move an entry when dropped onto a file row in the same folder", async () => {
     renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
@@ -467,16 +598,7 @@ describe("FilesystemPanel", () => {
     dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
     await dndCallbacks.onDragEnd?.({
       active: { id: "entry:C:\\notes.txt" },
-      over: {
-        id: "entry:C:\\draft.md",
-        data: {
-          current: {
-            kind: "entry",
-            path: "C:\\draft.md",
-            isDirectory: false,
-          },
-        },
-      },
+      over: { id: "entry:C:\\draft.md" },
     });
 
     expect(invoke).not.toHaveBeenCalledWith("move_path", {
@@ -538,6 +660,62 @@ describe("FilesystemPanel", () => {
         source: "C:\\notes.txt",
         destinationDir: "C:\\Users",
       });
+    });
+  });
+
+  it("moves an expanded subfolder file to root when dropped on panel empty space", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+      expect(typeof dndCallbacks.onDragEnd).toBe("function");
+    });
+
+    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\Users\\todo.txt" } });
+    await dndCallbacks.onDragEnd?.({
+      active: { id: "entry:C:\\Users\\todo.txt" },
+      over: { id: "panel:C:\\" },
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("move_path", {
+        source: "C:\\Users\\todo.txt",
+        destinationDir: "C:\\",
+      });
+    });
+  });
+
+  it("highlights only the destination folder row while hovering a file inside it", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    const todoButton = await screen.findByRole("button", { name: /todo\.txt/i });
+    await act(async () => {
+      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+      dndCallbacks.onDragOver?.({
+        active: { id: "entry:C:\\notes.txt" },
+        over: { id: "entry:C:\\Users\\todo.txt" },
+      });
+    });
+
+    await waitFor(() => {
+      expect(usersButton.className).toMatch(/dropTarget/);
+      expect(todoButton.className).not.toMatch(/dropTarget/);
     });
   });
 

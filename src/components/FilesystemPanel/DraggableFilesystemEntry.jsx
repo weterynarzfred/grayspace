@@ -6,12 +6,17 @@ import { getDragEntryDndId, getEntryDndId } from "./dndIds";
 function DraggableFilesystemEntry({
   paneId = "",
   entry,
+  dropDestinationPath = "",
   selectedEntryPaths = [],
   isSelectedForDrag = false,
   isSelected,
   isMovingEntry,
   activeDragPathSet = undefined,
+  activeDropDestinationPath = "",
   thumbnailSrc = "",
+  nestingDepth = 0,
+  isExpanded = false,
+  onToggleExpand = undefined,
   onEntryClick,
   onEntryDoubleClick,
 }) {
@@ -19,6 +24,7 @@ function DraggableFilesystemEntry({
   const dragPaths = isSelectedForDrag ? selectedEntryPaths : selfDragPath;
   const draggableId = getDragEntryDndId(paneId, entry.path);
   const droppableId = getEntryDndId(entry.path);
+  const destinationPath = entry.is_dir ? entry.path : dropDestinationPath;
   const {
     attributes,
     listeners,
@@ -33,13 +39,13 @@ function DraggableFilesystemEntry({
       dragPaths,
     },
   });
-  const { isOver, setNodeRef: setDroppableNodeRef } = useDroppable({
+  const { setNodeRef: setDroppableNodeRef } = useDroppable({
     id: droppableId,
-    disabled: isMovingEntry || !entry.is_dir,
+    disabled: isMovingEntry || !destinationPath,
     data: {
       kind: "entry",
-      path: entry.path,
-      isDirectory: entry.is_dir,
+      path: destinationPath,
+      isDirectory: true,
     },
   });
 
@@ -50,9 +56,9 @@ function DraggableFilesystemEntry({
 
   const isDropTarget =
     entry.is_dir
-    && isOver
+    && destinationPath === activeDropDestinationPath
     && activeDragPathSet?.size > 0
-    && !activeDragPathSet.has(entry.path);
+    && !activeDragPathSet.has(destinationPath);
   const isConfigEntry =
     entry.is_dir && (entry.name ?? "").toLowerCase() === ".grayspace";
   const metaLabel = isConfigEntry ? "config" : (entry.is_dir ? "Folder" : "File");
@@ -68,6 +74,10 @@ function DraggableFilesystemEntry({
     isDragging={isDragging}
     isDropTarget={isDropTarget}
     thumbnailSrc={!entry.is_dir ? thumbnailSrc : ""}
+    nestingDepth={nestingDepth}
+    showExpander={entry.is_dir}
+    isExpanded={isExpanded}
+    onToggleExpand={onToggleExpand}
     buttonRef={setNodeRef}
     dndAttributes={attributes}
     dndListeners={listeners}
