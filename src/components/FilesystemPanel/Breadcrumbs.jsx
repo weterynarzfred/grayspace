@@ -2,9 +2,7 @@ import { useDroppable } from "@dnd-kit/core";
 import styles from "./Breadcrumbs.module.scss";
 
 export function buildBreadcrumbs(currentPath, currentDrive) {
-  if (!currentPath || !currentDrive) {
-    return [];
-  }
+  if (!currentPath || !currentDrive) return [];
 
   const separator = currentDrive.includes("\\") ? "\\" : "/";
   const driveRoot = currentDrive.replace(/[\\/]+$/, "");
@@ -12,13 +10,12 @@ export function buildBreadcrumbs(currentPath, currentDrive) {
 
   const crumbs = [
     { label: "Drives", path: "" },
-    { label: currentDrive, path: currentDrive },
+    { label: driveRoot, path: currentDrive },
   ];
+
   const remainder = normalizedCurrentPath.slice(driveRoot.length).replace(/^[\\/]+/, "");
 
-  if (!remainder) {
-    return crumbs;
-  }
+  if (!remainder) return crumbs;
 
   let runningPath = driveRoot;
   const parts = remainder.split(/[\\/]+/).filter(Boolean);
@@ -37,7 +34,6 @@ function StaticCrumbButton({ crumb, index, onSelect }) {
     className={styles.crumbButton}
     onClick={() => onSelect(crumb.path)}
   >
-    {index > 0 && <span className={styles.crumbSeparator}>/</span>}
     <span>{crumb.label}</span>
   </button>;
 }
@@ -67,7 +63,6 @@ function DroppableCrumbButton({
     className={`${styles.crumbButton} ${isDropTarget ? styles.dropTarget : ""}`}
     onClick={() => onSelect(crumb.path)}
   >
-    {index > 0 && <span className={styles.crumbSeparator}>/</span>}
     <span>{crumb.label}</span>
   </button>;
 }

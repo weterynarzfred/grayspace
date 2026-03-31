@@ -22,10 +22,6 @@
     background: $bg-surface-hover;
     border-color: $border-hover;
   }
-
-  &:focus-visible {
-    @include focus-ring;
-  }
 }
 
 .entryMain {
@@ -143,12 +139,10 @@
 
 .dragging {
   opacity: 0.6;
-  cursor: grabbing;
 }
 
 .dropTarget {
-  outline: 1px dashed $accent-active;
-  outline-offset: -1px;
+  @include drop-target-outline;
 }
 
 .entryPath {
