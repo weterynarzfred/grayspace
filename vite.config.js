@@ -32,5 +32,9 @@ export default defineConfig(async () => ({
     environment: "jsdom",
     setupFiles: "./src/test/setup.js",
     globals: true,
+    clearMocks: true,
+    mockReset: true,
+    restoreMocks: true,
+    unstubGlobals: true,
   },
 }));

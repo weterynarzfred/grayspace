@@ -2,6 +2,8 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import useFilesystemNavigation from "./useFilesystemNavigation";
+import { runInAsyncAct } from "../../../test/utils/actCallbacks";
+import { advanceTimersBy } from "../../../test/utils/timers";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -11,11 +13,10 @@ let filesystemWatchHandler;
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async (eventName, handler) => {
-    if (eventName === "filesystem-watch-event") {
-      filesystemWatchHandler = handler;
-    }
+    if (eventName === "filesystem-watch-event")
+      filesystemWatchHandler = runInAsyncAct(handler);
     return () => {
-      if (filesystemWatchHandler === handler) filesystemWatchHandler = undefined;
+      filesystemWatchHandler = undefined;
     };
   }),
 }));
@@ -41,36 +42,30 @@ function mockFilesystemInvoke({
     }
 
     if (command === "list_directory") {
-      if (payload?.path === "C:\\") {
+      if (payload?.path === "C:\\")
         return [{ name: "Users", path: "C:\\Users", is_dir: true }];
-      }
 
-      if (payload?.path === "C:\\Users") {
+      if (payload?.path === "C:\\Users")
         return [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }];
-      }
 
       return [];
     }
 
     if (command === "parent_path") {
-      if (payload?.path === "C:\\Users") {
+      if (payload?.path === "C:\\Users")
         return parentPathForUsers;
-      }
 
-      if (payload?.path === "C:\\") {
+      if (payload?.path === "C:\\")
         return null;
-      }
 
       return null;
     }
 
-    if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+    if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
       return null;
-    }
 
-    if (command === "delete_paths") {
+    if (command === "delete_paths")
       return null;
-    }
 
     throw new Error(`Unhandled invoke: ${command}`);
   });
@@ -113,18 +108,16 @@ describe("useFilesystemNavigation", () => {
     const listDirectoryCallCount = new Map();
 
     invoke.mockImplementation(async (command, payload) => {
-      if (command === "list_drives") {
+      if (command === "list_drives")
         return [{ name: "C:", path: "C:\\" }];
-      }
 
       if (command === "list_directory") {
         const currentCount = (listDirectoryCallCount.get(payload?.path ?? "") ?? 0) + 1;
         listDirectoryCallCount.set(payload?.path ?? "", currentCount);
 
         if (payload?.path === "C:\\") {
-          if (currentCount === 1) {
+          if (currentCount === 1)
             return [{ name: "Users", path: "C:\\Users", is_dir: true }];
-          }
           return [
             { name: "Users", path: "C:\\Users", is_dir: true },
             { name: "new.txt", path: "C:\\new.txt", is_dir: false },
@@ -134,9 +127,8 @@ describe("useFilesystemNavigation", () => {
         return [];
       }
 
-      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
-      }
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
@@ -154,17 +146,18 @@ describe("useFilesystemNavigation", () => {
     const watchStartCall = invoke.mock.calls.find(([command]) => command === "filesystem_watch_start");
     const watchId = watchStartCall?.[1]?.watchId;
 
-    await act(async () => {
-      filesystemWatchHandler?.({
+    vi.useFakeTimers();
+    try {
+      await filesystemWatchHandler?.({
         payload: {
           watchId,
           changedPath: "C:\\new.txt",
         },
       });
-      await new Promise((resolve) => {
-        setTimeout(resolve, 150);
-      });
-    });
+      await advanceTimersBy(150);
+    } finally {
+      vi.useRealTimers();
+    }
 
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual([
@@ -245,27 +238,24 @@ describe("useFilesystemNavigation", () => {
     };
 
     invoke.mockImplementation(async (command, payload) => {
-      if (command === "list_drives") {
+      if (command === "list_drives")
         return [{ name: "C:", path: "C:\\" }];
-      }
 
-      if (command === "list_directory") {
+      if (command === "list_directory")
         return (directoryState[payload?.path] ?? []).map((entry) => ({ ...entry }));
-      }
 
       if (command === "delete_paths") {
         const paths = payload?.paths ?? [];
         paths.forEach((deletePath) => {
           directoryState["C:\\"] = (directoryState["C:\\"] ?? []).filter(
-            (entry) => entry.path !== deletePath,
+            entry => entry.path !== deletePath,
           );
         });
         return null;
       }
 
-      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
-      }
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
@@ -306,9 +296,8 @@ describe("useFilesystemNavigation", () => {
     const listDirectoryCallCount = new Map();
 
     invoke.mockImplementation(async (command, payload) => {
-      if (command === "list_drives") {
+      if (command === "list_drives")
         return [{ name: "C:", path: "C:\\" }];
-      }
 
       if (command === "list_directory") {
         const path = payload?.path ?? "";
@@ -316,26 +305,22 @@ describe("useFilesystemNavigation", () => {
         listDirectoryCallCount.set(path, nextCount);
 
         if (path === "C:\\Users") {
-          if (nextCount === 1) {
+          if (nextCount === 1)
             return [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }];
-          }
           return staleRefresh.promise;
         }
 
-        if (path === "C:\\Projects") {
+        if (path === "C:\\Projects")
           return [{ name: "readme.md", path: "C:\\Projects\\readme.md", is_dir: false }];
-        }
 
         return [];
       }
 
-      if (command === "move_path") {
+      if (command === "move_path")
         return null;
-      }
 
-      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
-      }
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
@@ -388,9 +373,8 @@ describe("useFilesystemNavigation", () => {
     const listDirectoryCallCount = new Map();
 
     invoke.mockImplementation(async (command, payload) => {
-      if (command === "list_drives") {
+      if (command === "list_drives")
         return [{ name: "C:", path: "C:\\" }];
-      }
 
       if (command === "list_directory") {
         const path = payload?.path ?? "";
@@ -398,26 +382,22 @@ describe("useFilesystemNavigation", () => {
         listDirectoryCallCount.set(path, nextCount);
 
         if (path === "C:\\Users") {
-          if (nextCount === 1) {
+          if (nextCount === 1)
             return [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }];
-          }
           return staleRefresh.promise;
         }
 
-        if (path === "C:\\Projects") {
+        if (path === "C:\\Projects")
           return [{ name: "readme.md", path: "C:\\Projects\\readme.md", is_dir: false }];
-        }
 
         return [];
       }
 
-      if (command === "import_paths") {
+      if (command === "import_paths")
         return null;
-      }
 
-      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
-      }
 
       throw new Error(`Unhandled invoke: ${command}`);
     });

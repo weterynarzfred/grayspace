@@ -1,7 +1,9 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import PanelsDndLayer from "../PanelsDndLayer";
 import PropertiesPanel from "./PropertiesPanel";
+import { runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
+import { advanceTimersBy } from "../../test/utils/timers";
 
 const dndCallbacks = {
   onDragStart: undefined,
@@ -13,12 +15,12 @@ let filesystemWatchCallback;
 
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({ children, onDragStart, onDragEnd, onDragCancel }) => {
-    dndCallbacks.onDragStart = onDragStart;
-    dndCallbacks.onDragEnd = onDragEnd;
-    dndCallbacks.onDragCancel = onDragCancel;
+    dndCallbacks.onDragStart = runInAct(onDragStart);
+    dndCallbacks.onDragEnd = runInAsyncAct(onDragEnd);
+    dndCallbacks.onDragCancel = runInAct(onDragCancel);
     return <>{children}</>;
   },
-  PointerSensor: class {},
+  PointerSensor: class { },
   pointerWithin: vi.fn(() => []),
   useSensor: vi.fn(() => ({})),
   useSensors: vi.fn((...sensors) => sensors),
@@ -35,9 +37,9 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
     onDragDropEvent: vi.fn(async (handler) => {
-      externalDropCallback = handler;
+      externalDropCallback = runInAsyncAct(handler);
       return () => {
-        if (externalDropCallback === handler) externalDropCallback = undefined;
+        externalDropCallback = undefined;
       };
     }),
   }),
@@ -45,9 +47,9 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async (eventName, handler) => {
-    if (eventName === "filesystem-watch-event") filesystemWatchCallback = handler;
+    if (eventName === "filesystem-watch-event") filesystemWatchCallback = runInAsyncAct(handler);
     return () => {
-      if (filesystemWatchCallback === handler) filesystemWatchCallback = undefined;
+      filesystemWatchCallback = undefined;
     };
   }),
 }));
@@ -61,13 +63,11 @@ describe("PropertiesPanel", () => {
     filesystemWatchCallback = undefined;
     invoke.mockReset();
     invoke.mockImplementation(async (command, payload) => {
-      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
-      }
 
-      if (command !== "filesystem_get_properties") {
+      if (command !== "filesystem_get_properties")
         throw new Error(`Unhandled invoke command: ${command}`);
-      }
 
       return {
         path: payload?.path || "",
@@ -95,35 +95,31 @@ describe("PropertiesPanel", () => {
       expect(typeof dndCallbacks.onDragEnd).toBe("function");
     });
 
-    await act(async () => {
-      await dndCallbacks.onDragStart?.({
-        active: {
-          id: "entry:C:\\notes.txt",
-          data: {
-            current: {
-              sourcePath: "C:\\notes.txt",
-              dragPaths: ["C:\\notes.txt", "C:\\other.txt"],
-            },
+    dndCallbacks.onDragStart?.({
+      active: {
+        id: "entry:C:\\notes.txt",
+        data: {
+          current: {
+            sourcePath: "C:\\notes.txt",
+            dragPaths: ["C:\\notes.txt", "C:\\other.txt"],
           },
         },
-      });
+      },
     });
 
-    await act(async () => {
-      await dndCallbacks.onDragEnd?.({
-        active: {
-          id: "entry:C:\\notes.txt",
-          data: {
-            current: {
-              sourcePath: "C:\\notes.txt",
-              dragPaths: ["C:\\notes.txt", "C:\\other.txt"],
-            },
+    await dndCallbacks.onDragEnd?.({
+      active: {
+        id: "entry:C:\\notes.txt",
+        data: {
+          current: {
+            sourcePath: "C:\\notes.txt",
+            dragPaths: ["C:\\notes.txt", "C:\\other.txt"],
           },
         },
-        over: {
-          id: "properties-drop:properties-pane",
-        },
-      });
+      },
+      over: {
+        id: "properties-drop:properties-pane",
+      },
     });
 
     expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
@@ -160,13 +156,11 @@ describe("PropertiesPanel", () => {
   it("reloads properties when watcher emits a matching file change", async () => {
     let revision = 1;
     invoke.mockImplementation(async (command, payload) => {
-      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
-      }
 
-      if (command !== "filesystem_get_properties") {
+      if (command !== "filesystem_get_properties")
         throw new Error(`Unhandled invoke command: ${command}`);
-      }
 
       return {
         path: payload?.path || "",
@@ -201,18 +195,18 @@ describe("PropertiesPanel", () => {
       expect(typeof filesystemWatchCallback).toBe("function");
     });
 
-    await act(async () => {
-      filesystemWatchCallback?.({
+    vi.useFakeTimers();
+    try {
+      await filesystemWatchCallback?.({
         payload: {
           watchId,
           changedPath: "C:\\notes.txt",
         },
       });
-
-      await new Promise(resolve => {
-        setTimeout(resolve, 180);
-      });
-    });
+      await advanceTimersBy(180);
+    } finally {
+      vi.useRealTimers();
+    }
 
     await waitFor(() => {
       expect(
@@ -252,14 +246,12 @@ describe("PropertiesPanel", () => {
       toJSON: () => ({}),
     });
 
-    await act(async () => {
-      await externalDropCallback?.({
-        payload: {
-          type: "drop",
-          paths: ["C:\\notes.txt"],
-          position: { x: 100, y: 100 },
-        },
-      });
+    await externalDropCallback?.({
+      payload: {
+        type: "drop",
+        paths: ["C:\\notes.txt"],
+        position: { x: 100, y: 100 },
+      },
     });
 
     await waitFor(() => {

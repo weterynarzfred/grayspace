@@ -1,7 +1,8 @@
 import { render, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
-import PanelsDndLayer from "../PanelsDndLayer";
 import TerminalPanel from "./TerminalPanel";
+import PanelsDndLayer from "../PanelsDndLayer";
+import { runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
 
 const dndCallbacks = {
   onDragStart: undefined,
@@ -17,9 +18,9 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
     onDragDropEvent: vi.fn(async (handler) => {
-      externalDropCallback = handler;
+      externalDropCallback = runInAsyncAct(handler);
       return () => {
-        if (externalDropCallback === handler) externalDropCallback = undefined;
+        externalDropCallback = undefined;
       };
     }),
   }),
@@ -27,9 +28,9 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({ children, onDragStart, onDragEnd, onDragCancel }) => {
-    dndCallbacks.onDragStart = onDragStart;
-    dndCallbacks.onDragEnd = onDragEnd;
-    dndCallbacks.onDragCancel = onDragCancel;
+    dndCallbacks.onDragStart = runInAct(onDragStart);
+    dndCallbacks.onDragEnd = runInAsyncAct(onDragEnd);
+    dndCallbacks.onDragCancel = runInAct(onDragCancel);
     return <>{children}</>;
   },
   PointerSensor: class {},

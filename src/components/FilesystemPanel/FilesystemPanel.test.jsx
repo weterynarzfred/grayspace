@@ -1,10 +1,12 @@
 import path from "node:path";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { cursorPosition } from "@tauri-apps/api/window";
 import { useDroppable } from "@dnd-kit/core";
-import PanelsDndLayer from "../PanelsDndLayer";
 import FilesystemPanel from "./FilesystemPanel";
+import PanelsDndLayer from "../PanelsDndLayer";
+import { runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
+import { advanceTimersBy } from "../../test/utils/timers";
 
 const { openConfirmMock } = vi.hoisted(() => ({
   openConfirmMock: vi.fn(),
@@ -31,11 +33,9 @@ vi.mock("../../notifications/notificationCenter", () => ({
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async (eventName, handler) => {
-    if (eventName === "filesystem-watch-event") {
-      filesystemWatchCallback = handler;
-    }
+    if (eventName === "filesystem-watch-event") filesystemWatchCallback = runInAsyncAct(handler);
     return () => {
-      if (filesystemWatchCallback === handler) filesystemWatchCallback = undefined;
+      filesystemWatchCallback = undefined;
     };
   }),
 }));
@@ -44,7 +44,7 @@ vi.mock("@tauri-apps/api/window", () => ({
   cursorPosition: vi.fn(async () => ({ x: 100, y: 100 })),
   getCurrentWindow: () => ({
     onDragDropEvent: vi.fn(async (handler) => {
-      externalDropCallback = handler;
+      externalDropCallback = runInAsyncAct(handler);
       return () => {
         externalDropCallback = undefined;
       };
@@ -56,10 +56,10 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({ children, onDragStart, onDragOver, onDragEnd, onDragCancel }) => {
-    dndCallbacks.onDragStart = onDragStart;
-    dndCallbacks.onDragOver = onDragOver;
-    dndCallbacks.onDragEnd = onDragEnd;
-    dndCallbacks.onDragCancel = onDragCancel;
+    dndCallbacks.onDragStart = runInAct(onDragStart);
+    dndCallbacks.onDragOver = runInAct(onDragOver);
+    dndCallbacks.onDragEnd = runInAsyncAct(onDragEnd);
+    dndCallbacks.onDragCancel = runInAct(onDragCancel);
     return <>{children}</>;
   },
   DragOverlay: ({ children }) => <>{children}</>,
@@ -141,15 +141,13 @@ describe("FilesystemPanel", () => {
 
     invoke.mockReset();
     invoke.mockImplementation(async (command, payload) => {
-      if (command === "list_drives") {
+      if (command === "list_drives")
         return [{ name: "C:", path: "C:\\" }];
-      }
 
       if (command === "list_directory") {
         const entries = directoryState[payload?.path];
-        if (!entries) {
+        if (!entries)
           throw new Error(`Unhandled list_directory path: ${payload?.path}`);
-        }
         return entries.map((entry) => ({ ...entry }));
       }
 
@@ -159,30 +157,26 @@ describe("FilesystemPanel", () => {
         paths.forEach((workspacePath) => {
           const children = directoryState[workspacePath] ?? [];
           result[workspacePath] = children.some(
-            (entry) => entry.is_dir && entry.name === ".grayspace",
+            entry => entry.is_dir && entry.name === ".grayspace",
           );
         });
         return result;
       }
 
       if (command === "parent_path") {
-        if (payload?.path === "C:\\") {
+        if (payload?.path === "C:\\")
           return null;
-        }
         return path.win32.dirname(payload?.path ?? "");
       }
 
-      if (command === "open_path" && payload?.path === "C:\\notes.txt") {
+      if (command === "open_path" && payload?.path === "C:\\notes.txt")
         return null;
-      }
 
-      if (command === "workspace_open_workspace_folder_from_tab") {
+      if (command === "workspace_open_workspace_folder_from_tab")
         return null;
-      }
 
-      if (command === "workspace_open_folder_from_tab") {
+      if (command === "workspace_open_folder_from_tab")
         return null;
-      }
 
       if (command === "move_path") {
         const source = payload?.source;
@@ -192,9 +186,8 @@ describe("FilesystemPanel", () => {
         const sourceEntries = directoryState[sourceParent] ?? [];
         const sourceEntry = sourceEntries.find((entry) => entry.path === source);
 
-        if (!sourceEntry) {
+        if (!sourceEntry)
           throw new Error(`Missing source entry for ${source}`);
-        }
 
         directoryState[sourceParent] = sourceEntries.filter((entry) => entry.path !== source);
         const destinationEntries = directoryState[destinationDir] ?? [];
@@ -212,9 +205,8 @@ describe("FilesystemPanel", () => {
         const destinationDir = payload?.destinationDir;
         const importPaths = payload?.paths ?? [];
         const destinationEntries = directoryState[destinationDir];
-        if (!destinationEntries) {
+        if (!destinationEntries)
           throw new Error(`Unhandled import destination path: ${destinationDir}`);
-        }
 
         importPaths.forEach((sourcePath) => {
           const sourceName = path.win32.basename(sourcePath);
@@ -237,18 +229,16 @@ describe("FilesystemPanel", () => {
           directoryState[parentPath] = parentEntries.filter((entry) => entry.path !== deletePath);
           if (entryToDelete?.is_dir) {
             Object.keys(directoryState).forEach((directoryKey) => {
-              if (directoryKey === deletePath || directoryKey.startsWith(`${deletePath}\\`)) {
+              if (directoryKey === deletePath || directoryKey.startsWith(`${deletePath}\\`))
                 delete directoryState[directoryKey];
-              }
             });
           }
         });
         return null;
       }
 
-      if (command === "start_external_drag") {
+      if (command === "start_external_drag")
         return null;
-      }
 
       if (command === "thumbnail_resolve_batch") {
         const items = payload?.request?.items ?? [];
@@ -265,9 +255,8 @@ describe("FilesystemPanel", () => {
         };
       }
 
-      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
-      }
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
@@ -430,7 +419,7 @@ describe("FilesystemPanel", () => {
         paths.forEach((workspacePath) => {
           const children = directoryState[workspacePath] ?? [];
           result[workspacePath] = children.some(
-            (entry) => entry.is_dir && entry.name === ".grayspace",
+            entry => entry.is_dir && entry.name === ".grayspace",
           );
         });
         return result;
@@ -470,16 +459,18 @@ describe("FilesystemPanel", () => {
     const usersWatchId = usersWatchStartCall?.[1]?.watchId;
     expect(typeof usersWatchId).toBe("string");
 
-    filesystemWatchCallback?.({
-      payload: {
-        watchId: usersWatchId,
-        changedPath: "C:\\Users\\later.txt",
-      },
-    });
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 160);
-    });
+    vi.useFakeTimers();
+    try {
+      await filesystemWatchCallback?.({
+        payload: {
+          watchId: usersWatchId,
+          changedPath: "C:\\Users\\later.txt",
+        },
+      });
+      await advanceTimersBy(160);
+    } finally {
+      vi.useRealTimers();
+    }
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /later\.txt/i })).toBeInTheDocument();
@@ -865,12 +856,10 @@ describe("FilesystemPanel", () => {
     fireEvent.click(usersExpander);
 
     const todoButton = await screen.findByRole("button", { name: /todo\.txt/i });
-    await act(async () => {
-      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
-      dndCallbacks.onDragOver?.({
-        active: { id: "entry:C:\\notes.txt" },
-        over: { id: "entry:C:\\Users\\todo.txt" },
-      });
+    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+    dndCallbacks.onDragOver?.({
+      active: { id: "entry:C:\\notes.txt" },
+      over: { id: "entry:C:\\Users\\todo.txt" },
     });
 
     await waitFor(() => {
@@ -983,9 +972,7 @@ describe("FilesystemPanel", () => {
     });
 
     cursorPosition.mockResolvedValue({ x: 900, y: 900 });
-    await act(async () => {
-      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
-    });
+    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
@@ -1018,9 +1005,7 @@ describe("FilesystemPanel", () => {
     });
 
     cursorPosition.mockResolvedValue({ x: 900, y: 900 });
-    await act(async () => {
-      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
-    });
+    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
@@ -1047,14 +1032,12 @@ describe("FilesystemPanel", () => {
     document.elementFromPoint = vi.fn(() => usersButton);
 
     try {
-      await act(async () => {
-        await externalDropCallback?.({
-          payload: {
-            type: "drop",
-            paths: ["C:\\notes.txt"],
-            position: { x: 100, y: 100 },
-          },
-        });
+      await externalDropCallback?.({
+        payload: {
+          type: "drop",
+          paths: ["C:\\notes.txt"],
+          position: { x: 100, y: 100 },
+        },
       });
     } finally {
       document.elementFromPoint = originalElementFromPoint;
@@ -1084,9 +1067,7 @@ describe("FilesystemPanel", () => {
     });
 
     cursorPosition.mockResolvedValue({ x: 900, y: 900 });
-    await act(async () => {
-      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
-    });
+    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
@@ -1113,14 +1094,12 @@ describe("FilesystemPanel", () => {
     document.elementFromPoint = vi.fn(() => usersButton);
 
     try {
-      await act(async () => {
-        await externalDropCallback?.({
-          payload: {
-            type: "drop",
-            paths: ["\\\\?\\C:\\notes.txt"],
-            position: { x: 100, y: 100 },
-          },
-        });
+      await externalDropCallback?.({
+        payload: {
+          type: "drop",
+          paths: ["\\\\?\\C:\\notes.txt"],
+          position: { x: 100, y: 100 },
+        },
       });
     } finally {
       document.elementFromPoint = originalElementFromPoint;
@@ -1165,11 +1144,9 @@ describe("FilesystemPanel", () => {
     cursorPosition.mockResolvedValue({ x: 100, y: 100 });
 
     mockOverId = "panel:C:\\";
-    await act(async () => {
-      dndCallbacks.onDragOver?.({
-        active: { id: "entry:C:\\notes.txt" },
-        over: { id: "panel:C:\\" },
-      });
+    dndCallbacks.onDragOver?.({
+      active: { id: "entry:C:\\notes.txt" },
+      over: { id: "panel:C:\\" },
     });
 
     const panel = document.querySelector('section[aria-label="Filesystem panel"]');
@@ -1377,11 +1354,13 @@ describe("FilesystemPanel", () => {
     await screen.findByRole("button", { name: /Users/i });
     const panelList = screen.getByTestId("filesystem-panel-list");
     panelList.scrollTop = 91;
-    fireEvent.scroll(panelList);
-
-    await new Promise((resolve) => {
-      setTimeout(resolve, 180);
-    });
+    vi.useFakeTimers();
+    try {
+      fireEvent.scroll(panelList);
+      await advanceTimersBy(180);
+    } finally {
+      vi.useRealTimers();
+    }
 
     await waitFor(() => {
       expect(onFilesystemStateChange).toHaveBeenCalledWith(

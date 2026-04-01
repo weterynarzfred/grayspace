@@ -1,7 +1,8 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import PanelsDndLayer from "../PanelsDndLayer";
 import PreviewPanel from "./PreviewPanel";
+import { runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
 
 const dndCallbacks = {
   onDragStart: undefined,
@@ -17,26 +18,26 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
     onDragDropEvent: vi.fn(async (handler) => {
-      externalDropCallback = handler;
+      externalDropCallback = runInAsyncAct(handler);
       return () => {
-        if (externalDropCallback === handler) externalDropCallback = undefined;
+        externalDropCallback = undefined;
       };
     }),
   }),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(async () => () => {}),
+  listen: vi.fn(async () => () => { }),
 }));
 
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({ children, onDragStart, onDragEnd, onDragCancel }) => {
-    dndCallbacks.onDragStart = onDragStart;
-    dndCallbacks.onDragEnd = onDragEnd;
-    dndCallbacks.onDragCancel = onDragCancel;
+    dndCallbacks.onDragStart = runInAct(onDragStart);
+    dndCallbacks.onDragEnd = runInAsyncAct(onDragEnd);
+    dndCallbacks.onDragCancel = runInAct(onDragCancel);
     return <>{children}</>;
   },
-  PointerSensor: class {},
+  PointerSensor: class { },
   pointerWithin: vi.fn(() => []),
   useSensor: vi.fn(() => ({})),
   useSensors: vi.fn((...sensors) => sensors),
@@ -58,9 +59,8 @@ describe("PreviewPanel drag and drop", () => {
     dndCallbacks.onDragCancel = undefined;
     invoke.mockReset();
     invoke.mockImplementation(async (command, payload) => {
-      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
-      }
 
       if (command === "preview_read_file") {
         return {
@@ -90,35 +90,31 @@ describe("PreviewPanel drag and drop", () => {
       expect(typeof dndCallbacks.onDragEnd).toBe("function");
     });
 
-    await act(async () => {
-      await dndCallbacks.onDragStart?.({
-        active: {
-          id: "entry:C:\\notes.txt",
-          data: {
-            current: {
-              sourcePath: "C:\\notes.txt",
-              dragPaths: ["C:\\notes.txt", "C:\\other.txt"],
-            },
+    dndCallbacks.onDragStart?.({
+      active: {
+        id: "entry:C:\\notes.txt",
+        data: {
+          current: {
+            sourcePath: "C:\\notes.txt",
+            dragPaths: ["C:\\notes.txt", "C:\\other.txt"],
           },
         },
-      });
+      },
     });
 
-    await act(async () => {
-      await dndCallbacks.onDragEnd?.({
-        active: {
-          id: "entry:C:\\notes.txt",
-          data: {
-            current: {
-              sourcePath: "C:\\notes.txt",
-              dragPaths: ["C:\\notes.txt", "C:\\other.txt"],
-            },
+    await dndCallbacks.onDragEnd?.({
+      active: {
+        id: "entry:C:\\notes.txt",
+        data: {
+          current: {
+            sourcePath: "C:\\notes.txt",
+            dragPaths: ["C:\\notes.txt", "C:\\other.txt"],
           },
         },
-        over: {
-          id: "preview-drop:preview-pane",
-        },
-      });
+      },
+      over: {
+        id: "preview-drop:preview-pane",
+      },
     });
 
     await waitFor(() => {
@@ -159,14 +155,12 @@ describe("PreviewPanel drag and drop", () => {
       toJSON: () => ({}),
     });
 
-    await act(async () => {
-      await externalDropCallback?.({
-        payload: {
-          type: "drop",
-          paths: ["C:\\notes.txt"],
-          position: { x: 100, y: 100 },
-        },
-      });
+    await externalDropCallback?.({
+      payload: {
+        type: "drop",
+        paths: ["C:\\notes.txt"],
+        position: { x: 100, y: 100 },
+      },
     });
 
     await waitFor(() => {
