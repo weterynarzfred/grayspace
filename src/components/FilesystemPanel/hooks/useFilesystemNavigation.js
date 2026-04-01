@@ -8,7 +8,10 @@ export default function useFilesystemNavigation(
   initialFilesystemState = undefined,
   options = {},
 ) {
-  const { tabId = "" } = options;
+  const {
+    tabId = "",
+    tabWorkspaceRoot = "",
+  } = options;
   const initialStateRef = useRef(
     normalizeInitialFilesystemState(initialFilesystemState),
   );
@@ -72,6 +75,7 @@ export default function useFilesystemNavigation(
     importExternalPaths,
   } = useFilesystemEntryOperations({
     tabId,
+    tabWorkspaceRoot,
     currentPath,
     currentPathRef,
     clearSelection,

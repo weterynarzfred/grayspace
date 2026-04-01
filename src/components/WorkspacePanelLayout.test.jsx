@@ -305,7 +305,7 @@ describe("WorkspacePanelLayout", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Mock resize workspace-split-tab-ratio-root" }),
+      screen.getByRole("button", { name: "Mock resize workspace-split-tab-ratio-default-root" }),
     );
 
     expect(onSplitRatioChange).toHaveBeenCalledWith("tab-ratio", "root", 68);
@@ -385,7 +385,7 @@ describe("WorkspacePanelLayout", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Mock resize workspace-split-tab-chain-root" }),
+      screen.getByRole("button", { name: "Mock resize workspace-split-tab-chain-default-root" }),
     );
 
     expect(onSplitRatioChange.mock.calls).toEqual(expect.arrayContaining([

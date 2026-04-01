@@ -22,9 +22,9 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 
 ### Workspace Config
 
-- [ ] `.grayspace` folder per workspace
-- [ ] required config file: `./.grayspace/folder.json` (may switch to `folder.js` later)
-- [ ] config scaffold only; panel-specific feature TODOs should stay in panel sections
+- `.grayspace` folder per workspace
+- required config file: `./.grayspace/folder.json` (may switch to `folder.js` later)
+- config scaffold only; panel-specific feature TODOs should stay in panel sections
 
 ### Global functionality
 
@@ -38,10 +38,10 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - [ ] drag between tabs and windows
 - [ ] custom context menu
 - [x] panel type switcher
-- [ ] workspace config features
+- workspace config features
   - [ ] auto-run commands when user opens the folder
   - [ ] pane-level display settings (for example custom CSS)
-  - [ ] pane state persistence (last layout/state)
+  - [x] pane state persistence (last layout/state)
 - QOL
   - [ ] ctrl + r for folder history with search
   - [ ] ctrl + shift + n for new folder

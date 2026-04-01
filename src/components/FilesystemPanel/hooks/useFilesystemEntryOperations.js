@@ -7,8 +7,25 @@ import {
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 import { getNavigationErrorMessage } from "./filesystemNavigationUtils";
 
+function normalizePathForComparison(path) {
+  if (typeof path !== "string" || !path.trim()) return "";
+  return path
+    .trim()
+    .replace(/[\\/]+$/, "")
+    .replace(/\\/g, "/")
+    .toLowerCase();
+}
+
+function isSamePath(leftPath, rightPath) {
+  const normalizedLeftPath = normalizePathForComparison(leftPath);
+  const normalizedRightPath = normalizePathForComparison(rightPath);
+  if (!normalizedLeftPath || !normalizedRightPath) return false;
+  return normalizedLeftPath === normalizedRightPath;
+}
+
 export default function useFilesystemEntryOperations({
   tabId = "",
+  tabWorkspaceRoot = "",
   currentPath = "",
   currentPathRef,
   clearSelection,
@@ -20,31 +37,62 @@ export default function useFilesystemEntryOperations({
   setIsDeletingEntries,
   setIsImportingExternal,
 }) {
-  const resolveIsWorkspaceFolder = useCallback(async (entryPath, isWorkspaceFolderHint = false) => {
-    if (!entryPath) return false;
-    if (isWorkspaceFolderHint) return true;
+  const resolveWorkspaceRootForPath = useCallback(async (
+    entryPath,
+    isWorkspaceFolderHint = false,
+  ) => {
+    if (!entryPath) return "";
+    if (isWorkspaceFolderHint) return entryPath;
 
-    try {
-      const workspaceResult = await invoke("filesystem_resolve_workspace_folders", {
-        paths: [entryPath],
-      });
-      return workspaceResult?.[entryPath] === true;
-    } catch {
-      return false;
+    const visitedPaths = new Set();
+    let currentPath = entryPath;
+
+    while (currentPath && !visitedPaths.has(currentPath)) {
+      visitedPaths.add(currentPath);
+
+      try {
+        const workspaceResult = await invoke("filesystem_resolve_workspace_folders", {
+          paths: [currentPath],
+        });
+        if (workspaceResult?.[currentPath] === true) return currentPath;
+      } catch {
+        return "";
+      }
+
+      try {
+        const parentPath = await invoke("parent_path", { path: currentPath });
+        if (typeof parentPath !== "string" || !parentPath || parentPath === currentPath) {
+          break;
+        }
+        currentPath = parentPath;
+      } catch {
+        break;
+      }
     }
+
+    return "";
   }, []);
 
   const openEntry = useCallback(async (entry, options = {}) => {
     if (entry.is_dir) {
-      const shouldOpenAsWorkspace = await resolveIsWorkspaceFolder(
+      const workspaceRootForEntry = await resolveWorkspaceRootForPath(
         entry.path,
         options?.isWorkspaceFolder === true,
       );
-      const shouldOpenInNewTab = Boolean(options?.forceOpenInNewTab && tabId);
+      const shouldOpenInWorkspaceContext = Boolean(
+        tabId
+        && tabWorkspaceRoot
+        && workspaceRootForEntry
+        && isSamePath(workspaceRootForEntry, tabWorkspaceRoot),
+      );
+      const shouldOpenInNewTab = Boolean(tabId && (
+        options?.forceOpenInNewTab
+        || (workspaceRootForEntry && !shouldOpenInWorkspaceContext)
+      ));
 
       if (shouldOpenInNewTab) {
         try {
-          if (shouldOpenAsWorkspace) {
+          if (workspaceRootForEntry && isSamePath(workspaceRootForEntry, entry.path)) {
             await workspaceOpenWorkspaceFolderFromTab(tabId, entry.path);
           } else {
             await workspaceOpenFolderFromTab(tabId, entry.path);
@@ -53,17 +101,6 @@ export default function useFilesystemEntryOperations({
           setError("");
         } catch (openInNewTabError) {
           setError(getNavigationErrorMessage(openInNewTabError, "Failed to open folder in new tab."));
-        }
-        return;
-      }
-
-      if (shouldOpenAsWorkspace && tabId) {
-        try {
-          await workspaceOpenWorkspaceFolderFromTab(tabId, entry.path);
-          clearSelection();
-          setError("");
-        } catch (workspaceOpenError) {
-          setError(getNavigationErrorMessage(workspaceOpenError, "Failed to open workspace."));
         }
         return;
       }
@@ -79,7 +116,7 @@ export default function useFilesystemEntryOperations({
     } catch (openError) {
       setError(getNavigationErrorMessage(openError, "Failed to open file."));
     }
-  }, [clearSelection, resolveIsWorkspaceFolder, setCurrentPath, setError, tabId]);
+  }, [clearSelection, resolveWorkspaceRootForPath, setCurrentPath, setError, tabId, tabWorkspaceRoot]);
 
   const moveEntries = useCallback(async (sourcePaths, destinationDir) => {
     const normalizedSourcePaths = uniqueNonEmptyPaths(sourcePaths);

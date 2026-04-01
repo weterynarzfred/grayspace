@@ -596,6 +596,55 @@ describe("FilesystemPanel", () => {
     expect(screen.getByRole("button", { name: /Temp/i })).toBeInTheDocument();
   });
 
+  it("opens a folder in a new tab when it is inside a workspace and current tab is outside", async () => {
+    renderFilesystemPanel({ tabId: "tab-1" });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    const nestedFolderButton = await screen.findByRole("button", { name: /Projects/i });
+    fireEvent.doubleClick(nestedFolderButton);
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("workspace_open_folder_from_tab", {
+        payload: {
+          tabId: "tab-1",
+          path: "C:\\Users\\Projects",
+        },
+      });
+    });
+  });
+
+  it("opens folders in place when already inside the same workspace", async () => {
+    renderFilesystemPanel({
+      tabId: "tab-1",
+      tabWorkspaceRoot: "C:\\Users",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\Users",
+        selectedPaths: [],
+      },
+    });
+
+    const nestedFolderButton = await screen.findByRole("button", { name: /Projects/i });
+    fireEvent.doubleClick(nestedFolderButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
+    });
+    expect(invoke).not.toHaveBeenCalledWith("workspace_open_folder_from_tab", {
+      payload: {
+        tabId: "tab-1",
+        path: "C:\\Users\\Projects",
+      },
+    });
+  });
+
   it("moves an entry when dropped onto a folder", async () => {
     renderFilesystemPanel();
 

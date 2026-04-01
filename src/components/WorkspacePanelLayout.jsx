@@ -68,6 +68,7 @@ function WorkspacePanelLayout({
   const paneCount = Object.keys(paneStates).length;
   const tabLayout = getTabLayout(tab?.layout);
   const tabId = tab?.tabId ?? "";
+  const splitContextKey = tab?.workspaceRoot ? "workspace" : "default";
   const activePaneId = tab?.activePaneId ?? "";
   const {
     splitPreview,
@@ -181,7 +182,7 @@ function WorkspacePanelLayout({
     const separatorClassName = axis === "row"
       ? `${styles.resizeHandle} ${styles.resizeHandleHorizontal}`
       : `${styles.resizeHandle} ${styles.resizeHandleVertical}`;
-    const splitGroupId = getSplitGroupId(tabId, nodePath);
+    const splitGroupId = getSplitGroupId(tabId, nodePath, splitContextKey);
     const flatSegments = collectSameAxisSegmentsWithSizes(node, nodePath, axis);
     const panelMinSizePercent = getPanelMinSizePercent(flatSegments.length);
     const handleLayoutChanged = (layoutByPanel) => {
@@ -242,7 +243,7 @@ function WorkspacePanelLayout({
       className={styles.panelGroup}
       onLayoutChanged={handleLayoutChanged}
     >{groupChildren}</Group>;
-  }, [onSplitRatioChange, renderPaneViewport, tabId]);
+  }, [onSplitRatioChange, renderPaneViewport, splitContextKey, tabId]);
 
   if (!tabLayout) return <div className={styles.panelGroup} />;
 

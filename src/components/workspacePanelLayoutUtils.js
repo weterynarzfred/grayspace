@@ -17,9 +17,10 @@ export function getTabLayout(layout) {
   return null;
 }
 
-export function getSplitGroupId(tabId, nodePath) {
+export function getSplitGroupId(tabId, nodePath, contextKey = "default") {
   const safeTabId = tabId || "tab";
-  return `workspace-split-${safeTabId}-${nodePath}`;
+  const safeContextKey = contextKey || "default";
+  return `workspace-split-${safeTabId}-${safeContextKey}-${nodePath}`;
 }
 
 export function getSplitAxis(node) {

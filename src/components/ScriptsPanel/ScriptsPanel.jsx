@@ -36,16 +36,19 @@ export default function ScriptsPanel({
   panelType = "Scripts",
   onPanelTypeChange = undefined,
   cwdHint = "",
+  tabWorkspaceRoot = "",
   terminalSessionId = "",
 }) {
   const [scripts, setScripts] = useState([]);
   const [status, setStatus] = useState("Open a folder to load scripts.");
+  const scriptsConfigRoot = tabWorkspaceRoot || cwdHint;
+  const isWorkspaceScoped = Boolean(tabWorkspaceRoot);
 
   useEffect(() => {
     let isDisposed = false;
 
     const loadScripts = async () => {
-      if (!cwdHint) {
+      if (!scriptsConfigRoot) {
         setScripts([]);
         setStatus("Open a folder to load scripts.");
         return;
@@ -56,12 +59,14 @@ export default function ScriptsPanel({
 
       try {
         const rawFolderConfig = await invoke("workspace_read_folder_config", {
-          workspaceRoot: cwdHint,
+          workspaceRoot: scriptsConfigRoot,
         });
         if (isDisposed) return;
 
         if (typeof rawFolderConfig !== "string" || !rawFolderConfig.trim()) {
-          setStatus("No .grayspace/folder.json found in this folder.");
+          setStatus(isWorkspaceScoped
+            ? "No .grayspace/folder.json found in this workspace."
+            : "No .grayspace/folder.json found in this folder.");
           return;
         }
 
@@ -83,7 +88,7 @@ export default function ScriptsPanel({
     return () => {
       isDisposed = true;
     };
-  }, [cwdHint]);
+  }, [isWorkspaceScoped, scriptsConfigRoot]);
 
   const handleRunScript = useCallback(async (name, command) => {
     if (!terminalSessionId) {

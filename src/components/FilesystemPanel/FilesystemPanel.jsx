@@ -58,7 +58,10 @@ function FilesystemPanel({
   const entryWindowAnchorRef = useRef(null);
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
   const [expandedPaths, setExpandedPaths] = useState(initialFilesystemStateRef.current.expandedPaths);
-  const nav = useFilesystemNavigation(initialFilesystemStateRef.current, { tabId });
+  const nav = useFilesystemNavigation(initialFilesystemStateRef.current, {
+    tabId,
+    tabWorkspaceRoot,
+  });
   const { openConfirm } = useNotificationCenter();
   const {
     currentDrive,

@@ -58,4 +58,29 @@ describe("ScriptsPanel", () => {
       });
     });
   });
+
+  it("prefers tab workspace root when loading scripts", async () => {
+    invoke.mockImplementation(async (command) => {
+      if (command === "workspace_read_folder_config")
+        return "{\"scripts\":{\"build\":\"npm run build\"}}";
+      if (command === "terminal_run_command") return null;
+      throw new Error(`Unhandled invoke command: ${command}`);
+    });
+
+    render(
+      <ScriptsPanel
+        cwdHint="C:\\WorkspaceRoot\\Nested"
+        tabWorkspaceRoot="C:\\WorkspaceRoot"
+        terminalSessionId="term-left"
+      />,
+    );
+
+    expect(await screen.findByRole("button", { name: "build" })).toBeInTheDocument();
+    const configLoadCall = invoke.mock.calls.find(([command]) => command === "workspace_read_folder_config");
+    expect(configLoadCall).toBeTruthy();
+    const resolvedWorkspaceRoot = String(configLoadCall?.[1]?.workspaceRoot ?? "")
+      .replace(/\\\\/g, "\\");
+    expect(resolvedWorkspaceRoot).toBe("C:\\WorkspaceRoot");
+    expect(resolvedWorkspaceRoot).not.toBe("C:\\WorkspaceRoot\\Nested");
+  });
 });

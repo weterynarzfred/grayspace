@@ -19,7 +19,7 @@ use crate::commands::terminal::{stop_terminal_session_by_id, TerminalState};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, State};
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -43,6 +43,17 @@ fn workspace_panels_config_path(workspace_root: &str) -> PathBuf {
   PathBuf::from(workspace_root)
     .join(".grayspace")
     .join("panels.json")
+}
+
+fn find_workspace_root_for_path(path: &Path) -> Option<String> {
+  let mut current_path = Some(path);
+  while let Some(candidate_path) = current_path {
+    if candidate_path.join(".grayspace").is_dir() {
+      return Some(candidate_path.to_string_lossy().to_string());
+    }
+    current_path = candidate_path.parent();
+  }
+  None
 }
 
 fn collect_layout_pane_ids(layout: &TabLayoutNode, pane_ids: &mut Vec<String>) {
@@ -153,14 +164,31 @@ fn persist_workspace_panels_config_for_tab(tab: &WorkspaceTab) {
   let _ = fs::write(panels_config_path, serialized_panels_config);
 }
 
-fn set_active_pane_filesystem_root(tab: &mut WorkspaceTab, root_path: &str) {
+fn apply_filesystem_root_to_pane(pane: &mut PaneState, root_path: &str) {
+  pane.filesystem_state.current_drive = infer_drive_from_path(root_path);
+  pane.filesystem_state.current_path = root_path.to_string();
+  pane.filesystem_state.selected_paths.clear();
+  pane.filesystem_state.expanded_paths.clear();
+  pane.filesystem_state.scroll_top = 0.0;
+}
+
+fn set_tab_filesystem_root(tab: &mut WorkspaceTab, root_path: &str) {
+  let mut has_filesystem_pane = false;
+  tab.pane_states.values_mut().for_each(|pane| {
+    if pane.panel_type != "Filesystem" {
+      return;
+    }
+    apply_filesystem_root_to_pane(pane, root_path);
+    has_filesystem_pane = true;
+  });
+
+  if has_filesystem_pane {
+    return;
+  }
+
   let active_pane_id = tab.active_pane_id.clone();
   if let Some(active_pane) = tab.pane_states.get_mut(&active_pane_id) {
-    active_pane.filesystem_state.current_drive = infer_drive_from_path(root_path);
-    active_pane.filesystem_state.current_path = root_path.to_string();
-    active_pane.filesystem_state.selected_paths.clear();
-    active_pane.filesystem_state.expanded_paths.clear();
-    active_pane.filesystem_state.scroll_top = 0.0;
+    apply_filesystem_root_to_pane(active_pane, root_path);
   }
 }
 
@@ -267,18 +295,15 @@ fn create_tab_for_opened_folder(
   workspace_root: Option<String>,
 ) -> WorkspaceTab {
   let mut new_tab = model.create_default_tab();
-  let mut loaded_panels_config = false;
   if let Some(workspace_root_path) = workspace_root.as_deref() {
     if let Some(panels_config) = read_workspace_panels_config(workspace_root_path) {
-      loaded_panels_config = apply_workspace_panels_config(model, &mut new_tab, panels_config);
+      let _ = apply_workspace_panels_config(model, &mut new_tab, panels_config);
     }
   }
 
   new_tab.workspace_root = workspace_root;
   new_tab.terminal_cwd_hint = opened_path.to_string();
-  if !loaded_panels_config {
-    set_active_pane_filesystem_root(&mut new_tab, opened_path);
-  }
+  set_tab_filesystem_root(&mut new_tab, opened_path);
   new_tab
 }
 
@@ -848,6 +873,7 @@ pub fn workspace_open_folder_from_tab(
   if !opened_folder_path.is_dir() {
     return Err("Folder does not exist.".to_string());
   }
+  let workspace_root = find_workspace_root_for_path(&opened_folder_path);
 
   let snapshot = {
     let mut model = state
@@ -862,7 +888,7 @@ pub fn workspace_open_folder_from_tab(
     let source_window_id = find_window_id_containing_tab(&model, &payload.tab_id)
       .ok_or_else(|| "Window not found.".to_string())?;
 
-    let new_tab = create_tab_for_opened_folder(&mut model, &normalized_path, None);
+    let new_tab = create_tab_for_opened_folder(&mut model, &normalized_path, workspace_root);
     let new_tab_id = new_tab.tab_id.clone();
     model.tabs.insert(new_tab_id.clone(), new_tab);
 
@@ -941,13 +967,27 @@ pub fn workspace_set_window_bounds(
 
 #[cfg(test)]
 mod tests {
-  use super::{apply_tab_workspace_root_change, reset_tab_layout_to_default};
+  use super::{
+    apply_tab_workspace_root_change, find_workspace_root_for_path, reset_tab_layout_to_default,
+    set_tab_filesystem_root,
+  };
   use crate::commands::workspace::commands::basic_support::split_layout_leaf;
   use crate::commands::workspace::model::WorkspaceModel;
   use crate::commands::workspace::types::{
     LayoutAxis, SplitDirection, TabLayoutNode, DEFAULT_SPLIT_RATIO,
   };
   use std::collections::BTreeSet;
+  use std::path::PathBuf;
+  use std::time::{SystemTime, UNIX_EPOCH};
+  use std::{env, fs};
+
+  fn unique_test_root(prefix: &str) -> PathBuf {
+    let timestamp = SystemTime::now()
+      .duration_since(UNIX_EPOCH)
+      .expect("clock should be monotonic")
+      .as_nanos();
+    env::temp_dir().join(format!("{prefix}-{timestamp}"))
+  }
 
   #[test]
   fn reset_tab_layout_to_default_recreates_standard_split() {
@@ -1125,5 +1165,79 @@ mod tests {
     assert_eq!(left_pane.panel_type, "Filesystem");
     assert_eq!(left_pane.filesystem_state.current_path, "C:\\Outside");
     assert_eq!(right_pane.panel_type, "Preview");
+  }
+
+  #[test]
+  fn find_workspace_root_for_path_detects_nearest_ancestor_workspace() {
+    let test_root = unique_test_root("workspace-ancestor-detect");
+    let workspace_root = test_root.join("WorkspaceRoot");
+    let nested_folder = workspace_root.join("a").join("b");
+    fs::create_dir_all(&nested_folder).expect("nested folder should be created");
+    fs::create_dir_all(workspace_root.join(".grayspace")).expect("workspace marker should exist");
+
+    let detected_workspace_root = find_workspace_root_for_path(&nested_folder)
+      .expect("workspace root should be detected");
+    assert_eq!(
+      PathBuf::from(detected_workspace_root),
+      workspace_root
+    );
+
+    fs::remove_dir_all(&test_root).expect("test root should be removed");
+  }
+
+  #[test]
+  fn find_workspace_root_for_path_returns_none_without_workspace_marker() {
+    let test_root = unique_test_root("workspace-ancestor-missing");
+    let nested_folder = test_root.join("x").join("y");
+    fs::create_dir_all(&nested_folder).expect("nested folder should be created");
+
+    let detected_workspace_root = find_workspace_root_for_path(&nested_folder);
+    assert_eq!(detected_workspace_root, None);
+
+    fs::remove_dir_all(&test_root).expect("test root should be removed");
+  }
+
+  #[test]
+  fn set_tab_filesystem_root_updates_all_filesystem_panes() {
+    let mut model = WorkspaceModel::default();
+    let mut tab = model.create_default_tab();
+    let left_pane_id = tab.active_pane_id.clone();
+    let right_pane_id = tab
+      .pane_states
+      .keys()
+      .find(|pane_id| *pane_id != &left_pane_id)
+      .expect("right pane should exist")
+      .clone();
+
+    {
+      let right_pane = tab
+        .pane_states
+        .get_mut(&right_pane_id)
+        .expect("right pane should exist");
+      right_pane.panel_type = "Filesystem".to_string();
+      right_pane.filesystem_state.current_path = "C:\\OldRight".to_string();
+    }
+    {
+      let left_pane = tab
+        .pane_states
+        .get_mut(&left_pane_id)
+        .expect("left pane should exist");
+      left_pane.filesystem_state.current_path = "C:\\OldLeft".to_string();
+    }
+
+    set_tab_filesystem_root(&mut tab, "C:\\Workspace\\Nested");
+
+    let left_pane = tab
+      .pane_states
+      .get(&left_pane_id)
+      .expect("left pane should exist");
+    let right_pane = tab
+      .pane_states
+      .get(&right_pane_id)
+      .expect("right pane should exist");
+    assert_eq!(left_pane.filesystem_state.current_path, "C:\\Workspace\\Nested");
+    assert_eq!(right_pane.filesystem_state.current_path, "C:\\Workspace\\Nested");
+    assert_eq!(left_pane.filesystem_state.current_drive, "C:\\");
+    assert_eq!(right_pane.filesystem_state.current_drive, "C:\\");
   }
 }
