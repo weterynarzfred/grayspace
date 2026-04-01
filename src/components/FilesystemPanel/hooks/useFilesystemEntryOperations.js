@@ -5,23 +5,8 @@ import {
   workspaceOpenWorkspaceFolderFromTab,
 } from "../../../workspace/workspaceApi";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
+import { isSamePath } from "../../../utils/pathWatch";
 import { getNavigationErrorMessage } from "./filesystemNavigationUtils";
-
-function normalizePathForComparison(path) {
-  if (typeof path !== "string" || !path.trim()) return "";
-  return path
-    .trim()
-    .replace(/[\\/]+$/, "")
-    .replace(/\\/g, "/")
-    .toLowerCase();
-}
-
-function isSamePath(leftPath, rightPath) {
-  const normalizedLeftPath = normalizePathForComparison(leftPath);
-  const normalizedRightPath = normalizePathForComparison(rightPath);
-  if (!normalizedLeftPath || !normalizedRightPath) return false;
-  return normalizedLeftPath === normalizedRightPath;
-}
 
 export default function useFilesystemEntryOperations({
   tabId = "",
@@ -45,24 +30,24 @@ export default function useFilesystemEntryOperations({
     if (isWorkspaceFolderHint) return entryPath;
 
     const visitedPaths = new Set();
-    let currentPath = entryPath;
+    let candidatePath = entryPath;
 
-    while (currentPath && !visitedPaths.has(currentPath)) {
-      visitedPaths.add(currentPath);
+    while (candidatePath && !visitedPaths.has(candidatePath)) {
+      visitedPaths.add(candidatePath);
 
       try {
         const workspaceResult = await invoke("filesystem_resolve_workspace_folders", {
-          paths: [currentPath],
+          paths: [candidatePath],
         });
-        if (workspaceResult?.[currentPath] === true) return currentPath;
+        if (workspaceResult?.[candidatePath] === true) return candidatePath;
       } catch {
         return "";
       }
 
       try {
-        const parentPath = await invoke("parent_path", { path: currentPath });
-        if (typeof parentPath !== "string" || !parentPath || parentPath === currentPath) break;
-        currentPath = parentPath;
+        const parentPath = await invoke("parent_path", { path: candidatePath });
+        if (typeof parentPath !== "string" || !parentPath || parentPath === candidatePath) break;
+        candidatePath = parentPath;
       } catch {
         break;
       }

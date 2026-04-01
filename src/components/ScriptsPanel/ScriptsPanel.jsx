@@ -15,9 +15,7 @@ function parseScriptsFromFolderConfig(rawConfigText) {
   const repairedConfig = jsonrepair(rawConfigText);
   const parsedConfig = JSON.parse(repairedConfig);
   const scriptsValue = parsedConfig?.scripts;
-
-  if (!scriptsValue || typeof scriptsValue !== "object" || Array.isArray(scriptsValue))
-    return [];
+  if (!scriptsValue || typeof scriptsValue !== "object" || Array.isArray(scriptsValue)) return [];
 
   return Object.entries(scriptsValue)
     .filter(([scriptName, command]) =>
@@ -42,7 +40,9 @@ export default function ScriptsPanel({
   const [scripts, setScripts] = useState([]);
   const [status, setStatus] = useState("Open a folder to load scripts.");
   const scriptsConfigRoot = tabWorkspaceRoot || cwdHint;
-  const isWorkspaceScoped = Boolean(tabWorkspaceRoot);
+  const missingConfigMessage = tabWorkspaceRoot
+    ? "No .grayspace/folder.json found in this workspace."
+    : "No .grayspace/folder.json found in this folder.";
 
   useEffect(() => {
     let isDisposed = false;
@@ -64,9 +64,7 @@ export default function ScriptsPanel({
         if (isDisposed) return;
 
         if (typeof rawFolderConfig !== "string" || !rawFolderConfig.trim()) {
-          setStatus(isWorkspaceScoped
-            ? "No .grayspace/folder.json found in this workspace."
-            : "No .grayspace/folder.json found in this folder.");
+          setStatus(missingConfigMessage);
           return;
         }
 
@@ -88,7 +86,7 @@ export default function ScriptsPanel({
     return () => {
       isDisposed = true;
     };
-  }, [isWorkspaceScoped, scriptsConfigRoot]);
+  }, [missingConfigMessage, scriptsConfigRoot]);
 
   const handleRunScript = useCallback(async (name, command) => {
     if (!terminalSessionId) {

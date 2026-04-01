@@ -36,20 +36,21 @@ export default function useTabDragDrop({ snapshot, currentWindow, onError }) {
   }, []);
 
   const handleTabDragMove = useCallback(event => {
-    if (!tabDragRef.current.pointerStart) return;
+    const pointerStart = tabDragRef.current.pointerStart;
+    if (!pointerStart) return;
 
     tabDragRef.current = {
       ...tabDragRef.current,
       pointerCurrent: {
-        x: Math.round(tabDragRef.current.pointerStart.x + event.delta.x),
-        y: Math.round(tabDragRef.current.pointerStart.y + event.delta.y),
+        x: Math.round(pointerStart.x + event.delta.x),
+        y: Math.round(pointerStart.y + event.delta.y),
       },
     };
   }, []);
 
   const closeWindowSilently = useCallback(async windowId => {
     if (!windowId) return;
-    await workspaceCloseWindow(windowId).catch(() => { });
+    await workspaceCloseWindow(windowId).catch(() => {});
   }, []);
 
   const detachTabToNewWindow = useCallback(async (dropAction) => {

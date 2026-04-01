@@ -2,16 +2,10 @@ import { parseEntryPath } from "./FilesystemPanel/dndIds";
 import { uniqueNonEmptyPaths } from "../utils/pathSelection";
 
 export function getDraggedPathsFromDndEvent(event) {
-  const dragPaths = event?.active?.data?.current?.dragPaths;
-  const normalizedDragPaths = uniqueNonEmptyPaths(dragPaths);
-  if (normalizedDragPaths.length > 0) {
-    return normalizedDragPaths;
-  }
+  const dragPaths = uniqueNonEmptyPaths(event?.active?.data?.current?.dragPaths);
+  if (dragPaths.length > 0) return dragPaths;
 
-  const sourcePathFromData = event?.active?.data?.current?.sourcePath;
-  const sourcePath = typeof sourcePathFromData === "string" && sourcePathFromData
-    ? sourcePathFromData
-    : parseEntryPath(event?.active?.id);
+  const sourcePath = event?.active?.data?.current?.sourcePath || parseEntryPath(event?.active?.id);
   return uniqueNonEmptyPaths([sourcePath]);
 }
 

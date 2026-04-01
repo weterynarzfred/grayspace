@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { jsonrepair } from "jsonrepair";
 import { useEffect, useMemo, useState } from "react";
 
+const trimString = (value) => (typeof value === "string" ? value.trim() : "");
+
 function getPathDisplayName(path) {
   if (typeof path !== "string" || !path) return "";
 
@@ -49,27 +51,22 @@ export default function useWorkspaceTabTitles(tabs = []) {
   const [workspaceNameByRoot, setWorkspaceNameByRoot] = useState({});
   const workspaceRoots = useMemo(() => {
     const roots = new Set();
-    tabs.forEach((tab) => {
-      if (typeof tab?.workspaceRoot === "string" && tab.workspaceRoot.trim()) {
-        roots.add(tab.workspaceRoot.trim());
-      }
+    tabs.forEach(tab => {
+      const workspaceRoot = trimString(tab?.workspaceRoot);
+      if (workspaceRoot) roots.add(workspaceRoot);
     });
     return Array.from(roots);
   }, [tabs]);
 
   useEffect(() => {
-    setWorkspaceNameByRoot((previous) => {
+    setWorkspaceNameByRoot(previous => {
       const next = {};
-      workspaceRoots.forEach((workspaceRoot) => {
-        if (previous[workspaceRoot] !== undefined) {
-          next[workspaceRoot] = previous[workspaceRoot];
-        }
+      workspaceRoots.forEach(workspaceRoot => {
+        if (previous[workspaceRoot] !== undefined) next[workspaceRoot] = previous[workspaceRoot];
       });
-
-      const previousKeys = Object.keys(previous);
       const nextKeys = Object.keys(next);
-      const changed = previousKeys.length !== nextKeys.length
-        || nextKeys.some((workspaceRoot) => previous[workspaceRoot] !== next[workspaceRoot]);
+      const changed = Object.keys(previous).length !== nextKeys.length
+        || nextKeys.some(workspaceRoot => previous[workspaceRoot] !== next[workspaceRoot]);
       return changed ? next : previous;
     });
   }, [workspaceRoots]);
@@ -83,7 +80,7 @@ export default function useWorkspaceTabTitles(tabs = []) {
     let isDisposed = false;
 
     async function loadWorkspaceNames() {
-      const resolvedEntries = await Promise.all(unresolvedWorkspaceRoots.map(async (workspaceRoot) => {
+      const resolvedEntries = await Promise.all(unresolvedWorkspaceRoots.map(async workspaceRoot => {
         try {
           const rawFolderConfig = await invoke("workspace_read_folder_config", { workspaceRoot });
           return [workspaceRoot, parseWorkspaceNameFromFolderConfig(rawFolderConfig)];
@@ -93,7 +90,7 @@ export default function useWorkspaceTabTitles(tabs = []) {
       }));
       if (isDisposed) return;
 
-      setWorkspaceNameByRoot((previous) => {
+      setWorkspaceNameByRoot(previous => {
         const next = { ...previous };
         resolvedEntries.forEach(([workspaceRoot, workspaceName]) => {
           next[workspaceRoot] = workspaceName;
@@ -110,13 +107,11 @@ export default function useWorkspaceTabTitles(tabs = []) {
 
   return useMemo(() => {
     const titleByTabId = {};
-    tabs.forEach((tab) => {
-      const workspaceRoot = typeof tab?.workspaceRoot === "string"
-        ? tab.workspaceRoot.trim()
-        : "";
+    tabs.forEach(tab => {
+      const workspaceRoot = trimString(tab?.workspaceRoot);
       if (workspaceRoot) {
         const configuredName = workspaceNameByRoot[workspaceRoot];
-        const displayName = (typeof configuredName === "string" && configuredName)
+        const displayName = (trimString(configuredName))
           ? configuredName
           : getPathDisplayName(workspaceRoot);
         titleByTabId[tab.tabId] = displayName ? `ws: ${displayName}` : (tab.title ?? "");

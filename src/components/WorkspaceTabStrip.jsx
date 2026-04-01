@@ -24,6 +24,37 @@ function WorkspaceTabStrip({
 }) {
   const activeTabTitle = tabs.find(tab => tab.tabId === activeDragTabId)?.title ?? "";
   const hasNotifications = notifications.length > 0;
+  const notificationsButtonClassName = `${styles.notificationsButton} ${hasNotifications ? styles.notificationsButtonAlert : ""}`;
+  const renderNotificationActions = (notification) => {
+    if (notification.kind !== "confirm") {
+      return <div className={styles.notificationActions}>
+        <button
+          type="button"
+          className={styles.notificationActionButton}
+          onClick={() => onDismissNotification?.(notification.id)}
+        >
+          Dismiss
+        </button>
+      </div>;
+    }
+
+    return <div className={styles.notificationActions}>
+      <button
+        type="button"
+        className={styles.notificationActionButton}
+        onClick={() => onResolveNotificationConfirm?.(notification.id, false)}
+      >
+        {notification.cancelLabel || "Cancel"}
+      </button>
+      <button
+        type="button"
+        className={styles.notificationActionButton}
+        onClick={() => onResolveNotificationConfirm?.(notification.id, true)}
+      >
+        {notification.confirmLabel || "Confirm"}
+      </button>
+    </div>;
+  };
 
   return <header className={styles.tabStrip}>
     <div className={styles.tabList}>
@@ -42,7 +73,7 @@ function WorkspaceTabStrip({
     </div>
     <button
       type="button"
-      className={`${styles.notificationsButton} ${hasNotifications ? styles.notificationsButtonAlert : ""}`}
+      className={notificationsButtonClassName}
       onClick={() => onToggleNotifications?.()}
       aria-label={`Notifications (${notifications.length})`}
       data-has-notifications={hasNotifications ? "true" : "false"}
@@ -57,30 +88,7 @@ function WorkspaceTabStrip({
       >
         <h3 className={styles.notificationTitle}>{notification.title || "Notification"}</h3>
         {notification.message ? <p className={styles.notificationMessage}>{notification.message}</p> : null}
-        {notification.kind === "confirm" ? <div className={styles.notificationActions}>
-          <button
-            type="button"
-            className={styles.notificationActionButton}
-            onClick={() => onResolveNotificationConfirm?.(notification.id, false)}
-          >
-            {notification.cancelLabel || "Cancel"}
-          </button>
-          <button
-            type="button"
-            className={styles.notificationActionButton}
-            onClick={() => onResolveNotificationConfirm?.(notification.id, true)}
-          >
-            {notification.confirmLabel || "Confirm"}
-          </button>
-        </div> : <div className={styles.notificationActions}>
-          <button
-            type="button"
-            className={styles.notificationActionButton}
-            onClick={() => onDismissNotification?.(notification.id)}
-          >
-            Dismiss
-          </button>
-        </div>}
+        {renderNotificationActions(notification)}
       </article>)}
     </div> : null}
     <DragOverlay dropAnimation={null}>

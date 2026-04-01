@@ -9,9 +9,9 @@ const SCROLL_PERSIST_DEBOUNCE_MS = 120;
 export default function useFilesystemStatePersistence({
   tabId = "",
   paneId = "",
-  onFilesystemStateChange = undefined,
-  panelListRef = undefined,
-  initialFilesystemState = undefined,
+  onFilesystemStateChange,
+  panelListRef,
+  initialFilesystemState,
   currentDrive = "",
   currentPath = "",
   selectedPaths = [],
@@ -25,7 +25,7 @@ export default function useFilesystemStatePersistence({
   const scrollPersistTimeoutRef = useRef(null);
 
   const persistFilesystemState = useCallback((nextState) => {
-    if (typeof onFilesystemStateChange !== "function" || !tabId || !paneId) return;
+    if (!onFilesystemStateChange || !tabId || !paneId) return;
 
     const normalizedState = normalizeFilesystemPaneState(nextState);
     const lastState = lastPersistedStateRef.current;

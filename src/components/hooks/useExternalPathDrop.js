@@ -375,39 +375,53 @@ export default function useExternalPathDrop({
       }
     };
 
-    getCurrentWindow()
-      .onDragDropEvent(async (event) => {
-        const payload = event?.payload;
-        if (!payload) return;
+    const handleTauriDragDropEvent = async (event) => {
+      const payload = event?.payload;
+      if (!payload) return;
 
-        if (payload.type === "leave") {
-          clearHoverState("tauri", "leave");
-          return;
-        }
+      if (payload.type === "leave") {
+        clearHoverState("tauri", "leave");
+        return;
+      }
 
-        const clientPosition = physicalToClientPosition(payload.position);
-        const isInside = updateHoverState(clientPosition, "tauri");
-        if (payload.type === "enter" || payload.type === "over") return;
-        if (payload.type !== "drop" || !isInside) {
-          clearHoverState("tauri", "drop");
-          return;
-        }
-
+      const clientPosition = physicalToClientPosition(payload.position);
+      const isInside = updateHoverState(clientPosition, "tauri");
+      if (payload.type === "enter" || payload.type === "over") return;
+      if (payload.type !== "drop" || !isInside) {
         clearHoverState("tauri", "drop");
-        await triggerDrop(payload.paths ?? [], {
-          source: "tauri",
-          clientPosition,
-          physicalPosition: payload.position ?? null,
-        });
-      })
-      .then((unlisten) => {
+        return;
+      }
+
+      clearHoverState("tauri", "drop");
+      await triggerDrop(payload.paths ?? [], {
+        source: "tauri",
+        clientPosition,
+        physicalPosition: payload.position ?? null,
+      });
+    };
+
+    async function subscribeTauriDragDrop() {
+      let appWindow = null;
+      try {
+        appWindow = getCurrentWindow();
+      } catch {
+        return;
+      }
+      if (!appWindow || typeof appWindow.onDragDropEvent !== "function") return;
+
+      try {
+        const unlisten = await appWindow.onDragDropEvent(handleTauriDragDropEvent);
         if (disposed) {
-          unlisten();
+          unlisten?.();
           return;
         }
         unlistenFn = unlisten;
-      })
-      .catch(() => {});
+      } catch {
+        // ignore unavailable drag-drop API in non-tauri environments
+      }
+    }
+
+    void subscribeTauriDragDrop();
 
     const handleDocumentDragOver = (event) => {
       if (!hasExternalPayload(event.dataTransfer)) return;

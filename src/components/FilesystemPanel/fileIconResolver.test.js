@@ -3,7 +3,7 @@ import { resolveFilesystemIconClass } from "./fileIconResolver";
 describe("resolveFilesystemIconClass", () => {
   it("returns a folder fallback icon for directories", () => {
     expect(resolveFilesystemIconClass("src", { isDirectory: true }))
-      .toBe("config-icon medium-yellow");
+      .toBe("folder-icon");
   });
 
   it("returns a mapped icon class for files", () => {

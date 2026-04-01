@@ -27,6 +27,10 @@ export function NotificationCenterProvider({ children }) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationResolversRef = useRef(new Map());
   const previousNotificationCountRef = useRef(0);
+  const removeNotification = useCallback((notificationId) => {
+    setNotifications(previousNotifications =>
+      previousNotifications.filter(entry => entry.id !== notificationId));
+  }, []);
 
   useEffect(() => {
     const previousCount = previousNotificationCountRef.current;
@@ -37,27 +41,19 @@ export function NotificationCenterProvider({ children }) {
   }, [notifications.length]);
 
   useEffect(() => () => {
-    notificationResolversRef.current.forEach((resolveNotification) => {
-      try {
-        resolveNotification(false);
-      } catch {
-        // ignore resolver errors during shutdown
-      }
-    });
+    notificationResolversRef.current.forEach(resolveNotification => resolveNotification(false));
     notificationResolversRef.current.clear();
   }, []);
 
   const dismissNotification = useCallback((notificationId) => {
-    setNotifications((previousNotifications) => (
-      previousNotifications.filter((entry) => entry.id !== notificationId)
-    ));
+    removeNotification(notificationId);
 
     const resolver = notificationResolversRef.current.get(notificationId);
     if (resolver) {
       resolver(false);
       notificationResolversRef.current.delete(notificationId);
     }
-  }, []);
+  }, [removeNotification]);
 
   const resolveConfirmNotification = useCallback((notificationId, confirmed) => {
     const resolver = notificationResolversRef.current.get(notificationId);
@@ -66,10 +62,8 @@ export function NotificationCenterProvider({ children }) {
       notificationResolversRef.current.delete(notificationId);
     }
 
-    setNotifications((previousNotifications) => (
-      previousNotifications.filter((entry) => entry.id !== notificationId)
-    ));
-  }, []);
+    removeNotification(notificationId);
+  }, [removeNotification]);
 
   const pushNotification = useCallback((options = {}) => {
     const notificationId = createNotificationId();
@@ -82,7 +76,7 @@ export function NotificationCenterProvider({ children }) {
       autoOpen: Boolean(options.autoOpen),
     };
 
-    setNotifications((previousNotifications) => [notification, ...previousNotifications]);
+    setNotifications(previousNotifications => [notification, ...previousNotifications]);
     if (notification.autoOpen) setIsNotificationsOpen(true);
     return notificationId;
   }, []);
@@ -107,7 +101,7 @@ export function NotificationCenterProvider({ children }) {
     };
 
     notificationResolversRef.current.set(notificationId, resolve);
-    setNotifications((previousNotifications) => [confirmNotification, ...previousNotifications]);
+    setNotifications(previousNotifications => [confirmNotification, ...previousNotifications]);
     if (confirmNotification.autoOpen) setIsNotificationsOpen(true);
   }), []);
 

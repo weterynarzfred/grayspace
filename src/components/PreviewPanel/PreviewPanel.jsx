@@ -32,10 +32,13 @@ function PreviewPanel({
     tabSelectedFiles,
     onPaneDirtyStateChange,
   });
+  const isReady = previewState.status === "ready";
+  const previewKind = previewState.preview?.kind;
+  const panelClassName = `${shellStyles.panelContent} ${styles.panelContent} ${isDropOver ? styles.panelDropTarget : ""}`;
 
   return <section
     ref={setDropNodeRef}
-    className={`${shellStyles.panelContent} ${styles.panelContent} ${isDropOver ? styles.panelDropTarget : ""}`}
+    className={panelClassName}
     aria-label="Preview panel"
   >
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
@@ -64,9 +67,7 @@ function PreviewPanel({
     </PanelHeader>
     <div className={`${shellStyles.panelBody} ${styles.panelBody}`}>
 
-      {previewPath
-        && previewState.status === "ready"
-        && previewState.preview?.kind === "text" ? <>
+      {previewPath && isReady && previewKind === "text" ? <>
         <CodeTextPreview
           filePath={previewPath}
           content={textContent}
@@ -75,14 +76,12 @@ function PreviewPanel({
           onChange={handleTextContentChange}
           onSave={handleSaveNow}
         />
-        {previewState.preview.truncated ? <p className={styles.muted}>
+        {previewState.preview?.truncated ? <p className={styles.muted}>
           Preview is truncated. Editing is disabled for large files.
         </p> : null}
       </> : null}
 
-      {previewPath
-        && previewState.status === "ready"
-        && previewState.preview?.kind === "image" ? (
+      {previewPath && isReady && previewKind === "image" ? (
         mediaPreviewSrc ? <img
           className={styles.imagePreview}
           src={mediaPreviewSrc}
@@ -90,9 +89,7 @@ function PreviewPanel({
         /> : <p className={styles.muted}>Failed to render image preview.</p>
       ) : null}
 
-      {previewPath
-        && previewState.status === "ready"
-        && previewState.preview?.kind === "video" ? (
+      {previewPath && isReady && previewKind === "video" ? (
         mediaPreviewSrc ? <video
           key={previewPath}
           className={styles.videoPreview}
@@ -103,9 +100,7 @@ function PreviewPanel({
         /> : <p className={styles.muted}>Failed to render video preview.</p>
       ) : null}
 
-      {previewPath
-        && previewState.status === "ready"
-        && previewState.preview?.kind === "audio" ? (
+      {previewPath && isReady && previewKind === "audio" ? (
         mediaPreviewSrc ? <audio
           key={previewPath}
           className={styles.audioPreview}
@@ -116,10 +111,8 @@ function PreviewPanel({
         /> : <p className={styles.muted}>Failed to render audio preview.</p>
       ) : null}
 
-      {previewPath
-        && previewState.status === "ready"
-        && previewState.preview?.kind === "unsupported" ? (
-        <p className={styles.muted}>{previewState.preview.reason}</p>
+      {previewPath && isReady && previewKind === "unsupported" ? (
+        <p className={styles.muted}>{previewState.preview?.reason}</p>
       ) : null}
     </div>
   </section>;

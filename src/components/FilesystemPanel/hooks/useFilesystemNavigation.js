@@ -8,10 +8,7 @@ export default function useFilesystemNavigation(
   initialFilesystemState = undefined,
   options = {},
 ) {
-  const {
-    tabId = "",
-    tabWorkspaceRoot = "",
-  } = options;
+  const { tabId = "", tabWorkspaceRoot = "" } = options;
   const initialStateRef = useRef(
     normalizeInitialFilesystemState(initialFilesystemState),
   );
@@ -63,8 +60,12 @@ export default function useFilesystemNavigation(
     const entryPaths = Array.isArray(options.entryPaths) && options.entryPaths.length > 0
       ? options.entryPaths
       : entries.map(entry => entry.path);
-    const selectedVisiblePaths = selectedPaths.filter(path => entryPaths.includes(path));
-    return selectEntryState(entryPath, options, entryPaths, selectedVisiblePaths);
+    return selectEntryState(
+      entryPath,
+      options,
+      entryPaths,
+      selectedPaths.filter(path => entryPaths.includes(path)),
+    );
   }, [entries, selectEntryState, selectedPaths]);
 
   const {

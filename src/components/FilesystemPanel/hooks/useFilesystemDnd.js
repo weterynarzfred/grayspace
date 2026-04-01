@@ -126,9 +126,7 @@ function useFilesystemDnd({
   }, []);
 
   function getEventSourcePath(event) {
-    const sourcePathFromData = event?.active?.data?.current?.sourcePath;
-    if (typeof sourcePathFromData === "string" && sourcePathFromData) return sourcePathFromData;
-    return parseEntryPath(event?.active?.id);
+    return event?.active?.data?.current?.sourcePath || parseEntryPath(event?.active?.id);
   }
 
   function isEventOwnedByPane(event) {
@@ -146,14 +144,6 @@ function useFilesystemDnd({
     );
     if (!normalizedSelection.includes(sourcePath)) return [sourcePath];
     return normalizedSelection;
-  }
-
-  function getBreadcrumbDropId(path) {
-    return getBreadcrumbDndId(path);
-  }
-
-  function getPanelDropId(path) {
-    return getPanelDndId(path);
   }
 
   function handleDragStart(event) {
@@ -354,8 +344,8 @@ function useFilesystemDnd({
     activeDragPaths,
     activeDropDestinationPath,
     externalDragPaths: ownedDragPaths,
-    getBreadcrumbDropId,
-    getPanelDropId,
+    getBreadcrumbDropId: getBreadcrumbDndId,
+    getPanelDropId: getPanelDndId,
     handleDragStart,
     handleDragOver,
     handleDragEnd,

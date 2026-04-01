@@ -15,18 +15,17 @@ import {
   workspaceSplitTabPane,
 } from "./workspaceApi";
 
-function resolveTabPaneId(tab) {
+function resolveTabPaneId(tab = null) {
   if (tab?.activePaneId && tab?.paneStates?.[tab.activePaneId]) return tab.activePaneId;
   return Object.keys(tab?.paneStates ?? {})[0] ?? "";
 }
 
-function getPaneStateKey(tabId, paneId) {
-  return `${tabId}::${paneId}`;
-}
+const getPaneStateKey = (tabId, paneId) => `${tabId}::${paneId}`;
 
 function normalizePathForComparison(path) {
-  if (typeof path !== "string" || !path.trim()) return "";
-  return path
+  const normalized = typeof path === "string" ? path.trim() : "";
+  if (!normalized) return "";
+  return normalized
     .trim()
     .replace(/[\\/]+$/, "")
     .replace(/\\/g, "/")
@@ -43,22 +42,25 @@ function isPathInsideRoot(path, rootPath) {
 export default function useWorkspaceActions({
   currentWindow = null,
   activeTab = null,
-  pushNotification = undefined,
-  openConfirm = undefined,
-  setRuntimeError = undefined,
+  pushNotification,
+  openConfirm,
+  setRuntimeError,
 }) {
   const paneDirtyStateRef = useRef(new Map());
-
-  const handleWorkspaceCommandError = useCallback(error => {
-    const message = getErrorMessage(error);
-    setRuntimeError?.(message);
+  const showActionErrorNotification = useCallback((message) => {
     pushNotification?.({
       title: "Action failed",
       message,
       tone: "error",
       autoOpen: true,
     });
-  }, [pushNotification, setRuntimeError]);
+  }, [pushNotification]);
+
+  const handleWorkspaceCommandError = useCallback(error => {
+    const message = getErrorMessage(error);
+    setRuntimeError?.(message);
+    showActionErrorNotification(message);
+  }, [setRuntimeError, showActionErrorNotification]);
 
   const handleTabScopedCommandError = useCallback(error => {
     if (getErrorMessage(error) === "Tab not found.") return;
@@ -90,8 +92,9 @@ export default function useWorkspaceActions({
     const nextPath = path ?? "";
     workspaceSetTabTerminalCwd(tabId, nextPath).catch(handleTabScopedCommandError);
 
-    if (activeTab?.tabId !== tabId) return;
-    if (paneId && activeTab?.activePaneId && paneId !== activeTab.activePaneId) return;
+    const isActivePane = activeTab?.tabId === tabId
+      && (!paneId || !activeTab?.activePaneId || paneId === activeTab.activePaneId);
+    if (!isActivePane) return;
 
     const workspaceRoot = typeof activeTab?.workspaceRoot === "string"
       ? activeTab.workspaceRoot
@@ -123,23 +126,21 @@ export default function useWorkspaceActions({
   const handleClosePane = useCallback(async (tabId, paneId) => {
     if (!tabId || !paneId) return;
 
-    const paneState = activeTab?.tabId === tabId
-      ? activeTab.paneStates?.[paneId]
-      : null;
+    const paneState = activeTab?.tabId === tabId ? activeTab.paneStates?.[paneId] : null;
     const paneStateKey = getPaneStateKey(tabId, paneId);
     const paneDirtyState = paneDirtyStateRef.current.get(paneStateKey);
     const requiresUnsavedConfirm = paneState?.panelType === "Preview"
       && paneDirtyState?.hasUnsavedChanges;
 
     if (requiresUnsavedConfirm) {
-      const shouldClose = await openConfirm?.({
+      const shouldClose = openConfirm ? await openConfirm({
         title: "Discard unsaved changes?",
         message: paneDirtyState.message || "Close this pane and discard unsaved changes?",
         tone: "warning",
         confirmLabel: "Close pane",
         cancelLabel: "Cancel",
         autoOpen: true,
-      });
+      }) : true;
       if (!shouldClose) return;
     }
 
@@ -151,23 +152,19 @@ export default function useWorkspaceActions({
     }
   }, [activeTab, handleTabScopedCommandError, openConfirm]);
 
-  const handlePaneDirtyStateChange = useCallback((tabId, paneId, dirtyState, panelType) => {
+  const handlePaneDirtyStateChange = useCallback((tabId, paneId, dirtyState) => {
     if (!tabId || !paneId) return;
 
     const paneStateKey = getPaneStateKey(tabId, paneId);
     const hasUnsavedChanges = Boolean(dirtyState?.hasUnsavedChanges);
-
     if (!hasUnsavedChanges) {
       paneDirtyStateRef.current.delete(paneStateKey);
       return;
     }
 
-    const scope = typeof dirtyState?.scope === "string" ? dirtyState.scope : "";
     const message = typeof dirtyState?.message === "string" ? dirtyState.message : "";
     paneDirtyStateRef.current.set(paneStateKey, {
       hasUnsavedChanges,
-      panelType: panelType ?? "",
-      scope,
       message,
     });
   }, []);

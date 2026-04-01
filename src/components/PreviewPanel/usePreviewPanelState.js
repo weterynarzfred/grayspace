@@ -25,6 +25,10 @@ function appendCacheBuster(src, token) {
   return `${src}${src.includes("?") ? "&" : "?"}v=${token}`;
 }
 
+function getFirstPath(paths = []) {
+  return uniqueNonEmptyPaths(paths)[0] ?? "";
+}
+
 function usePreviewPanelState({
   paneId = "",
   tabSelectedFiles = undefined,
@@ -45,14 +49,13 @@ function usePreviewPanelState({
   const latestPreviewPathRef = useRef(selectedPreviewPath);
   const isLocked = Boolean(lockedPath);
   const previousPreviewPath = latestPreviewPathRef.current;
-  const shouldStickToPreviousPath =
-    !isLocked
+  const shouldStickToPreviousPath = !isLocked
     && saveStatus === "dirty"
     && previousPreviewPath
     && selectedPreviewPath !== previousPreviewPath;
-  const previewPath = isLocked
-    ? lockedPath
-    : (shouldStickToPreviousPath ? previousPreviewPath : selectedPreviewPath);
+  const previewPath = isLocked ? lockedPath : (
+    shouldStickToPreviousPath ? previousPreviewPath : selectedPreviewPath
+  );
   const previewDropId = useMemo(() => `preview-drop:${paneId || "preview"}`, [paneId]);
   const previewLabel = useMemo(() => getPathDisplayName(previewPath), [previewPath]);
   const previewDirectoryPath = useMemo(() => getParentDirectoryPath(previewPath), [previewPath]);
@@ -65,6 +68,11 @@ function usePreviewPanelState({
   const isTextPreviewReady = previewState.status === "ready" && previewState.preview?.kind === "text";
   const isTextEditable = isTextPreviewReady && !previewState.preview?.truncated;
   const hasUnsavedPreviewChanges = isTextEditable && saveStatus === "dirty";
+  const lockFirstDroppedPath = useCallback((paths) => {
+    const firstPath = getFirstPath(paths);
+    if (!firstPath) return;
+    setLockedPath(firstPath);
+  }, []);
 
   const saveTextFile = useCallback(async (path, content) => {
     const requestId = latestSaveRequestRef.current + 1;
@@ -84,21 +92,19 @@ function usePreviewPanelState({
   }, []);
 
   const handleToggleLock = useCallback(() => {
-    if (isLocked) {
-      const willSwitchToSelectedPath =
-        selectedPreviewPath
-        && selectedPreviewPath !== lockedPath
-        && saveStatus === "dirty";
-      if (willSwitchToSelectedPath) {
-        setSaveStatus("idle");
-        setSaveError("");
-      }
-      setLockedPath("");
+    if (!isLocked) {
+      if (previewPath) setLockedPath(previewPath);
       return;
     }
 
-    if (!previewPath) return;
-    setLockedPath(previewPath);
+    const willSwitchToSelectedPath = selectedPreviewPath
+      && selectedPreviewPath !== lockedPath
+      && saveStatus === "dirty";
+    if (willSwitchToSelectedPath) {
+      setSaveStatus("idle");
+      setSaveError("");
+    }
+    setLockedPath("");
   }, [isLocked, lockedPath, previewPath, saveStatus, selectedPreviewPath]);
 
   const {
@@ -121,34 +127,26 @@ function usePreviewPanelState({
   usePanelsDndHandlers({
     onDragEnd: (event) => {
       if (event?.over?.id !== previewDropId) return;
-      const droppedPath = getFirstDraggedPathFromDndEvent(event);
-      if (!droppedPath) return;
-      setLockedPath(droppedPath);
+      lockFirstDroppedPath([getFirstDraggedPathFromDndEvent(event)]);
     },
   });
-
-  const handleExternalDropPaths = useCallback((droppedPaths) => {
-    const [firstPath] = uniqueNonEmptyPaths(droppedPaths);
-    if (!firstPath) return;
-    setLockedPath(firstPath);
-  }, []);
 
   const { isExternalDragOver } = useExternalPathDrop({
     panelRef,
     isEnabled: true,
-    onDropPaths: handleExternalDropPaths,
+    onDropPaths: lockFirstDroppedPath,
   });
 
   const handlePreviewFileWatchChange = useCallback((_watchedPath, changedPath) => {
     if (!previewPath) return;
     if (saveStatus === "dirty" || saveStatus === "saving") return;
 
-    const hasKnownPath = typeof changedPath === "string" && changedPath.length > 0;
-    const isPreviewPathChange = hasKnownPath && isSamePath(changedPath, previewPath);
-    const isDirectoryLevelChange = hasKnownPath
-      && previewDirectoryPath
-      && isSamePath(changedPath, previewDirectoryPath);
-    if (hasKnownPath && !isPreviewPathChange && !isDirectoryLevelChange) return;
+    if (typeof changedPath === "string" && changedPath) {
+      const isPreviewPathChange = isSamePath(changedPath, previewPath);
+      const isDirectoryLevelChange = previewDirectoryPath
+        && isSamePath(changedPath, previewDirectoryPath);
+      if (!isPreviewPathChange && !isDirectoryLevelChange) return;
+    }
 
     setPreviewReloadVersion(version => version + 1);
   }, [previewDirectoryPath, previewPath, saveStatus]);
@@ -249,9 +247,7 @@ function usePreviewPanelState({
   }), [isTextEditable, isTextPreviewReady, saveError, saveStatus]);
 
   useEffect(() => {
-    if (typeof onPaneDirtyStateChange !== "function") return;
-
-    onPaneDirtyStateChange({
+    onPaneDirtyStateChange?.({
       hasUnsavedChanges: hasUnsavedPreviewChanges,
       scope: "preview-text",
       message: hasUnsavedPreviewChanges
@@ -261,8 +257,7 @@ function usePreviewPanelState({
   }, [hasUnsavedPreviewChanges, onPaneDirtyStateChange]);
 
   useEffect(() => () => {
-    if (typeof onPaneDirtyStateChange !== "function") return;
-    onPaneDirtyStateChange({
+    onPaneDirtyStateChange?.({
       hasUnsavedChanges: false,
       scope: "preview-text",
       message: "",

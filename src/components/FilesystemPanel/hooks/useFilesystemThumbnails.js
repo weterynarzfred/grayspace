@@ -1,21 +1,10 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 
 const THUMBNAIL_UPDATE_EVENT = "thumbnail:update";
 const THUMBNAIL_SIZE_HINT_PX = 64;
-
-function uniqueNonEmptyPaths(paths) {
-  const output = [];
-  const seen = new Set();
-  paths.forEach((path) => {
-    if (typeof path !== "string" || !path) return;
-    if (seen.has(path)) return;
-    seen.add(path);
-    output.push(path);
-  });
-  return output;
-}
 
 function getEntryFilePaths(entries = []) {
   return uniqueNonEmptyPaths(entries
@@ -72,7 +61,10 @@ export default function useFilesystemThumbnails({
   const trackedPathSetRef = useRef(new Set());
   const allFilePaths = useMemo(() => getEntryFilePaths(entries), [entries]);
   const visibleFilePaths = useMemo(() => getEntryFilePaths(visibleEntries), [visibleEntries]);
-  const visibleFilePathsSignature = useMemo(() => visibleFilePaths.join("\n"), [visibleFilePaths]);
+  const visibleFilePathsSignature = useMemo(
+    () => visibleFilePaths.join("\n"),
+    [visibleFilePaths],
+  );
 
   useEffect(() => {
     latestPathRef.current = currentPath;
@@ -156,7 +148,7 @@ export default function useFilesystemThumbnails({
     return () => {
       cancelled = true;
     };
-  }, [currentPath, visibleFilePathsSignature, entries, visibleFilePaths]);
+  }, [currentPath, visibleFilePathsSignature, visibleFilePaths]);
 
   return {
     thumbnailSrcByPath,

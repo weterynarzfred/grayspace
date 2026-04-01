@@ -1,54 +1,61 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 
-function mapsAreEqual(a, b) {
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-  return aKeys.every((key) => a[key] === b[key]);
+function mergeWorkspaceByPath(previous, updates) {
+  let hasChanged = false;
+  const next = { ...previous };
+  Object.entries(updates).forEach(([path, isWorkspace]) => {
+    const normalizedValue = Boolean(isWorkspace);
+    if (next[path] === normalizedValue) return;
+    next[path] = normalizedValue;
+    hasChanged = true;
+  });
+  return hasChanged ? next : previous;
 }
 
 export default function useFilesystemWorkspaceFolders({ entries = [], paths = [] }) {
   const directoryPaths = useMemo(() => {
-    const nextDirectoryPathSet = new Set();
-
-    entries
-      .filter((entry) => entry?.is_dir && typeof entry?.path === "string" && entry.path)
-      .forEach((entry) => {
-        nextDirectoryPathSet.add(entry.path);
-      });
-    paths
-      .filter((path) => typeof path === "string" && path)
-      .forEach((path) => {
-        nextDirectoryPathSet.add(path);
-      });
-
-    return Array.from(nextDirectoryPathSet);
+    const trackedPathSet = new Set();
+    entries.forEach(entry => {
+      if (entry?.is_dir && typeof entry.path === "string" && entry.path) {
+        trackedPathSet.add(entry.path);
+      }
+    });
+    paths.forEach(path => {
+      if (typeof path === "string" && path) trackedPathSet.add(path);
+    });
+    return Array.from(trackedPathSet);
   }, [entries, paths]);
-  const directoryPathsKey = useMemo(() => directoryPaths.join("\u0000"), [directoryPaths]);
   const [workspaceByPath, setWorkspaceByPath] = useState({});
 
   useEffect(() => {
-    const trackedPaths = directoryPathsKey ? directoryPathsKey.split("\u0000") : [];
-    setWorkspaceByPath((previous) => {
+    const trackedPathSet = new Set(directoryPaths);
+    setWorkspaceByPath(previous => {
       const next = {};
-      trackedPaths.forEach((path) => {
-        if (previous[path] === undefined) return;
-        next[path] = previous[path];
+      let hasChanged = false;
+      Object.entries(previous).forEach(([path, isWorkspace]) => {
+        if (!trackedPathSet.has(path)) {
+          hasChanged = true;
+          return;
+        }
+        next[path] = isWorkspace;
       });
-      return mapsAreEqual(previous, next) ? previous : next;
+      return hasChanged ? next : previous;
     });
-  }, [directoryPathsKey]);
+  }, [directoryPaths]);
 
   const unresolvedPaths = useMemo(() => directoryPaths.filter(
-    (path) => workspaceByPath[path] === undefined,
+    path => workspaceByPath[path] === undefined,
   ), [directoryPaths, workspaceByPath]);
-  const unresolvedPathsKey = useMemo(() => unresolvedPaths.join("\u0000"), [unresolvedPaths]);
 
   useEffect(() => {
-    const unresolvedPaths = unresolvedPathsKey ? unresolvedPathsKey.split("\u0000") : [];
-    let isCancelled = false;
     if (unresolvedPaths.length === 0) return undefined;
+
+    let isCancelled = false;
+    const fallback = {};
+    unresolvedPaths.forEach(path => {
+      fallback[path] = false;
+    });
 
     async function resolveWorkspaceFolders() {
       try {
@@ -57,28 +64,10 @@ export default function useFilesystemWorkspaceFolders({ entries = [], paths = []
         });
         if (isCancelled || typeof resolved !== "object" || resolved === null) return;
 
-        setWorkspaceByPath((previous) => {
-          const next = { ...previous };
-          Object.entries(resolved).forEach(([path, isWorkspace]) => {
-            if (next[path] === isWorkspace) return;
-            next[path] = isWorkspace;
-          });
-          return mapsAreEqual(previous, next) ? previous : next;
-        });
+        setWorkspaceByPath(previous => mergeWorkspaceByPath(previous, resolved));
       } catch {
         if (isCancelled) return;
-        const fallback = {};
-        unresolvedPaths.forEach((path) => {
-          fallback[path] = false;
-        });
-        setWorkspaceByPath((previous) => {
-          const next = { ...previous };
-          Object.entries(fallback).forEach(([path, isWorkspace]) => {
-            if (next[path] === isWorkspace) return;
-            next[path] = isWorkspace;
-          });
-          return mapsAreEqual(previous, next) ? previous : next;
-        });
+        setWorkspaceByPath(previous => mergeWorkspaceByPath(previous, fallback));
       }
     }
 
@@ -87,14 +76,12 @@ export default function useFilesystemWorkspaceFolders({ entries = [], paths = []
     return () => {
       isCancelled = true;
     };
-  }, [unresolvedPathsKey]);
+  }, [unresolvedPaths]);
 
   return useMemo(() => {
     const workspaceFolderPathSet = new Set();
-    directoryPaths.forEach((path) => {
-      if (workspaceByPath[path] === true) {
-        workspaceFolderPathSet.add(path);
-      }
+    directoryPaths.forEach(path => {
+      if (workspaceByPath[path] === true) workspaceFolderPathSet.add(path);
     });
     return workspaceFolderPathSet;
   }, [directoryPaths, workspaceByPath]);

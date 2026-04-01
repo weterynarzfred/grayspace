@@ -23,17 +23,11 @@ export default function useFilesystemDirectoryWatcher({
   onWatcherError = undefined,
 }) {
   const watchRefreshStateRef = useRef(new Map());
-
-  const normalizedWatchPaths = Array.isArray(watchPaths)
-    ? watchPaths
-    : (currentPath ? [currentPath] : []);
-  const deduplicatedWatchPaths = [...new Set(
-    normalizedWatchPaths
-      .filter(path => typeof path === "string")
-      .map(path => path.trim())
-      .filter(Boolean),
-  )];
-  const watchPathKey = deduplicatedWatchPaths.join("\n");
+  const normalizedWatchPaths = (Array.isArray(watchPaths) ? watchPaths : [currentPath])
+    .filter(path => typeof path === "string")
+    .map(path => path.trim())
+    .filter(Boolean);
+  const watchPathKey = [...new Set(normalizedWatchPaths)].join("\n");
 
   useEffect(() => {
     const watchedPaths = watchPathKey ? watchPathKey.split("\n") : [];
@@ -42,6 +36,16 @@ export default function useFilesystemDirectoryWatcher({
     let isDisposed = false;
     let unlistenWatch = null;
     const watchIdToPath = new Map();
+    const stopWatch = watchId => invoke("filesystem_watch_stop", { watchId }).catch(() => {});
+    const stopAllWatches = () => (
+      Promise.all([...watchIdToPath.keys()].map(stopWatch))
+    );
+    const clearAllRefreshTimeouts = () => {
+      watchRefreshStateRef.current.forEach(refreshState => {
+        clearTimeout(refreshState.timeoutHandle);
+      });
+      watchRefreshStateRef.current.clear();
+    };
 
     const scheduleRefresh = (watchId, watchedPath, changedPath) => {
       if (!watchId || !watchedPath) return;
@@ -66,13 +70,6 @@ export default function useFilesystemDirectoryWatcher({
       });
     };
 
-    const clearAllRefreshTimeouts = () => {
-      for (const refreshState of watchRefreshStateRef.current.values()) {
-        clearTimeout(refreshState.timeoutHandle);
-      }
-      watchRefreshStateRef.current.clear();
-    };
-
     const initializeWatcher = async () => {
       for (const watchedPath of watchedPaths) {
         const watchId = createFilesystemWatchId();
@@ -92,29 +89,21 @@ export default function useFilesystemDirectoryWatcher({
       });
 
       if (isDisposed) {
-        if (typeof unlistenWatch === "function") unlistenWatch();
+        unlistenWatch?.();
         clearAllRefreshTimeouts();
-        await Promise.all(
-          [...watchIdToPath.keys()].map((watchId) => (
-            invoke("filesystem_watch_stop", { watchId }).catch(() => { })
-          )),
-        );
+        await stopAllWatches();
       }
     };
 
-    initializeWatcher().catch((watchError) => {
-      if (!isDisposed && typeof onWatcherError === "function")
-        onWatcherError(watchError, watchedPaths[0]);
+    initializeWatcher().catch(watchError => {
+      if (!isDisposed && onWatcherError) onWatcherError(watchError, watchedPaths[0]);
     });
 
     return () => {
       isDisposed = true;
       clearAllRefreshTimeouts();
-
-      if (typeof unlistenWatch === "function") unlistenWatch();
-      watchIdToPath.forEach((_watchedPath, watchId) => {
-        invoke("filesystem_watch_stop", { watchId }).catch(() => { });
-      });
+      unlistenWatch?.();
+      void stopAllWatches();
     };
   }, [watchPathKey, onDirectoryChange, onWatcherError]);
 }

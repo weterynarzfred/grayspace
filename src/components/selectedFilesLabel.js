@@ -13,9 +13,8 @@ function getPathDisplayName(path) {
 export function getPanelSelectedFilesLabel(baseLabel, selectedFiles = {}) {
   const normalizedBaseLabel = typeof baseLabel === "string" ? baseLabel : "";
   const joinLabel = (value) => {
-    if (typeof value !== "string" || !value) return normalizedBaseLabel;
-    if (!normalizedBaseLabel) return value;
-    return `${normalizedBaseLabel}: ${value}`;
+    if (!value) return normalizedBaseLabel;
+    return normalizedBaseLabel ? `${normalizedBaseLabel}: ${value}` : value;
   };
 
   const selectedPaths = getSelectedPathsFromState(selectedFiles);

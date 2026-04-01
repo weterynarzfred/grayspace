@@ -23,9 +23,7 @@ export function getPathDisplayName(path) {
 export function getErrorMessage(error) {
   if (typeof error === "string" && error) return error;
   if (error instanceof Error && error.message) return error.message;
-  if (error && typeof error === "object" && typeof error.message === "string" && error.message) {
-    return error.message;
-  }
+  if (typeof error?.message === "string" && error.message) return error.message;
 
   const fallback = String(error ?? "");
   if (fallback && fallback !== "[object Object]") return fallback;

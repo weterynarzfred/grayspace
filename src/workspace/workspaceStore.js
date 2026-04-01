@@ -8,21 +8,13 @@ export function workspaceReducer(state, action) {
     case "workspace/bootstrap": {
       const { snapshot, windowId } = action.payload ?? {};
       if (!snapshot || !windowId) return state;
-      return {
-        ...state,
-        snapshot,
-        currentWindowId: windowId,
-      };
+      return { ...state, snapshot, currentWindowId: windowId };
     }
     case "workspace/snapshot": {
       const nextSnapshot = action.payload?.snapshot;
       if (!nextSnapshot) return state;
-      if (state.snapshot && nextSnapshot.revision <= state.snapshot.revision)
-        return state;
-      return {
-        ...state,
-        snapshot: nextSnapshot,
-      };
+      if (state.snapshot && nextSnapshot.revision <= state.snapshot.revision) return state;
+      return { ...state, snapshot: nextSnapshot };
     }
     default:
       return state;

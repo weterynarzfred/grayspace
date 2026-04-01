@@ -2,7 +2,7 @@ import * as Select from "@radix-ui/react-select";
 import { PANEL_TYPES } from "./panelTypes";
 import styles from "./PanelTypeSwitcher.module.scss";
 
-function PanelTypeSwitcher({ panelType, onPanelTypeChange }) {
+export default function PanelTypeSwitcher({ panelType, onPanelTypeChange }) {
   return <Select.Root value={panelType} onValueChange={onPanelTypeChange}>
     <Select.Trigger className={styles.trigger} aria-label="Panel type switcher">
       <Select.Value />
@@ -27,5 +27,3 @@ function PanelTypeSwitcher({ panelType, onPanelTypeChange }) {
     </Select.Portal>
   </Select.Root>;
 }
-
-export default PanelTypeSwitcher;

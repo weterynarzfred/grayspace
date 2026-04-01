@@ -14,9 +14,7 @@ export default function useWorkspaceLifecycle({
 }) {
   useEffect(() => {
     let isDisposed = false;
-    let unlistenWorkspaceUpdated = null;
-    let unlistenMoved = null;
-    let unlistenResized = null;
+    const unlistenCallbacks = [];
 
     const syncBounds = async (appWindow, windowId) => {
       if (!windowId) return;
@@ -44,15 +42,14 @@ export default function useWorkspaceLifecycle({
         syncBounds(appWindow, currentWindowIdRef.current).catch(() => {});
       };
 
-      unlistenMoved = await appWindow.onMoved(syncCurrentWindowBounds);
-      unlistenResized = await appWindow.onResized(syncCurrentWindowBounds);
-
-      unlistenWorkspaceUpdated = await listenWorkspaceUpdated(snapshot => {
+      unlistenCallbacks.push(await appWindow.onMoved(syncCurrentWindowBounds));
+      unlistenCallbacks.push(await appWindow.onResized(syncCurrentWindowBounds));
+      unlistenCallbacks.push(await listenWorkspaceUpdated(snapshot => {
         if (snapshot) dispatch({
           type: "workspace/snapshot",
           payload: { snapshot },
         });
-      });
+      }));
     };
 
     initializeWorkspace().catch(error => {
@@ -61,9 +58,7 @@ export default function useWorkspaceLifecycle({
 
     return () => {
       isDisposed = true;
-      if (typeof unlistenWorkspaceUpdated === "function") unlistenWorkspaceUpdated();
-      if (typeof unlistenMoved === "function") unlistenMoved();
-      if (typeof unlistenResized === "function") unlistenResized();
+      unlistenCallbacks.forEach(unlisten => unlisten?.());
     };
   }, [currentWindowIdRef, dispatch, setRuntimeError]);
 }
