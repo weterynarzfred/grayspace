@@ -1,12 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useDroppable } from "@dnd-kit/core";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelsDndHandlers, usePanelsDragActive } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
 import { getFirstDraggedPathFromDndEvent } from "../dndEventPaths";
+import useExternalPathDrop from "../hooks/useExternalPathDrop";
 import useFilesystemDirectoryWatcher from "../FilesystemPanel/hooks/useFilesystemDirectoryWatcher";
-import { getPrimarySelectedPath, getSelectedPathsFromState } from "../../utils/pathSelection";
+import { getPrimarySelectedPath, getSelectedPathsFromState, uniqueNonEmptyPaths } from "../../utils/pathSelection";
 import { getParentDirectoryPath, isSamePath } from "../../utils/pathWatch";
 import styles from "./PropertiesPanel.module.scss";
 
@@ -18,10 +19,8 @@ const INITIAL_DETAILS_STATE = {
 
 function getPathDisplayName(path) {
   if (typeof path !== "string" || !path) return "";
-
   const trimmedPath = path.replace(/[\\/]+$/, "");
   if (!trimmedPath) return path;
-
   const pathSegments = trimmedPath.split(/[\\/]/);
   return pathSegments[pathSegments.length - 1] ?? trimmedPath;
 }
@@ -33,10 +32,7 @@ function getErrorMessage(error) {
 }
 
 function formatSize(sizeBytes) {
-  if (typeof sizeBytes !== "number" || !Number.isFinite(sizeBytes) || sizeBytes < 0) {
-    return "Unknown";
-  }
-
+  if (typeof sizeBytes !== "number" || !Number.isFinite(sizeBytes) || sizeBytes < 0) return "Unknown";
   if (sizeBytes === 1) return "1 B";
 
   const units = ["B", "KB", "MB", "GB", "TB"];
@@ -52,10 +48,7 @@ function formatSize(sizeBytes) {
 }
 
 function formatDate(timestampMs) {
-  if (typeof timestampMs !== "number" || !Number.isFinite(timestampMs) || timestampMs <= 0) {
-    return "Unknown";
-  }
-
+  if (typeof timestampMs !== "number" || !Number.isFinite(timestampMs) || timestampMs <= 0) return "Unknown";
   const date = new Date(timestampMs);
   if (Number.isNaN(date.getTime())) return "Unknown";
   return date.toLocaleString();
@@ -87,13 +80,17 @@ function PropertiesPanel({
     },
   });
   const isPanelsDragActive = usePanelsDragActive();
+  const panelRef = useRef(null);
+  const setPanelNodeRef = useCallback((node) => {
+    panelRef.current = node;
+    setDropNodeRef(node);
+  }, [setDropNodeRef]);
 
   const handleToggleLock = useCallback(() => {
     if (isLocked) {
       setLockedPath("");
       return;
     }
-
     if (!propertiesPath) return;
     setLockedPath(propertiesPath);
   }, [isLocked, propertiesPath]);
@@ -105,6 +102,17 @@ function PropertiesPanel({
       if (!droppedPath) return;
       setLockedPath(droppedPath);
     },
+  });
+
+  const handleExternalDropPaths = useCallback((droppedPaths) => {
+    const [firstPath] = uniqueNonEmptyPaths(droppedPaths);
+    if (!firstPath) return;
+    setLockedPath(firstPath);
+  }, []);
+  const { isExternalDragOver } = useExternalPathDrop({
+    panelRef,
+    isEnabled: true,
+    onDropPaths: handleExternalDropPaths,
   });
 
   const handlePropertiesFileWatchChange = useCallback((_watchedPath, changedPath) => {
@@ -160,9 +168,7 @@ function PropertiesPanel({
 
     loadProperties();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [propertiesPath, detailsReloadVersion]);
 
   const details = detailsState.details;
@@ -174,8 +180,8 @@ function PropertiesPanel({
   ];
 
   return <section
-    ref={setDropNodeRef}
-    className={`${shellStyles.panelContent} ${styles.panelContent} ${isDropOver && isPanelsDragActive ? styles.panelDropTarget : ""}`}
+    ref={setPanelNodeRef}
+    className={`${shellStyles.panelContent} ${styles.panelContent} ${(isDropOver && isPanelsDragActive) || isExternalDragOver ? styles.panelDropTarget : ""}`}
     aria-label="Properties panel"
   >
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>

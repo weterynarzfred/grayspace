@@ -25,6 +25,7 @@ function UpEntryDropTarget({
     meta="Up"
     isSelected={isSelected}
     isDropTarget={isDropTarget}
+    dropDestinationPath={destinationPath}
     buttonRef={setNodeRef}
     onClick={onClick}
     onDoubleClick={onDoubleClick}

@@ -61,9 +61,7 @@ export default function useFilesystemEntryOperations({
 
       try {
         const parentPath = await invoke("parent_path", { path: currentPath });
-        if (typeof parentPath !== "string" || !parentPath || parentPath === currentPath) {
-          break;
-        }
+        if (typeof parentPath !== "string" || !parentPath || parentPath === currentPath) break;
         currentPath = parentPath;
       } catch {
         break;
@@ -122,7 +120,7 @@ export default function useFilesystemEntryOperations({
     const normalizedSourcePaths = uniqueNonEmptyPaths(sourcePaths);
     if (!destinationDir || normalizedSourcePaths.length === 0) return;
 
-    const activePath = currentPath;
+    const activePath = currentPath || destinationDir;
     const movedPaths = [];
     let moveErrorToThrow = null;
 
@@ -236,8 +234,9 @@ export default function useFilesystemEntryOperations({
     setIsDeletingEntries,
   ]);
 
-  const importExternalPaths = useCallback(async (paths) => {
-    if (!currentPath || !Array.isArray(paths) || paths.length === 0) return;
+  const importExternalPaths = useCallback(async (paths, destinationDir = "") => {
+    const normalizedDestinationDir = destinationDir || currentPath;
+    if (!normalizedDestinationDir || !Array.isArray(paths) || paths.length === 0) return;
 
     const activePath = currentPath;
 
@@ -245,7 +244,7 @@ export default function useFilesystemEntryOperations({
     setError("");
 
     try {
-      await invoke("import_paths", { paths, destinationDir: activePath });
+      await invoke("import_paths", { paths, destinationDir: normalizedDestinationDir });
 
       await refreshEntriesForPath(activePath);
       if (currentPathRef.current === activePath) {

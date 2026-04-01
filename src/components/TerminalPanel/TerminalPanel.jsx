@@ -1,10 +1,11 @@
 import { useDroppable } from "@dnd-kit/core";
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { usePanelsDndHandlers, usePanelsDragActive } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
 import { getDraggedPathsFromDndEvent } from "../dndEventPaths";
+import useExternalPathDrop from "../hooks/useExternalPathDrop";
 import styles from "./TerminalPanel.module.scss";
 import useTerminalSession from "./hooks/useTerminalSession";
 import "@xterm/xterm/css/xterm.css";
@@ -24,8 +25,7 @@ function escapeSingleQuotes(value) {
 }
 
 function formatTerminalDropPaths(paths) {
-  const normalizedPaths = Array.isArray(paths) ? paths : [];
-  return normalizedPaths
+  return (Array.isArray(paths) ? paths : [])
     .map((path) => `'${escapeSingleQuotes(pathForShell(path))}'`)
     .join(" ");
 }
@@ -53,10 +53,14 @@ function TerminalPanel({
     },
   });
   const isPanelsDragActive = usePanelsDragActive();
+  const panelRef = useRef(null);
+  const setPanelNodeRef = useCallback((node) => {
+    panelRef.current = node;
+    setDropNodeRef(node);
+  }, [setDropNodeRef]);
 
   const handleDropPaths = useCallback(async (droppedPaths) => {
     if (!terminalSessionId) return;
-
     const formattedPaths = formatTerminalDropPaths(droppedPaths);
     if (!formattedPaths) return;
     try {
@@ -75,10 +79,15 @@ function TerminalPanel({
       void handleDropPaths(getDraggedPathsFromDndEvent(event));
     },
   });
+  const { isExternalDragOver } = useExternalPathDrop({
+    panelRef,
+    isEnabled: Boolean(terminalSessionId),
+    onDropPaths: handleDropPaths,
+  });
 
   return <section
-    ref={setDropNodeRef}
-    className={`${shellStyles.panelContent} ${styles.panelContent} ${isDropOver && isPanelsDragActive ? styles.panelDropTarget : ""}`}
+    ref={setPanelNodeRef}
+    className={`${shellStyles.panelContent} ${styles.panelContent} ${(isDropOver && isPanelsDragActive) || isExternalDragOver ? styles.panelDropTarget : ""}`}
     aria-label="Terminal panel"
   >
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>

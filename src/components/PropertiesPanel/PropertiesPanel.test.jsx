@@ -8,6 +8,7 @@ const dndCallbacks = {
   onDragEnd: undefined,
   onDragCancel: undefined,
 };
+let externalDropCallback;
 let filesystemWatchCallback;
 
 vi.mock("@dnd-kit/core", () => ({
@@ -31,6 +32,17 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    onDragDropEvent: vi.fn(async (handler) => {
+      externalDropCallback = handler;
+      return () => {
+        if (externalDropCallback === handler) externalDropCallback = undefined;
+      };
+    }),
+  }),
+}));
+
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async (eventName, handler) => {
     if (eventName === "filesystem-watch-event") filesystemWatchCallback = handler;
@@ -42,6 +54,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 
 describe("PropertiesPanel", () => {
   beforeEach(() => {
+    externalDropCallback = undefined;
     dndCallbacks.onDragStart = undefined;
     dndCallbacks.onDragEnd = undefined;
     dndCallbacks.onDragCancel = undefined;
@@ -207,6 +220,50 @@ describe("PropertiesPanel", () => {
           command === "filesystem_get_properties" && args?.path === "C:\\notes.txt"
         )),
       ).toHaveLength(2);
+    });
+  });
+
+  it("loads dropped external path into properties panel", async () => {
+    render(
+      <PanelsDndLayer>
+        <PropertiesPanel
+          paneId="properties-pane"
+          tabSelectedFiles={{
+            selectedPaths: [],
+          }}
+        />
+      </PanelsDndLayer>,
+    );
+
+    await waitFor(() => {
+      expect(typeof externalDropCallback).toBe("function");
+    });
+
+    const panel = screen.getByLabelText("Properties panel");
+    panel.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 500,
+      width: 500,
+      height: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    await act(async () => {
+      await externalDropCallback?.({
+        payload: {
+          type: "drop",
+          paths: ["C:\\notes.txt"],
+          position: { x: 100, y: 100 },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("filesystem_get_properties", { path: "C:\\notes.txt" });
     });
   });
 });

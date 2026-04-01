@@ -32,6 +32,7 @@ function StaticCrumbButton({ crumb, onSelect, isWorkspaceFolder = false }) {
   return <button
     type="button"
     className={`${styles.crumbButton} ${isWorkspaceFolder ? styles.workspaceCrumb : ""}`}
+    data-drop-destination-path={crumb.path || undefined}
     onClick={() => onSelect(crumb.path)}
   >
     <span>{crumb.label}</span>
@@ -62,6 +63,7 @@ function DroppableCrumbButton({
     ref={setNodeRef}
     type="button"
     className={`${styles.crumbButton} ${isWorkspaceFolder ? styles.workspaceCrumb : ""} ${isDropTarget ? styles.dropTarget : ""}`}
+    data-drop-destination-path={crumb.path || undefined}
     onClick={() => onSelect(crumb.path)}
   >
     <span>{crumb.label}</span>

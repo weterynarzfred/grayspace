@@ -1,6 +1,7 @@
 import path from "node:path";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
+import { cursorPosition } from "@tauri-apps/api/window";
 import { useDroppable } from "@dnd-kit/core";
 import PanelsDndLayer from "../PanelsDndLayer";
 import FilesystemPanel from "./FilesystemPanel";
@@ -112,6 +113,7 @@ describe("FilesystemPanel", () => {
     dndCallbacks.onDragOver = undefined;
     dndCallbacks.onDragEnd = undefined;
     dndCallbacks.onDragCancel = undefined;
+    cursorPosition.mockResolvedValue({ x: 100, y: 100 });
     useDroppable.mockImplementation(() => ({
       isOver: false,
       setNodeRef: vi.fn(),
@@ -980,17 +982,17 @@ describe("FilesystemPanel", () => {
       expect(typeof dndCallbacks.onDragEnd).toBe("function");
     });
 
-    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0);
+    cursorPosition.mockResolvedValue({ x: 900, y: 900 });
+    await act(async () => {
+      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
     });
-    fireEvent.mouseOut(document, { relatedTarget: null });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
         paths: ["C:\\notes.txt"],
       });
     });
+    cursorPosition.mockResolvedValue({ x: 100, y: 100 });
 
     await dndCallbacks.onDragEnd?.({
       active: { id: "entry:C:\\notes.txt" },
@@ -1002,6 +1004,138 @@ describe("FilesystemPanel", () => {
       destinationDir: "C:\\Users",
     });
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+  });
+
+  it("moves internal files when an external drag returns and drops back into the panel", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof dndCallbacks.onDragStart).toBe("function");
+      expect(typeof externalDropCallback).toBe("function");
+    });
+
+    cursorPosition.mockResolvedValue({ x: 900, y: 900 });
+    await act(async () => {
+      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("start_external_drag", {
+        paths: ["C:\\notes.txt"],
+      });
+    });
+
+    cursorPosition.mockResolvedValue({ x: 100, y: 100 });
+    const panel = screen.getByLabelText("Filesystem panel");
+    panel.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 500,
+      width: 500,
+      height: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const originalElementFromPoint = document.elementFromPoint;
+    document.elementFromPoint = vi.fn(() => usersButton);
+
+    try {
+      await act(async () => {
+        await externalDropCallback?.({
+          payload: {
+            type: "drop",
+            paths: ["C:\\notes.txt"],
+            position: { x: 100, y: 100 },
+          },
+        });
+      });
+    } finally {
+      document.elementFromPoint = originalElementFromPoint;
+    }
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("move_path", {
+        source: "C:\\notes.txt",
+        destinationDir: "C:\\Users",
+      });
+    });
+    expect(invoke).not.toHaveBeenCalledWith("import_paths", {
+      paths: ["C:\\notes.txt"],
+      destinationDir: "C:\\Users",
+    });
+  });
+
+  it("matches returned internal drags when drop paths use extended device prefixes", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof dndCallbacks.onDragStart).toBe("function");
+      expect(typeof externalDropCallback).toBe("function");
+    });
+
+    cursorPosition.mockResolvedValue({ x: 900, y: 900 });
+    await act(async () => {
+      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("start_external_drag", {
+        paths: ["C:\\notes.txt"],
+      });
+    });
+
+    cursorPosition.mockResolvedValue({ x: 100, y: 100 });
+    const panel = screen.getByLabelText("Filesystem panel");
+    panel.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 500,
+      width: 500,
+      height: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const originalElementFromPoint = document.elementFromPoint;
+    document.elementFromPoint = vi.fn(() => usersButton);
+
+    try {
+      await act(async () => {
+        await externalDropCallback?.({
+          payload: {
+            type: "drop",
+            paths: ["\\\\?\\C:\\notes.txt"],
+            position: { x: 100, y: 100 },
+          },
+        });
+      });
+    } finally {
+      document.elementFromPoint = originalElementFromPoint;
+    }
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("move_path", {
+        source: "C:\\notes.txt",
+        destinationDir: "C:\\Users",
+      });
+    });
+    expect(invoke).not.toHaveBeenCalledWith("import_paths", {
+      paths: ["\\\\?\\C:\\notes.txt"],
+      destinationDir: "C:\\Users",
+    });
   });
 
   it("does not react to drag-over after external drag has started", async () => {
@@ -1020,17 +1154,15 @@ describe("FilesystemPanel", () => {
       expect(typeof dndCallbacks.onDragOver).toBe("function");
     });
 
+    cursorPosition.mockResolvedValue({ x: 900, y: 900 });
     dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0);
-    });
-    fireEvent.mouseOut(document, { relatedTarget: null });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
         paths: ["C:\\notes.txt"],
       });
     });
+    cursorPosition.mockResolvedValue({ x: 100, y: 100 });
 
     mockOverId = "panel:C:\\";
     await act(async () => {
@@ -1364,6 +1496,106 @@ describe("FilesystemPanel", () => {
     });
 
     expect(await screen.findByText("clip.mp4")).toBeInTheDocument();
+  });
+
+  it("imports external files into a hovered folder row", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof externalDropCallback).toBe("function");
+      expect(screen.getByRole("button", { name: /Users/i })).toBeInTheDocument();
+    });
+
+    const panel = screen.getByLabelText("Filesystem panel");
+    panel.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 500,
+      width: 500,
+      height: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const usersButton = screen.getByRole("button", { name: /Users/i });
+    const originalElementFromPoint = document.elementFromPoint;
+    document.elementFromPoint = vi.fn(() => usersButton);
+
+    await externalDropCallback?.({
+      payload: {
+        type: "drop",
+        paths: ["D:\\Downloads\\clip.mp4"],
+        position: { x: 100, y: 100 },
+      },
+    });
+
+    document.elementFromPoint = originalElementFromPoint;
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("import_paths", {
+        paths: ["D:\\Downloads\\clip.mp4"],
+        destinationDir: "C:\\Users",
+      });
+    });
+  });
+
+  it("highlights hovered folder row during external drag over", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof externalDropCallback).toBe("function");
+      expect(screen.getByRole("button", { name: /Users/i })).toBeInTheDocument();
+    });
+
+    const panel = screen.getByLabelText("Filesystem panel");
+    panel.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 500,
+      width: 500,
+      height: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const usersButton = screen.getByRole("button", { name: /Users/i });
+    const originalElementFromPoint = document.elementFromPoint;
+    document.elementFromPoint = vi.fn(() => usersButton);
+    try {
+      await externalDropCallback?.({
+        payload: {
+          type: "over",
+          paths: [],
+          position: { x: 100, y: 100 },
+        },
+      });
+
+      await waitFor(() => {
+        expect(usersButton.className).toMatch(/dropTarget/);
+      });
+
+      await externalDropCallback?.({
+        payload: {
+          type: "leave",
+        },
+      });
+
+      await waitFor(() => {
+        expect(usersButton.className).not.toMatch(/dropTarget/);
+      });
+    } finally {
+      document.elementFromPoint = originalElementFromPoint;
+    }
   });
 
   it("opens confirmation and deletes selected entries on Delete key", async () => {

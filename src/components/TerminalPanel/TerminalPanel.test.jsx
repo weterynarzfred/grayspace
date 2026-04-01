@@ -8,9 +8,21 @@ const dndCallbacks = {
   onDragEnd: undefined,
   onDragCancel: undefined,
 };
+let externalDropCallback;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    onDragDropEvent: vi.fn(async (handler) => {
+      externalDropCallback = handler;
+      return () => {
+        if (externalDropCallback === handler) externalDropCallback = undefined;
+      };
+    }),
+  }),
 }));
 
 vi.mock("@dnd-kit/core", () => ({
@@ -39,6 +51,7 @@ vi.mock("./hooks/useTerminalSession", () => ({
 
 describe("TerminalPanel", () => {
   beforeEach(() => {
+    externalDropCallback = undefined;
     dndCallbacks.onDragStart = undefined;
     dndCallbacks.onDragEnd = undefined;
     dndCallbacks.onDragCancel = undefined;
@@ -84,6 +97,49 @@ describe("TerminalPanel", () => {
       },
       over: {
         id: "terminal-drop:terminal-pane",
+      },
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("terminal_write", {
+        sessionId: "term-1",
+        data: "'/c/notes.txt' '/d/My Files/todo.md'",
+      });
+    });
+  });
+
+  it("writes externally dropped paths into terminal input", async () => {
+    render(
+      <PanelsDndLayer>
+        <TerminalPanel
+          paneId="terminal-pane"
+          terminalSessionId="term-1"
+        />
+      </PanelsDndLayer>,
+    );
+
+    await waitFor(() => {
+      expect(typeof externalDropCallback).toBe("function");
+    });
+
+    const panel = document.querySelector('section[aria-label="Terminal panel"]');
+    panel.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 500,
+      width: 500,
+      height: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    await externalDropCallback?.({
+      payload: {
+        type: "drop",
+        paths: ["C:\\notes.txt", "D:\\My Files\\todo.md"],
+        position: { x: 100, y: 100 },
       },
     });
 

@@ -79,6 +79,7 @@ function DraggableFilesystemEntry({
     isDragging={shouldShowDraggingState}
     isDropTarget={isDropTarget}
     thumbnailSrc={!entry.is_dir ? thumbnailSrc : ""}
+    dropDestinationPath={destinationPath}
     nestingDepth={nestingDepth}
     showExpander={entry.is_dir}
     isExpanded={isExpanded}

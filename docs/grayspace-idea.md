@@ -86,7 +86,7 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 - [ ] show files from subfolders with filters (eg ignoring node_modules or .git)
 - [ ] custom rules for displaying folder icons/thumbnails
 - [ ] double click on empty space navigates one folder up (same as "..")
-- [ ] add lazyloading for large folders
+- [x] add lazyloading for large folders
 
 ### Terminal Panel (ctrl + shift + `)
 
@@ -141,5 +141,4 @@ Checked boxes mean "implemented in MVP form". Unchecked boxes are TODOs and idea
 ## Things from above that look hard and might be scrapped
 - cross-app file operations (app – system file explorer)
 - undo for file operations
-- persistent workspace state
 - the whole canvas panel

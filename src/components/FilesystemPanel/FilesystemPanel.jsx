@@ -9,7 +9,6 @@ import FilesystemStatusMessages from "./FilesystemStatusMessages";
 import UpEntryDropTarget from "./UpEntryDropTarget";
 import { normalizeFilesystemPaneState } from "./filesystemPaneState";
 import useFilesystemDnd from "./hooks/useFilesystemDnd";
-import useExternalFilesystemDrop from "./hooks/useExternalFilesystemDrop";
 import useExternalFilesystemDrag from "./hooks/useExternalFilesystemDrag";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import useFilesystemStatePersistence from "./hooks/useFilesystemStatePersistence";
@@ -17,6 +16,7 @@ import useFilesystemThumbnails from "./hooks/useFilesystemThumbnails";
 import useFilesystemTree from "./hooks/useFilesystemTree";
 import useFilesystemWorkspaceFolders from "./hooks/useFilesystemWorkspaceFolders";
 import useVirtualizedEntryWindow from "./hooks/useVirtualizedEntryWindow";
+import useExternalPathDrop from "../hooks/useExternalPathDrop";
 import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
 import isEditableKeyboardTarget from "../../utils/isEditableKeyboardTarget";
@@ -42,6 +42,20 @@ function isPathInsideRoot(path, rootPath) {
   return normalizedPath === normalizedRootPath || normalizedPath.startsWith(`${normalizedRootPath}/`);
 }
 
+function resolveExternalDropDestinationFromPoint(clientPosition, fallbackPath) {
+  if (
+    !clientPosition
+    || typeof document === "undefined"
+    || typeof document.elementFromPoint !== "function"
+  ) {
+    return fallbackPath;
+  }
+  const hoveredElement = document.elementFromPoint(clientPosition.x, clientPosition.y);
+  const dropTargetElement = hoveredElement?.closest?.("[data-drop-destination-path]");
+  const destinationPath = dropTargetElement?.getAttribute("data-drop-destination-path") ?? "";
+  return destinationPath || fallbackPath;
+}
+
 function FilesystemPanel({
   tabId = "",
   paneId = "",
@@ -58,6 +72,7 @@ function FilesystemPanel({
   const entryWindowAnchorRef = useRef(null);
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
   const [expandedPaths, setExpandedPaths] = useState(initialFilesystemStateRef.current.expandedPaths);
+  const [externalDropDestinationPath, setExternalDropDestinationPath] = useState("");
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current, {
     tabId,
     tabWorkspaceRoot,
@@ -97,10 +112,7 @@ function FilesystemPanel({
     expandedPaths,
   });
   const isBrowsing = currentPath !== "";
-  const isEntryOperationInProgress =
-    isMovingEntry
-    || isDeletingEntries
-    || isImportingExternal;
+  const isEntryOperationInProgress = isMovingEntry || isDeletingEntries || isImportingExternal;
   const isExternalDragEnabled = isBrowsing && !isEntryOperationInProgress;
   const {
     treeRows,
@@ -111,10 +123,7 @@ function FilesystemPanel({
     initialExpandedPaths: initialFilesystemStateRef.current.expandedPaths,
     onExpandedPathsChange: setExpandedPaths,
   });
-  const flattenedEntries = useMemo(
-    () => treeRows.map((row) => row.entry),
-    [treeRows],
-  );
+  const flattenedEntries = useMemo(() => treeRows.map((row) => row.entry), [treeRows]);
   const entryParentByPath = useMemo(() => {
     const byPath = {};
     treeRows.forEach((row) => {
@@ -122,18 +131,11 @@ function FilesystemPanel({
     });
     return byPath;
   }, [treeRows]);
-  const flattenedEntryPaths = useMemo(
-    () => flattenedEntries.map((entry) => entry.path),
-    [flattenedEntries],
-  );
-  const flattenedEntryPathSet = useMemo(
-    () => new Set(flattenedEntryPaths),
-    [flattenedEntryPaths],
-  );
-  const selectedEntryPaths = useMemo(
-    () => selectedPaths.filter((path) => flattenedEntryPathSet.has(path)),
-    [flattenedEntryPathSet, selectedPaths],
-  );
+  const flattenedEntryPaths = useMemo(() => flattenedEntries.map((entry) => entry.path), [flattenedEntries]);
+  const flattenedEntryPathSet = useMemo(() => new Set(flattenedEntryPaths), [flattenedEntryPaths]);
+  const selectedEntryPaths = useMemo(() => (
+    selectedPaths.filter((path) => flattenedEntryPathSet.has(path))
+  ), [flattenedEntryPathSet, selectedPaths]);
   const dnd = useFilesystemDnd({
     paneId,
     entries: flattenedEntries,
@@ -143,10 +145,31 @@ function FilesystemPanel({
     moveEntries,
     copyEntries,
   });
-  const { isExternalDragOver } = useExternalFilesystemDrop({
+  const handleExternalDragStateChange = useCallback((dragState) => {
+    if (!isExternalDragEnabled) return setExternalDropDestinationPath("");
+    const clientPosition = dragState?.clientPosition ?? null;
+    if (dragState?.isInsidePanel !== true || !clientPosition) return setExternalDropDestinationPath("");
+    setExternalDropDestinationPath(resolveExternalDropDestinationFromPoint(clientPosition, currentPath));
+  }, [currentPath, isExternalDragEnabled]);
+  const handleExternalDropPaths = useCallback(async (droppedPaths, context = {}) => {
+    const destinationDir = resolveExternalDropDestinationFromPoint(
+      context.clientPosition ?? null,
+      currentPath,
+    );
+    const matchingInternalDragPaths = dnd.consumeMatchingExternalDragSourcePaths(droppedPaths);
+    setExternalDropDestinationPath("");
+    if (matchingInternalDragPaths.length > 0) {
+      await moveEntries(matchingInternalDragPaths, destinationDir);
+      return;
+    }
+
+    await importExternalPaths(droppedPaths, destinationDir);
+  }, [currentPath, dnd, importExternalPaths, moveEntries]);
+  const { isExternalDragOver } = useExternalPathDrop({
     panelRef,
     isEnabled: isExternalDragEnabled,
-    onDropPaths: importExternalPaths,
+    onDropPaths: handleExternalDropPaths,
+    onExternalDragStateChange: handleExternalDragStateChange,
   });
   useExternalFilesystemDrag({
     dragPaths: dnd.externalDragPaths,
@@ -165,13 +188,21 @@ function FilesystemPanel({
     () => new Set(selectedEntryPaths),
     [selectedEntryPaths],
   );
-  const activeDragPathSet = useMemo(() => new Set(dnd.activeDragPaths), [dnd.activeDragPaths]);
+  const internalActiveDragPathSet = useMemo(() => new Set(dnd.activeDragPaths), [dnd.activeDragPaths]);
+  const hasExternalDropDestination = Boolean(externalDropDestinationPath);
+  const effectiveActiveDragPaths = hasExternalDropDestination
+    ? ["__external__"]
+    : dnd.activeDragPaths;
+  const effectiveActiveDragPathSet = useMemo(
+    () => new Set(effectiveActiveDragPaths),
+    [effectiveActiveDragPaths],
+  );
+  const effectiveActiveDropDestinationPath = externalDropDestinationPath || dnd.activeDropDestinationPath;
   const isInternalDragActive = dnd.activeDragPaths.length > 0;
-  const activeDragEntries = useMemo(() => flattenedEntries.filter(
-    (entry) => activeDragPathSet.has(entry.path),
-  ), [activeDragPathSet, flattenedEntries]);
-  const isEntryWindowingEnabled =
-    isBrowsing && treeRows.length >= ENTRY_WINDOWING_THRESHOLD;
+  const activeDragEntries = useMemo(() => (
+    flattenedEntries.filter((entry) => internalActiveDragPathSet.has(entry.path))
+  ), [flattenedEntries, internalActiveDragPathSet]);
+  const isEntryWindowingEnabled = isBrowsing && treeRows.length >= ENTRY_WINDOWING_THRESHOLD;
   const {
     startIndex: virtualStartIndex,
     endIndex: virtualEndIndex,
@@ -191,10 +222,7 @@ function FilesystemPanel({
     virtualStartIndex,
   ]);
   const renderedRows = isEntryWindowingEnabled ? visibleRows : treeRows;
-  const visibleEntries = useMemo(
-    () => renderedRows.map((row) => row.entry),
-    [renderedRows],
-  );
+  const visibleEntries = useMemo(() => renderedRows.map((row) => row.entry), [renderedRows]);
   const { thumbnailSrcByPath } = useFilesystemThumbnails({
     currentPath,
     entries: flattenedEntries,
@@ -208,8 +236,7 @@ function FilesystemPanel({
       .filter((path) => typeof path === "string" && path),
   });
   const activeDragEntry = activeDragEntries[0] ?? null;
-  const upDestinationPath =
-    breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
+  const upDestinationPath = breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
   const {
     isOver: isPanelDropOver,
     setNodeRef: setPanelDropNodeRef,
@@ -271,8 +298,7 @@ function FilesystemPanel({
     navigateToPath(upDestinationPath);
   }, [confirmWorkspaceExitIfNeeded, navigateToPath, upDestinationPath]);
   const handleEntryMiddleClick = useCallback((entry, event) => {
-    if (!entry?.is_dir) return;
-    if (event.button !== 1) return;
+    if (!entry?.is_dir || event.button !== 1) return;
     event.preventDefault();
     event.stopPropagation();
     openEntry(entry, {
@@ -284,6 +310,14 @@ function FilesystemPanel({
   useEffect(() => {
     onCurrentPathChange?.(currentPath);
   }, [currentPath, onCurrentPathChange]);
+
+  useEffect(() => {
+    setExternalDropDestinationPath("");
+  }, [currentPath]);
+
+  useEffect(() => {
+    if (!isExternalDragEnabled) setExternalDropDestinationPath("");
+  }, [isExternalDragEnabled]);
 
   const handleDeleteSelectedEntries = useCallback(async () => {
     const selectedPaths = uniqueNonEmptyPaths(selectedEntryPaths);
@@ -344,6 +378,7 @@ function FilesystemPanel({
     ref={setPanelNodeRef}
     className={`${styles.panelContent} ${isPanelDropOver && isInternalDragActive ? styles.panelDropTarget : ""} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
     aria-label="Filesystem panel"
+    data-drop-destination-path={currentPath || undefined}
     onKeyDown={handlePanelKeyDown}
   >
     <PanelHeader
@@ -387,7 +422,7 @@ function FilesystemPanel({
             currentPath={currentPath}
             currentDrive={currentDrive}
             onSelect={handleBreadcrumbSelect}
-            activeDragPaths={dnd.activeDragPaths}
+            activeDragPaths={effectiveActiveDragPaths}
             isMovingEntry={isMovingEntry}
             getDropIdForPath={dnd.getBreadcrumbDropId}
             workspaceFolderPathSet={workspaceFolderPathSet}
@@ -399,7 +434,7 @@ function FilesystemPanel({
                 destinationPath={upDestinationPath}
                 isSelected={selectedPathSet.has(UP_ENTRY_SELECTION_ID)}
                 isMovingEntry={isEntryOperationInProgress}
-                activeDragPaths={dnd.activeDragPaths}
+                activeDragPaths={effectiveActiveDragPaths}
                 onClick={() => setSelectedPath(UP_ENTRY_SELECTION_ID)}
                 onDoubleClick={handleGoUpDoubleClick}
               />
@@ -424,8 +459,8 @@ function FilesystemPanel({
                   isSelectedForDrag={selectedEntryPathSet.has(row.entry.path)}
                   isSelected={selectedPathSet.has(row.entry.path)}
                   isMovingEntry={isEntryOperationInProgress}
-                  activeDragPathSet={activeDragPathSet}
-                  activeDropDestinationPath={dnd.activeDropDestinationPath}
+                  activeDragPathSet={effectiveActiveDragPathSet}
+                  activeDropDestinationPath={effectiveActiveDropDestinationPath}
                   isWorkspaceFolder={workspaceFolderPathSet.has(row.entry.path)}
                   thumbnailSrc={thumbnailSrcByPath[row.entry.path] ?? ""}
                   nestingDepth={row.depth}

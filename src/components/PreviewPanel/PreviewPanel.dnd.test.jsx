@@ -8,9 +8,21 @@ const dndCallbacks = {
   onDragEnd: undefined,
   onDragCancel: undefined,
 };
+let externalDropCallback;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    onDragDropEvent: vi.fn(async (handler) => {
+      externalDropCallback = handler;
+      return () => {
+        if (externalDropCallback === handler) externalDropCallback = undefined;
+      };
+    }),
+  }),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -40,6 +52,7 @@ vi.mock("./CodeTextPreview", () => ({
 
 describe("PreviewPanel drag and drop", () => {
   beforeEach(() => {
+    externalDropCallback = undefined;
     dndCallbacks.onDragStart = undefined;
     dndCallbacks.onDragEnd = undefined;
     dndCallbacks.onDragCancel = undefined;
@@ -114,6 +127,53 @@ describe("PreviewPanel drag and drop", () => {
       });
     });
 
+    expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
+  });
+
+  it("loads dropped external paths", async () => {
+    render(
+      <PanelsDndLayer>
+        <PreviewPanel
+          paneId="preview-pane"
+          tabSelectedFiles={{
+            selectedPaths: [],
+          }}
+        />
+      </PanelsDndLayer>,
+    );
+
+    await waitFor(() => {
+      expect(typeof externalDropCallback).toBe("function");
+    });
+
+    const panel = screen.getByLabelText("Preview panel");
+    panel.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 500,
+      width: 500,
+      height: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    await act(async () => {
+      await externalDropCallback?.({
+        payload: {
+          type: "drop",
+          paths: ["C:\\notes.txt"],
+          position: { x: 100, y: 100 },
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("preview_read_file", {
+        path: "C:\\notes.txt",
+      });
+    });
     expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
   });
 });

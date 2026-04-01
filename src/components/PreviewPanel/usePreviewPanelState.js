@@ -3,7 +3,9 @@ import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelsDndHandlers, usePanelsDragActive } from "../PanelsDndLayer";
 import { getFirstDraggedPathFromDndEvent } from "../dndEventPaths";
+import useExternalPathDrop from "../hooks/useExternalPathDrop";
 import useFilesystemDirectoryWatcher from "../FilesystemPanel/hooks/useFilesystemDirectoryWatcher";
+import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
 import { getParentDirectoryPath, isSamePath } from "../../utils/pathWatch";
 import {
   getErrorMessage,
@@ -20,8 +22,7 @@ function isMediaPreviewKind(kind) {
 
 function appendCacheBuster(src, token) {
   if (!src) return src;
-  const separator = src.includes("?") ? "&" : "?";
-  return `${src}${separator}v=${token}`;
+  return `${src}${src.includes("?") ? "&" : "?"}v=${token}`;
 }
 
 function usePreviewPanelState({
@@ -56,11 +57,10 @@ function usePreviewPanelState({
   const previewLabel = useMemo(() => getPathDisplayName(previewPath), [previewPath]);
   const previewDirectoryPath = useMemo(() => getParentDirectoryPath(previewPath), [previewPath]);
   const mediaPreviewSrc = useMemo(() => {
-    if (previewState.status !== "ready") return null;
-    const previewKind = previewState.preview?.kind;
-    if (!isMediaPreviewKind(previewKind)) return null;
-    if (!previewPath) return null;
-    return appendCacheBuster(convertFileSrc(previewPath), mediaSrcVersion);
+    if (previewState.status !== "ready" || !previewPath) return null;
+    return isMediaPreviewKind(previewState.preview?.kind)
+      ? appendCacheBuster(convertFileSrc(previewPath), mediaSrcVersion)
+      : null;
   }, [mediaSrcVersion, previewPath, previewState]);
   const isTextPreviewReady = previewState.status === "ready" && previewState.preview?.kind === "text";
   const isTextEditable = isTextPreviewReady && !previewState.preview?.truncated;
@@ -112,6 +112,11 @@ function usePreviewPanelState({
     },
   });
   const isPanelsDragActive = usePanelsDragActive();
+  const panelRef = useRef(null);
+  const setPanelNodeRef = useCallback((node) => {
+    panelRef.current = node;
+    setDropNodeRef(node);
+  }, [setDropNodeRef]);
 
   usePanelsDndHandlers({
     onDragEnd: (event) => {
@@ -120,6 +125,18 @@ function usePreviewPanelState({
       if (!droppedPath) return;
       setLockedPath(droppedPath);
     },
+  });
+
+  const handleExternalDropPaths = useCallback((droppedPaths) => {
+    const [firstPath] = uniqueNonEmptyPaths(droppedPaths);
+    if (!firstPath) return;
+    setLockedPath(firstPath);
+  }, []);
+
+  const { isExternalDragOver } = useExternalPathDrop({
+    panelRef,
+    isEnabled: true,
+    onDropPaths: handleExternalDropPaths,
   });
 
   const handlePreviewFileWatchChange = useCallback((_watchedPath, changedPath) => {
@@ -152,14 +169,10 @@ function usePreviewPanelState({
 
   const handleTextContentChange = useCallback((nextContent) => {
     if (!isTextEditable || !previewPath) return;
-
     setTextContent(nextContent);
     setSaveStatus("dirty");
     setSaveError("");
-  }, [
-    isTextEditable,
-    previewPath,
-  ]);
+  }, [isTextEditable, previewPath]);
 
   const handleSaveNow = useCallback(() => {
     if (!isTextEditable || !previewPath) return;
@@ -225,9 +238,7 @@ function usePreviewPanelState({
     }
 
     loadPreview();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [previewPath, previewReloadVersion]);
 
   const saveStatusMessage = useMemo(() => getSaveStatusMessage({
@@ -260,7 +271,7 @@ function usePreviewPanelState({
 
   return {
     mediaPreviewSrc,
-    isDropOver: isDropOver && isPanelsDragActive,
+    isDropOver: (isDropOver && isPanelsDragActive) || isExternalDragOver,
     isLocked,
     isTextEditable,
     isTextPreviewReady,
@@ -269,7 +280,7 @@ function usePreviewPanelState({
     previewState,
     saveStatus,
     saveStatusMessage,
-    setDropNodeRef,
+    setDropNodeRef: setPanelNodeRef,
     textContent,
     handleSaveNow,
     handleTextContentChange,

@@ -11,6 +11,26 @@ import {
 } from "../../dndExternalEvents";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 
+const PENDING_EXTERNAL_DRAG_TTL_MS = 15000;
+
+function normalizePathForMatch(path) {
+  if (typeof path !== "string") return "";
+  const trimmedPath = path.trim();
+  if (!trimmedPath) return "";
+
+  const withoutDevicePrefix = trimmedPath
+    .replace(/^\\\\\?\\UNC\\/i, "\\\\")
+    .replace(/^\/\/\?\/UNC\//i, "\\\\")
+    .replace(/^\\\\\?\\/, "")
+    .replace(/^\/\/\?\//, "")
+    .replace(/^\\\\\.\\/, "")
+    .replace(/^\/\/\.\//, "");
+  return withoutDevicePrefix
+    .replace(/[\\/]+/g, "/")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+}
+
 function useFilesystemDnd({
   paneId = "",
   entries,
@@ -24,13 +44,13 @@ function useFilesystemDnd({
   const [ownedDragPaths, setOwnedDragPaths] = useState([]);
   const [activeDropDestinationPath, setActiveDropDestinationPath] = useState("");
   const externalDragStartedRef = useRef(false);
+  const pendingExternalDragSourcePathsRef = useRef([]);
+  const pendingExternalDragStartedAtMsRef = useRef(0);
   const copyModifierPressedRef = useRef(false);
   const modifierTrackingCleanupRef = useRef(null);
   const entryByPath = useMemo(() => {
     const byPath = new Map();
-    entries.forEach((entry) => {
-      byPath.set(entry.path, entry);
-    });
+    entries.forEach((entry) => byPath.set(entry.path, entry));
     return byPath;
   }, [entries]);
 
@@ -40,17 +60,37 @@ function useFilesystemDnd({
     setActiveDropDestinationPath("");
   }
 
+  function clearPendingExternalDragSourcePaths() {
+    pendingExternalDragSourcePathsRef.current = [];
+    pendingExternalDragStartedAtMsRef.current = 0;
+  }
+
+  function setPendingExternalDragSourcePaths(paths) {
+    const normalizedPaths = uniqueNonEmptyPaths(paths);
+    pendingExternalDragSourcePathsRef.current = normalizedPaths;
+    pendingExternalDragStartedAtMsRef.current = normalizedPaths.length > 0 ? Date.now() : 0;
+  }
+
+  function getPendingExternalDragSourcePaths() {
+    const startedAtMs = pendingExternalDragStartedAtMsRef.current;
+    const pendingPaths = pendingExternalDragSourcePathsRef.current;
+    if (pendingPaths.length === 0 || !startedAtMs) return [];
+
+    if (Date.now() - startedAtMs > PENDING_EXTERNAL_DRAG_TTL_MS) {
+      clearPendingExternalDragSourcePaths();
+      return [];
+    }
+
+    return pendingPaths;
+  }
+
   function startModifierTracking(initialCtrlKey = false) {
     stopModifierTracking();
     copyModifierPressedRef.current = Boolean(initialCtrlKey);
     if (typeof window === "undefined") return;
 
-    const updateModifier = (event) => {
-      copyModifierPressedRef.current = Boolean(event?.ctrlKey);
-    };
-    const clearModifier = () => {
-      copyModifierPressedRef.current = false;
-    };
+    const updateModifier = (event) => { copyModifierPressedRef.current = Boolean(event?.ctrlKey); };
+    const clearModifier = () => { copyModifierPressedRef.current = false; };
 
     window.addEventListener("keydown", updateModifier, true);
     window.addEventListener("keyup", updateModifier, true);
@@ -75,12 +115,8 @@ function useFilesystemDnd({
 
     const handleExternalDragStart = () => {
       externalDragStartedRef.current = true;
-      setActiveDragPaths([]);
-      setOwnedDragPaths([]);
-      setActiveDropDestinationPath("");
-      modifierTrackingCleanupRef.current?.();
-      modifierTrackingCleanupRef.current = null;
-      copyModifierPressedRef.current = false;
+      clearDragState();
+      stopModifierTracking();
     };
 
     window.addEventListener(EXTERNAL_FILESYSTEM_DRAG_START_EVENT, handleExternalDragStart);
@@ -91,35 +127,24 @@ function useFilesystemDnd({
 
   function getEventSourcePath(event) {
     const sourcePathFromData = event?.active?.data?.current?.sourcePath;
-    if (typeof sourcePathFromData === "string" && sourcePathFromData) {
-      return sourcePathFromData;
-    }
-
+    if (typeof sourcePathFromData === "string" && sourcePathFromData) return sourcePathFromData;
     return parseEntryPath(event?.active?.id);
   }
 
   function isEventOwnedByPane(event) {
     const sourcePaneId = event?.active?.data?.current?.sourcePaneId;
-    if (typeof sourcePaneId !== "string" || sourcePaneId.length === 0) {
-      return true;
-    }
-
+    if (typeof sourcePaneId !== "string" || sourcePaneId.length === 0) return true;
     return sourcePaneId === paneId;
   }
 
   function resolveDragSourcePaths(sourcePath) {
     const entryPathSet = new Set(entries.map((entry) => entry.path));
-    if (!sourcePath || !entryPathSet.has(sourcePath)) {
-      return [];
-    }
+    if (!sourcePath || !entryPathSet.has(sourcePath)) return [];
 
     const normalizedSelection = uniqueNonEmptyPaths(selectedPaths).filter(
       (path) => entryPathSet.has(path),
     );
-    if (!normalizedSelection.includes(sourcePath)) {
-      return [sourcePath];
-    }
-
+    if (!normalizedSelection.includes(sourcePath)) return [sourcePath];
     return normalizedSelection;
   }
 
@@ -133,6 +158,7 @@ function useFilesystemDnd({
 
   function handleDragStart(event) {
     externalDragStartedRef.current = false;
+    clearPendingExternalDragSourcePaths();
     const sourcePath = getEventSourcePath(event);
     if (!sourcePath) {
       clearDragState();
@@ -258,22 +284,14 @@ function useFilesystemDnd({
 
     clearDragState();
     stopModifierTracking();
-    if (!isOwner) {
-      return;
-    }
+    if (!isOwner) return;
 
     if (externalDragStartedRef.current) {
       externalDragStartedRef.current = false;
       return;
     }
 
-    if (
-      isMovingEntry
-      || actionableSourcePaths.length === 0
-      || !canDropIntoDestination
-    ) {
-      return;
-    }
+    if (isMovingEntry || actionableSourcePaths.length === 0 || !canDropIntoDestination) return;
 
     try {
       if (shouldCopy && typeof copyEntries === "function") {
@@ -288,11 +306,17 @@ function useFilesystemDnd({
 
   function handleDragCancel() {
     clearDragState();
-    externalDragStartedRef.current = false;
     stopModifierTracking();
+    if (externalDragStartedRef.current) {
+      externalDragStartedRef.current = false;
+      return;
+    }
+
+    clearPendingExternalDragSourcePaths();
   }
 
-  function markExternalDragStart() {
+  function markExternalDragStart(sourcePaths = []) {
+    setPendingExternalDragSourcePaths(sourcePaths);
     externalDragStartedRef.current = true;
     clearDragState();
     stopModifierTracking();
@@ -303,6 +327,27 @@ function useFilesystemDnd({
     externalDragStartedRef.current = false;
     clearDragState();
     stopModifierTracking();
+    clearPendingExternalDragSourcePaths();
+  }
+
+  function consumeMatchingExternalDragSourcePaths(dropPaths) {
+    const normalizedDropPaths = uniqueNonEmptyPaths(dropPaths);
+    if (normalizedDropPaths.length === 0) return [];
+
+    const pendingSourcePaths = getPendingExternalDragSourcePaths();
+    if (pendingSourcePaths.length === 0) return [];
+
+    const pendingPathByKey = new Map();
+    pendingSourcePaths.forEach((sourcePath) => pendingPathByKey.set(normalizePathForMatch(sourcePath), sourcePath));
+
+    const matchedPendingPaths = normalizedDropPaths.map((path) => {
+      const normalizedPath = normalizePathForMatch(path);
+      return pendingPathByKey.get(normalizedPath) ?? "";
+    }).filter(Boolean);
+    if (matchedPendingPaths.length !== normalizedDropPaths.length) return [];
+
+    clearPendingExternalDragSourcePaths();
+    return uniqueNonEmptyPaths(matchedPendingPaths);
   }
 
   return {
@@ -317,6 +362,7 @@ function useFilesystemDnd({
     handleDragCancel,
     markExternalDragStart,
     clearExternalDragStart,
+    consumeMatchingExternalDragSourcePaths,
   };
 }
 

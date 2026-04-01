@@ -16,6 +16,7 @@ function EntryItem({
   isDragging = false,
   isDropTarget = false,
   thumbnailSrc = "",
+  dropDestinationPath = "",
   buttonRef,
   buttonStyle,
   dndAttributes,
@@ -80,6 +81,7 @@ function EntryItem({
       aria-selected={isSelected}
       draggable={isDraggable && !hasDndListeners}
       style={resolvedButtonStyle}
+      data-drop-destination-path={dropDestinationPath || undefined}
       {...dndAttributes}
       {...dndListeners}
       onClick={onClick}
