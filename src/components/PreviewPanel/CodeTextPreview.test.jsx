@@ -5,7 +5,9 @@ const codeMirrorPropsRef = {
   current: null,
 };
 const languageSupportMock = { languageName: "javascript" };
+const markdownSupportMock = { languageName: "markdown" };
 const loadLanguageMock = vi.fn(async () => languageSupportMock);
+const markdownMock = vi.fn(() => markdownSupportMock);
 const matchFilenameMock = vi.fn((_, fileName) => {
   if (fileName === "app.js") {
     return { load: loadLanguageMock };
@@ -30,6 +32,10 @@ vi.mock("@codemirror/language-data", () => ({
   languages: [{ name: "javascript" }],
 }));
 
+vi.mock("@codemirror/lang-markdown", () => ({
+  markdown: (...args) => markdownMock(...args),
+}));
+
 vi.mock("@codemirror/view", () => ({
   EditorView: {
     theme: () => ({ theme: "preview" }),
@@ -41,6 +47,7 @@ describe("CodeTextPreview", () => {
   beforeEach(() => {
     codeMirrorPropsRef.current = null;
     loadLanguageMock.mockClear();
+    markdownMock.mockClear();
     matchFilenameMock.mockClear();
   });
 
@@ -89,5 +96,23 @@ describe("CodeTextPreview", () => {
       "app.js",
     );
     expect(codeMirrorPropsRef.current.extensions).toContain(languageSupportMock);
+  });
+
+  it("configures markdown fenced code highlighting", async () => {
+    render(
+      <CodeTextPreview
+        filePath="C:\\workspace\\notes.md"
+        content={"```js\nconst x = 1;\n```"}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(markdownMock).toHaveBeenCalledTimes(1);
+    });
+    expect(markdownMock).toHaveBeenCalledWith(expect.objectContaining({
+      codeLanguages: expect.any(Array),
+    }));
+    expect(matchFilenameMock).not.toHaveBeenCalled();
+    expect(codeMirrorPropsRef.current.extensions).toContain(markdownSupportMock);
   });
 });

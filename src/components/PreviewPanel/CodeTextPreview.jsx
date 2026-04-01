@@ -1,6 +1,7 @@
 import CodeMirror from "@uiw/react-codemirror";
 import { LanguageDescription } from "@codemirror/language";
 import { languages } from "@codemirror/language-data";
+import { markdown } from "@codemirror/lang-markdown";
 import { EditorView, keymap } from "@codemirror/view";
 import { gruvboxDark } from "@uiw/codemirror-theme-gruvbox-dark";
 import { useEffect, useMemo, useState } from "react";
@@ -45,6 +46,10 @@ function getFileName(path) {
   return parts[parts.length - 1] ?? "";
 }
 
+function isMarkdownFileName(fileName) {
+  return /\.(md|markdown|mdown|mkdn|mkd)$/i.test(fileName);
+}
+
 function CodeTextPreview({
   filePath = "",
   content = "",
@@ -59,6 +64,11 @@ function CodeTextPreview({
     const fileName = getFileName(filePath);
     if (!fileName) {
       setLanguageSupport(null);
+      return undefined;
+    }
+
+    if (isMarkdownFileName(fileName)) {
+      setLanguageSupport(markdown({ codeLanguages: languages }));
       return undefined;
     }
 
