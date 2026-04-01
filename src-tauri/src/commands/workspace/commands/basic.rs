@@ -521,14 +521,29 @@ pub fn workspace_set_tab_pane_filesystem_state(
       .inner
       .lock()
       .map_err(|_| "Workspace state is unavailable.".to_string())?;
-    let tab = model
-      .tabs
-      .get_mut(&payload.tab_id)
-      .ok_or_else(|| "Tab not found.".to_string())?;
-    let target_pane = select_tab_pane_mut(tab, &payload.pane_id)?;
+    let (filesystem_state_changed, persist_workspace_panels) = {
+      let tab = model
+        .tabs
+        .get_mut(&payload.tab_id)
+        .ok_or_else(|| "Tab not found.".to_string())?;
+      let workspace_has_root = tab.workspace_root.is_some();
+      let target_pane = select_tab_pane_mut(tab, &payload.pane_id)?;
+      let previous_thumbnail_size_px = target_pane.filesystem_state.thumbnail_size_px;
+      let filesystem_state_changed = update_pane_filesystem_state(target_pane, payload.filesystem_state);
+      let persist_workspace_panels = filesystem_state_changed
+        && workspace_has_root
+        && target_pane.filesystem_state.thumbnail_size_px != previous_thumbnail_size_px;
+      (filesystem_state_changed, persist_workspace_panels)
+    };
 
-    if update_pane_filesystem_state(target_pane, payload.filesystem_state) {
+    if filesystem_state_changed {
       model.bump_revision();
+    }
+
+    if persist_workspace_panels {
+      if let Some(tab) = model.tabs.get(&payload.tab_id) {
+        persist_workspace_panels_config_for_tab(tab);
+      }
     }
     model.snapshot()
   };

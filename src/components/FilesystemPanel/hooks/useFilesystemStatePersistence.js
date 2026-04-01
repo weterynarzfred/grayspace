@@ -16,6 +16,7 @@ export default function useFilesystemStatePersistence({
   currentPath = "",
   selectedPaths = [],
   expandedPaths = [],
+  thumbnailSizePx,
 }) {
   const initialFilesystemStateRef = useRef(
     normalizeFilesystemPaneState(initialFilesystemState),
@@ -33,7 +34,8 @@ export default function useFilesystemStatePersistence({
       || normalizedState.currentPath !== lastState.currentPath
       || !arePathArraysEqual(normalizedState.selectedPaths, lastState.selectedPaths)
       || !arePathArraysEqual(normalizedState.expandedPaths, lastState.expandedPaths)
-      || normalizedState.scrollTop !== lastState.scrollTop;
+      || normalizedState.scrollTop !== lastState.scrollTop
+      || normalizedState.thumbnailSizePx !== lastState.thumbnailSizePx;
 
     if (!hasChanged) return;
 
@@ -48,6 +50,7 @@ export default function useFilesystemStatePersistence({
       selectedPaths,
       expandedPaths,
       scrollTop: latestScrollTopRef.current,
+      thumbnailSizePx,
     });
   }, [
     currentDrive,
@@ -55,6 +58,7 @@ export default function useFilesystemStatePersistence({
     expandedPaths,
     persistFilesystemState,
     selectedPaths,
+    thumbnailSizePx,
   ]);
 
   useEffect(() => {

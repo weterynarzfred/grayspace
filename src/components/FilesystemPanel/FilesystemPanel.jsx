@@ -7,7 +7,10 @@ import DraggableFilesystemEntry from "./DraggableFilesystemEntry";
 import EntryItem from "./EntryItem";
 import FilesystemStatusMessages from "./FilesystemStatusMessages";
 import UpEntryDropTarget from "./UpEntryDropTarget";
-import { normalizeFilesystemPaneState } from "./filesystemPaneState";
+import {
+  FILESYSTEM_THUMBNAIL_SIZE_STEPS,
+  normalizeFilesystemPaneState,
+} from "./filesystemPaneState";
 import useFilesystemDnd from "./hooks/useFilesystemDnd";
 import useExternalFilesystemDrag from "./hooks/useExternalFilesystemDrag";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
@@ -24,7 +27,7 @@ import styles from "./FilesystemPanel.module.scss";
 
 const UP_ENTRY_SELECTION_ID = "__up__";
 const ENTRY_WINDOWING_THRESHOLD = 200;
-const ENTRY_ROW_HEIGHT_PX = 29;
+const THUMBNAIL_SIZE_TOGGLE_TITLE = "Toggle icon/thumbnail size";
 
 function normalizePathForComparison(path) {
   if (typeof path !== "string" || !path.trim()) return "";
@@ -72,7 +75,11 @@ function FilesystemPanel({
   const entryWindowAnchorRef = useRef(null);
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
   const [expandedPaths, setExpandedPaths] = useState(initialFilesystemStateRef.current.expandedPaths);
+  const [thumbnailSizePx, setThumbnailSizePx] = useState(
+    initialFilesystemStateRef.current.thumbnailSizePx,
+  );
   const [externalDropDestinationPath, setExternalDropDestinationPath] = useState("");
+  const entryRowHeightPx = thumbnailSizePx + 2;
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current, {
     tabId,
     tabWorkspaceRoot,
@@ -110,6 +117,7 @@ function FilesystemPanel({
     currentPath,
     selectedPaths,
     expandedPaths,
+    thumbnailSizePx,
   });
   const isBrowsing = currentPath !== "";
   const isEntryOperationInProgress = isMovingEntry || isDeletingEntries || isImportingExternal;
@@ -211,7 +219,7 @@ function FilesystemPanel({
     scheduleRecompute: scheduleEntryWindowRecompute,
   } = useVirtualizedEntryWindow({
     itemCount: treeRows.length,
-    rowHeightPx: ENTRY_ROW_HEIGHT_PX,
+    rowHeightPx: entryRowHeightPx,
     isEnabled: isEntryWindowingEnabled,
     scrollContainerRef: panelListRef,
     listStartAnchorRef: entryWindowAnchorRef,
@@ -227,6 +235,7 @@ function FilesystemPanel({
     currentPath,
     entries: flattenedEntries,
     visibleEntries,
+    thumbnailSizePx,
   });
   const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
   const workspaceFolderPathSet = useFilesystemWorkspaceFolders({
@@ -373,10 +382,24 @@ function FilesystemPanel({
     handlePanelListScroll(event);
     scheduleEntryWindowRecompute();
   }, [handlePanelListScroll, scheduleEntryWindowRecompute]);
+  const handleToggleThumbnailSize = useCallback(() => {
+    setThumbnailSizePx((previousSize) => {
+      const currentIndex = FILESYSTEM_THUMBNAIL_SIZE_STEPS.indexOf(previousSize);
+      const nextIndex = currentIndex >= 0
+        ? (currentIndex + 1) % FILESYSTEM_THUMBNAIL_SIZE_STEPS.length
+        : 0;
+      return FILESYSTEM_THUMBNAIL_SIZE_STEPS[nextIndex];
+    });
+  }, []);
+  const panelStyle = useMemo(() => ({
+    "--entry-thumbnail-size": `${thumbnailSizePx}px`,
+    "--entry-row-height": `${entryRowHeightPx}px`,
+  }), [entryRowHeightPx, thumbnailSizePx]);
 
   return <section
     ref={setPanelNodeRef}
     className={`${styles.panelContent} ${isPanelDropOver && isInternalDragActive ? styles.panelDropTarget : ""} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
+    style={panelStyle}
     aria-label="Filesystem panel"
     data-drop-destination-path={currentPath || undefined}
     onKeyDown={handlePanelKeyDown}
@@ -394,6 +417,13 @@ function FilesystemPanel({
         isImportingExternal={isImportingExternal}
         error={error}
       />
+      <button
+        type="button"
+        className={styles.thumbnailSizeToggle}
+        onClick={handleToggleThumbnailSize}
+        title={THUMBNAIL_SIZE_TOGGLE_TITLE}
+        aria-label={`Toggle icon and thumbnail size. Current: ${thumbnailSizePx}px`}
+      >{thumbnailSizePx}px</button>
     </PanelHeader>
     <div
       ref={panelListRef}

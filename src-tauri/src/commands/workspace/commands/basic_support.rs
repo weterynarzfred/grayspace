@@ -4,6 +4,9 @@ use super::super::types::{
 };
 use std::collections::HashSet;
 
+const FILESYSTEM_THUMBNAIL_SIZE_STEPS: [u32; 4] = [32, 64, 128, 256];
+const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX: u32 = FILESYSTEM_THUMBNAIL_SIZE_STEPS[0];
+
 pub(super) struct PanePanelTypeUpdate {
   pub(super) changed: bool,
   pub(super) terminal_session_to_stop: Option<String>,
@@ -68,6 +71,14 @@ fn normalize_selected_paths(selected_paths: Vec<String>) -> Vec<String> {
   normalized_selected_paths
 }
 
+fn normalize_thumbnail_size_px(thumbnail_size_px: u32) -> u32 {
+  if FILESYSTEM_THUMBNAIL_SIZE_STEPS.contains(&thumbnail_size_px) {
+    thumbnail_size_px
+  } else {
+    DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX
+  }
+}
+
 fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState {
   let FilesystemPaneState {
     current_drive,
@@ -75,6 +86,7 @@ fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState
     selected_paths,
     expanded_paths,
     scroll_top,
+    thumbnail_size_px,
   } = state;
   let normalized_selected_paths = normalize_selected_paths(selected_paths);
   let normalized_expanded_paths = normalize_selected_paths(expanded_paths);
@@ -89,6 +101,7 @@ fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState
     } else {
       0.0
     },
+    thumbnail_size_px: normalize_thumbnail_size_px(thumbnail_size_px),
   }
 }
 
@@ -386,10 +399,12 @@ mod tests {
         selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
         expanded_paths: vec!["C:\\Users".to_string()],
         scroll_top: 125.7,
+        thumbnail_size_px: 64,
       },
     ));
     assert_eq!(active_pane.filesystem_state.current_path, "C:\\Users");
     assert_eq!(active_pane.filesystem_state.scroll_top, 125.7);
+    assert_eq!(active_pane.filesystem_state.thumbnail_size_px, 64);
 
     assert!(update_pane_filesystem_state(
       active_pane,
@@ -399,9 +414,11 @@ mod tests {
         selected_paths: vec!["C:\\Users\\todo.txt".to_string()],
         expanded_paths: vec!["C:\\Users".to_string()],
         scroll_top: f64::NAN,
+        thumbnail_size_px: 33,
       },
     ));
     assert_eq!(active_pane.filesystem_state.scroll_top, 0.0);
+    assert_eq!(active_pane.filesystem_state.thumbnail_size_px, 32);
   }
 
   #[test]
@@ -430,6 +447,7 @@ mod tests {
           "C:\\Users\\Projects".to_string(),
         ],
         scroll_top: 1.0,
+        thumbnail_size_px: 256,
       },
     ));
 
@@ -444,6 +462,7 @@ mod tests {
       active_pane.filesystem_state.expanded_paths,
       vec!["C:\\Users".to_string(), "C:\\Users\\Projects".to_string()]
     );
+    assert_eq!(active_pane.filesystem_state.thumbnail_size_px, 256);
   }
 
   #[test]

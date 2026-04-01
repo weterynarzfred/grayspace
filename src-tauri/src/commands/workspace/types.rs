@@ -7,6 +7,11 @@ pub const DEFAULT_WINDOW_HEIGHT: u32 = 780;
 pub const DEFAULT_LEFT_PANEL_TYPE: &str = "Filesystem";
 pub const DEFAULT_RIGHT_PANEL_TYPE: &str = "Preview";
 pub const DEFAULT_SPLIT_RATIO: u8 = 50;
+pub const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX: u32 = 32;
+
+fn default_filesystem_thumbnail_size_px() -> u32 {
+  DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -110,6 +115,8 @@ pub struct FilesystemPaneState {
   #[serde(default)]
   pub expanded_paths: Vec<String>,
   pub scroll_top: f64,
+  #[serde(default = "default_filesystem_thumbnail_size_px")]
+  pub thumbnail_size_px: u32,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
@@ -258,6 +265,7 @@ impl Default for FilesystemPaneState {
       selected_paths: Vec::new(),
       expanded_paths: Vec::new(),
       scroll_top: 0.0,
+      thumbnail_size_px: DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX,
     }
   }
 }

@@ -4,7 +4,7 @@
 .entryItem {
   margin: 0;
   content-visibility: auto;
-  contain-intrinsic-size: 28px;
+  contain-intrinsic-size: var(--entry-row-height, 34px);
 }
 
 .entryButton {
@@ -15,7 +15,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0 0.5rem 0 calc(var(--entry-depth) * 1rem);
-  min-height: 1.75rem;
+  min-height: var(--entry-row-height, 34px);
   text-align: left;
 
   &:hover {
@@ -69,8 +69,8 @@
 .entryIcon,
 .entryThumbnail {
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
+  width: var(--entry-thumbnail-size, 32px);
+  height: var(--entry-thumbnail-size, 32px);
 }
 
 .entryIcon {
@@ -82,11 +82,11 @@
   &::before {
     text-align: center;
     width: 100% !important;
+    font-size: calc(var(--entry-thumbnail-size, 32px) * 0.5) !important;
   }
 
   &:global(.folder-icon)::before {
     font-family: fontawesome;
-    font-size: 16px;
     top: 1px;
     content: "\f114";
   }
@@ -94,6 +94,7 @@
 
 .entryThumbnail {
   object-fit: contain;
+  margin-right: 0.5rem;
 }
 
 .entryName {

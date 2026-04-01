@@ -4,7 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 
 const THUMBNAIL_UPDATE_EVENT = "thumbnail:update";
-const THUMBNAIL_SIZE_HINT_PX = 64;
+const DEFAULT_THUMBNAIL_SIZE_HINT_PX = 32;
+const LARGER_THUMBNAIL_BUCKET_MIN_SIZE_PX = 128;
+
+function resolveThumbnailBucketPx(sizeHintPx) {
+  return sizeHintPx >= LARGER_THUMBNAIL_BUCKET_MIN_SIZE_PX ? 256 : 64;
+}
 
 function getEntryFilePaths(entries = []) {
   return uniqueNonEmptyPaths(entries
@@ -55,10 +60,15 @@ export default function useFilesystemThumbnails({
   currentPath = "",
   entries = [],
   visibleEntries = [],
+  thumbnailSizePx = DEFAULT_THUMBNAIL_SIZE_HINT_PX,
 }) {
   const [thumbnailSrcByPath, setThumbnailSrcByPath] = useState({});
   const latestPathRef = useRef(currentPath);
   const trackedPathSetRef = useRef(new Set());
+  const thumbnailBucketPx = useMemo(
+    () => resolveThumbnailBucketPx(thumbnailSizePx),
+    [thumbnailSizePx],
+  );
   const allFilePaths = useMemo(() => getEntryFilePaths(entries), [entries]);
   const visibleFilePaths = useMemo(() => getEntryFilePaths(visibleEntries), [visibleEntries]);
   const visibleFilePathsSignature = useMemo(
@@ -93,7 +103,7 @@ export default function useFilesystemThumbnails({
 
   useEffect(() => {
     setThumbnailSrcByPath({});
-  }, [currentPath]);
+  }, [currentPath, thumbnailBucketPx]);
 
   useEffect(() => {
     let unsubscribe = null;
@@ -102,7 +112,7 @@ export default function useFilesystemThumbnails({
     async function subscribe() {
       const unlisten = await listen(THUMBNAIL_UPDATE_EVENT, (event) => {
         const payload = event?.payload;
-        if (payload?.bucketPx !== THUMBNAIL_SIZE_HINT_PX) return;
+        if (payload?.bucketPx !== thumbnailBucketPx) return;
         const trackedPathSet = trackedPathSetRef.current;
         setThumbnailSrcByPath((previousMap) => applyThumbnailResults(previousMap, [payload], trackedPathSet));
       });
@@ -118,7 +128,7 @@ export default function useFilesystemThumbnails({
       cancelled = true;
       unsubscribe?.();
     };
-  }, []);
+  }, [thumbnailBucketPx]);
 
   useEffect(() => {
     if (!currentPath || visibleFilePaths.length === 0) return;
@@ -126,7 +136,7 @@ export default function useFilesystemThumbnails({
     const request = {
       items: visibleFilePaths.map((sourcePath) => ({
         sourcePath,
-        sizeHintPx: THUMBNAIL_SIZE_HINT_PX,
+        sizeHintPx: thumbnailSizePx,
         priority: "visible",
       })),
     };
@@ -148,7 +158,7 @@ export default function useFilesystemThumbnails({
     return () => {
       cancelled = true;
     };
-  }, [currentPath, visibleFilePathsSignature, visibleFilePaths]);
+  }, [currentPath, thumbnailSizePx, visibleFilePathsSignature, visibleFilePaths]);
 
   return {
     thumbnailSrcByPath,

@@ -540,6 +540,101 @@ describe("FilesystemPanel", () => {
     expect(draftButton).toHaveAttribute("aria-selected", "true");
   });
 
+  it("cycles thumbnail sizes and requests matching thumbnail size hints", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const sizeButton = screen.getByRole("button", {
+      name: /Toggle icon and thumbnail size/i,
+    });
+
+    function getLatestThumbnailSizeHint() {
+      const latestCall = [...invoke.mock.calls]
+        .reverse()
+        .find(([command]) => command === "thumbnail_resolve_batch");
+      return latestCall?.[1]?.request?.items?.[0]?.sizeHintPx;
+    }
+
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(32);
+    });
+
+    fireEvent.click(sizeButton);
+    expect(sizeButton).toHaveTextContent("64px");
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(64);
+    });
+
+    fireEvent.click(sizeButton);
+    expect(sizeButton).toHaveTextContent("128px");
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(128);
+    });
+
+    fireEvent.click(sizeButton);
+    expect(sizeButton).toHaveTextContent("256px");
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(256);
+    });
+
+    fireEvent.click(sizeButton);
+    expect(sizeButton).toHaveTextContent("32px");
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(32);
+    });
+  });
+
+  it("persists thumbnail size in filesystem pane state", async () => {
+    const onFilesystemStateChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-1",
+      paneId: "left",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\",
+        scrollTop: 0,
+      },
+      onFilesystemStateChange,
+    });
+
+    await screen.findByRole("button", { name: /Users/i });
+    const sizeButton = screen.getByRole("button", {
+      name: /Toggle icon and thumbnail size/i,
+    });
+    fireEvent.click(sizeButton);
+
+    await waitFor(() => {
+      const latestState = onFilesystemStateChange.mock.calls.at(-1)?.[0];
+      expect(latestState?.thumbnailSizePx).toBe(64);
+    });
+  });
+
+  it("hydrates thumbnail size from persisted filesystem state", async () => {
+    renderFilesystemPanel({
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\",
+        scrollTop: 0,
+        thumbnailSizePx: 256,
+      },
+    });
+
+    await screen.findByRole("button", { name: /Users/i });
+    const sizeButton = screen.getByRole("button", {
+      name: /Toggle icon and thumbnail size/i,
+    });
+    expect(sizeButton).toHaveTextContent("256px");
+
+    await waitFor(() => {
+      const latestThumbnailCall = [...invoke.mock.calls]
+        .reverse()
+        .find(([command]) => command === "thumbnail_resolve_batch");
+      expect(latestThumbnailCall?.[1]?.request?.items?.[0]?.sizeHintPx).toBe(256);
+    });
+  });
+
   it("opens a file on double click", async () => {
     renderFilesystemPanel();
 
@@ -1429,7 +1524,7 @@ describe("FilesystemPanel", () => {
     fireEvent.scroll(panelList);
 
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: /file-04\d\d\.txt/i }).length)
+      expect(screen.getAllByRole("button", { name: /file-0[3-4]\d\d\.txt/i }).length)
         .toBeGreaterThan(0);
     });
     expect(screen.queryByRole("button", { name: /file-0000\.txt/i })).not.toBeInTheDocument();

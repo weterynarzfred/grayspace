@@ -1,5 +1,8 @@
 import { getSelectedPathsFromState } from "../../utils/pathSelection";
 
+export const FILESYSTEM_THUMBNAIL_SIZE_STEPS = [32, 64, 128, 256];
+export const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE = FILESYSTEM_THUMBNAIL_SIZE_STEPS[0];
+
 function getExpandedPathsFromState(state = {}) {
   if (!state || typeof state !== "object") return [];
   if (!Array.isArray(state.expandedPaths)) return [];
@@ -12,6 +15,13 @@ function getExpandedPathsFromState(state = {}) {
     expandedPaths.push(path);
   });
   return expandedPaths;
+}
+
+export function normalizeFilesystemThumbnailSize(sizePx) {
+  if (!Number.isFinite(sizePx)) return DEFAULT_FILESYSTEM_THUMBNAIL_SIZE;
+  const roundedSize = Math.round(sizePx);
+  if (FILESYSTEM_THUMBNAIL_SIZE_STEPS.includes(roundedSize)) return roundedSize;
+  return DEFAULT_FILESYSTEM_THUMBNAIL_SIZE;
 }
 
 export function arePathArraysEqual(leftPaths = [], rightPaths = []) {
@@ -33,5 +43,6 @@ export function normalizeFilesystemPaneState(filesystemState = {}) {
     selectedPaths,
     expandedPaths,
     scrollTop: Number.isFinite(state.scrollTop) ? Math.max(0, Math.round(state.scrollTop)) : 0,
+    thumbnailSizePx: normalizeFilesystemThumbnailSize(state.thumbnailSizePx),
   };
 }

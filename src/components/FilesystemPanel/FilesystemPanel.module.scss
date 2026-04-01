@@ -75,3 +75,11 @@
   font-size: $font-size-mono;
   color: $text-secondary;
 }
+
+.thumbnailSizeToggle {
+  @include interactive-tile;
+  border-left: 1px solid $border-default;
+  color: $text-secondary;
+  padding: 0 0.45rem;
+  white-space: nowrap;
+}
