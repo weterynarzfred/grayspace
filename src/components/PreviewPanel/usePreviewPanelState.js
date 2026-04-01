@@ -18,6 +18,12 @@ function isMediaPreviewKind(kind) {
   return kind === "image" || kind === "audio" || kind === "video";
 }
 
+function appendCacheBuster(src, token) {
+  if (!src) return src;
+  const separator = src.includes("?") ? "&" : "?";
+  return `${src}${separator}v=${token}`;
+}
+
 function usePreviewPanelState({
   paneId = "",
   tabSelectedFiles = undefined,
@@ -32,6 +38,7 @@ function usePreviewPanelState({
   const [saveStatus, setSaveStatus] = useState("idle");
   const [saveError, setSaveError] = useState("");
   const [previewReloadVersion, setPreviewReloadVersion] = useState(0);
+  const [mediaSrcVersion, setMediaSrcVersion] = useState(0);
   const [previewState, setPreviewState] = useState(INITIAL_PREVIEW_STATE);
   const latestSaveRequestRef = useRef(0);
   const latestPreviewPathRef = useRef(selectedPreviewPath);
@@ -53,8 +60,8 @@ function usePreviewPanelState({
     const previewKind = previewState.preview?.kind;
     if (!isMediaPreviewKind(previewKind)) return null;
     if (!previewPath) return null;
-    return convertFileSrc(previewPath);
-  }, [previewPath, previewState]);
+    return appendCacheBuster(convertFileSrc(previewPath), mediaSrcVersion);
+  }, [mediaSrcVersion, previewPath, previewState]);
   const isTextPreviewReady = previewState.status === "ready" && previewState.preview?.kind === "text";
   const isTextEditable = isTextPreviewReady && !previewState.preview?.truncated;
   const hasUnsavedPreviewChanges = isTextEditable && saveStatus === "dirty";
@@ -172,6 +179,7 @@ function usePreviewPanelState({
     latestSaveRequestRef.current += 1;
     setSaveStatus("idle");
     setSaveError("");
+    setMediaSrcVersion(version => version + 1);
 
     async function loadPreview() {
       setPreviewState({

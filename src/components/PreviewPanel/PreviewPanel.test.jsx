@@ -102,10 +102,8 @@ describe("PreviewPanel", () => {
     });
 
     const image = await screen.findByRole("img", { name: /preview of image\.png/i });
-    expect(image).toHaveAttribute(
-      "src",
-      "asset://localhost/C%3A%5Cimage.png",
-    );
+    expect(image.getAttribute("src")).toContain("asset://localhost/C%3A%5Cimage.png");
+    expect(image.getAttribute("src")).toMatch(/\?v=\d+$/);
     expect(convertFileSrc).toHaveBeenCalledWith("C:\\image.png");
   });
 
@@ -122,7 +120,8 @@ describe("PreviewPanel", () => {
     });
 
     const video = await screen.findByTestId("preview-video");
-    expect(video).toHaveAttribute("src", "asset://localhost/C%3A%5Cmovie.mp4");
+    expect(video.getAttribute("src")).toContain("asset://localhost/C%3A%5Cmovie.mp4");
+    expect(video.getAttribute("src")).toMatch(/\?v=\d+$/);
     expect(convertFileSrc).toHaveBeenCalledWith("C:\\movie.mp4");
   });
 
@@ -139,7 +138,8 @@ describe("PreviewPanel", () => {
     });
 
     const audio = await screen.findByTestId("preview-audio");
-    expect(audio).toHaveAttribute("src", "asset://localhost/C%3A%5Csong.mp3");
+    expect(audio.getAttribute("src")).toContain("asset://localhost/C%3A%5Csong.mp3");
+    expect(audio.getAttribute("src")).toMatch(/\?v=\d+$/);
     expect(convertFileSrc).toHaveBeenCalledWith("C:\\song.mp3");
   });
 
@@ -356,7 +356,8 @@ describe("PreviewPanel", () => {
     );
 
     const image = await screen.findByRole("img", { name: /preview of one\.png/i });
-    expect(image).toHaveAttribute("src", "asset://localhost/C%3A%5Cone.png");
+    expect(image.getAttribute("src")).toContain("asset://localhost/C%3A%5Cone.png");
+    expect(image.getAttribute("src")).toMatch(/\?v=\d+$/);
     expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalledWith("preview_read_file", { path: "C:\\two.png" });
   });
