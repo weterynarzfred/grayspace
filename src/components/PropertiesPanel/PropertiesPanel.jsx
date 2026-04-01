@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePanelsDndHandlers } from "../PanelsDndLayer";
+import { usePanelsDndHandlers, usePanelsDragActive } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
 import { getFirstDraggedPathFromDndEvent } from "../dndEventPaths";
@@ -86,6 +86,7 @@ function PropertiesPanel({
       paneId,
     },
   });
+  const isPanelsDragActive = usePanelsDragActive();
 
   const handleToggleLock = useCallback(() => {
     if (isLocked) {
@@ -174,7 +175,7 @@ function PropertiesPanel({
 
   return <section
     ref={setDropNodeRef}
-    className={`${shellStyles.panelContent} ${styles.panelContent} ${isDropOver ? styles.panelDropTarget : ""}`}
+    className={`${shellStyles.panelContent} ${styles.panelContent} ${isDropOver && isPanelsDragActive ? styles.panelDropTarget : ""}`}
     aria-label="Properties panel"
   >
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>

@@ -1,7 +1,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useMemo } from "react";
-import { usePanelsDndHandlers } from "../PanelsDndLayer";
+import { usePanelsDndHandlers, usePanelsDragActive } from "../PanelsDndLayer";
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
 import { getDraggedPathsFromDndEvent } from "../dndEventPaths";
@@ -52,6 +52,7 @@ function TerminalPanel({
       paneId,
     },
   });
+  const isPanelsDragActive = usePanelsDragActive();
 
   const handleDropPaths = useCallback(async (droppedPaths) => {
     if (!terminalSessionId) return;
@@ -77,7 +78,7 @@ function TerminalPanel({
 
   return <section
     ref={setDropNodeRef}
-    className={`${shellStyles.panelContent} ${styles.panelContent} ${isDropOver ? styles.panelDropTarget : ""}`}
+    className={`${shellStyles.panelContent} ${styles.panelContent} ${isDropOver && isPanelsDragActive ? styles.panelDropTarget : ""}`}
     aria-label="Terminal panel"
   >
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>

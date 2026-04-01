@@ -1,7 +1,7 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePanelsDndHandlers } from "../PanelsDndLayer";
+import { usePanelsDndHandlers, usePanelsDragActive } from "../PanelsDndLayer";
 import { getFirstDraggedPathFromDndEvent } from "../dndEventPaths";
 import useFilesystemDirectoryWatcher from "../FilesystemPanel/hooks/useFilesystemDirectoryWatcher";
 import { getParentDirectoryPath, isSamePath } from "../../utils/pathWatch";
@@ -111,6 +111,7 @@ function usePreviewPanelState({
       paneId,
     },
   });
+  const isPanelsDragActive = usePanelsDragActive();
 
   usePanelsDndHandlers({
     onDragEnd: (event) => {
@@ -259,7 +260,7 @@ function usePreviewPanelState({
 
   return {
     mediaPreviewSrc,
-    isDropOver,
+    isDropOver: isDropOver && isPanelsDragActive,
     isLocked,
     isTextEditable,
     isTextPreviewReady,

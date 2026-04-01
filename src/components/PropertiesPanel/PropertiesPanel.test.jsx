@@ -83,6 +83,20 @@ describe("PropertiesPanel", () => {
     });
 
     await act(async () => {
+      await dndCallbacks.onDragStart?.({
+        active: {
+          id: "entry:C:\\notes.txt",
+          data: {
+            current: {
+              sourcePath: "C:\\notes.txt",
+              dragPaths: ["C:\\notes.txt", "C:\\other.txt"],
+            },
+          },
+        },
+      });
+    });
+
+    await act(async () => {
       await dndCallbacks.onDragEnd?.({
         active: {
           id: "entry:C:\\notes.txt",

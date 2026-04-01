@@ -1,6 +1,7 @@
 import path from "node:path";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
+import { useDroppable } from "@dnd-kit/core";
 import PanelsDndLayer from "../PanelsDndLayer";
 import FilesystemPanel from "./FilesystemPanel";
 
@@ -111,6 +112,10 @@ describe("FilesystemPanel", () => {
     dndCallbacks.onDragOver = undefined;
     dndCallbacks.onDragEnd = undefined;
     dndCallbacks.onDragCancel = undefined;
+    useDroppable.mockImplementation(() => ({
+      isOver: false,
+      setNodeRef: vi.fn(),
+    }));
     openConfirmMock.mockReset();
     openConfirmMock.mockResolvedValue(true);
 
@@ -997,6 +1002,46 @@ describe("FilesystemPanel", () => {
       destinationDir: "C:\\Users",
     });
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+  });
+
+  it("does not react to drag-over after external drag has started", async () => {
+    let mockOverId = null;
+    useDroppable.mockImplementation(({ id }) => ({
+      isOver: Boolean(mockOverId) && id === mockOverId,
+      setNodeRef: vi.fn(),
+    }));
+
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof dndCallbacks.onDragOver).toBe("function");
+    });
+
+    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    fireEvent.mouseOut(document, { relatedTarget: null });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("start_external_drag", {
+        paths: ["C:\\notes.txt"],
+      });
+    });
+
+    mockOverId = "panel:C:\\";
+    await act(async () => {
+      dndCallbacks.onDragOver?.({
+        active: { id: "entry:C:\\notes.txt" },
+        over: { id: "panel:C:\\" },
+      });
+    });
+
+    const panel = document.querySelector('section[aria-label="Filesystem panel"]');
+    expect(panel?.className).not.toMatch(/panelDropTarget/);
   });
 
   it("does not move an entry when dropped onto itself", async () => {

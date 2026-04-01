@@ -60,6 +60,18 @@ describe("TerminalPanel", () => {
       expect(typeof dndCallbacks.onDragEnd).toBe("function");
     });
 
+    await dndCallbacks.onDragStart?.({
+      active: {
+        id: "entry:C:\\notes.txt",
+        data: {
+          current: {
+            sourcePath: "C:\\notes.txt",
+            dragPaths: ["C:\\notes.txt", "D:\\My Files\\todo.md"],
+          },
+        },
+      },
+    });
+
     await dndCallbacks.onDragEnd?.({
       active: {
         id: "entry:C:\\notes.txt",

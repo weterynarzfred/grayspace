@@ -166,6 +166,7 @@ function FilesystemPanel({
     [selectedEntryPaths],
   );
   const activeDragPathSet = useMemo(() => new Set(dnd.activeDragPaths), [dnd.activeDragPaths]);
+  const isInternalDragActive = dnd.activeDragPaths.length > 0;
   const activeDragEntries = useMemo(() => flattenedEntries.filter(
     (entry) => activeDragPathSet.has(entry.path),
   ), [activeDragPathSet, flattenedEntries]);
@@ -341,7 +342,7 @@ function FilesystemPanel({
 
   return <section
     ref={setPanelNodeRef}
-    className={`${styles.panelContent} ${isPanelDropOver ? styles.panelDropTarget : ""} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
+    className={`${styles.panelContent} ${isPanelDropOver && isInternalDragActive ? styles.panelDropTarget : ""} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
     aria-label="Filesystem panel"
     onKeyDown={handlePanelKeyDown}
   >

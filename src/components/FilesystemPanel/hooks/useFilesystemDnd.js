@@ -1,10 +1,14 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getBreadcrumbDndId,
   getPanelDndId,
   parseDestinationTarget,
   parseEntryPath,
 } from "../dndIds";
+import {
+  emitExternalFilesystemDragStart,
+  EXTERNAL_FILESYSTEM_DRAG_START_EVENT,
+} from "../../dndExternalEvents";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 
 function useFilesystemDnd({
@@ -65,6 +69,25 @@ function useFilesystemDnd({
     modifierTrackingCleanupRef.current = null;
     copyModifierPressedRef.current = false;
   }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handleExternalDragStart = () => {
+      externalDragStartedRef.current = true;
+      setActiveDragPaths([]);
+      setOwnedDragPaths([]);
+      setActiveDropDestinationPath("");
+      modifierTrackingCleanupRef.current?.();
+      modifierTrackingCleanupRef.current = null;
+      copyModifierPressedRef.current = false;
+    };
+
+    window.addEventListener(EXTERNAL_FILESYSTEM_DRAG_START_EVENT, handleExternalDragStart);
+    return () => {
+      window.removeEventListener(EXTERNAL_FILESYSTEM_DRAG_START_EVENT, handleExternalDragStart);
+    };
+  }, []);
 
   function getEventSourcePath(event) {
     const sourcePathFromData = event?.active?.data?.current?.sourcePath;
@@ -201,6 +224,11 @@ function useFilesystemDnd({
   }
 
   function handleDragOver(event) {
+    if (externalDragStartedRef.current) {
+      setActiveDropDestinationPath("");
+      return;
+    }
+
     const sourcePaths = resolveDragPathsForEvent(event);
     if (sourcePaths.length === 0) {
       setActiveDropDestinationPath("");
@@ -268,6 +296,7 @@ function useFilesystemDnd({
     externalDragStartedRef.current = true;
     clearDragState();
     stopModifierTracking();
+    emitExternalFilesystemDragStart();
   }
 
   function clearExternalDragStart() {
