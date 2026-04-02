@@ -1,0 +1,14 @@
+@use "../../styles/variables" as *;
+
+.popover {
+  position: fixed;
+  z-index: 140;
+  min-width: 14rem;
+  max-width: min(34rem, calc(100vw - 1rem));
+  max-height: min(32rem, calc(100vh - 1rem));
+  overflow: auto;
+  border: 1px solid $border-default;
+  background: $bg-panel;
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.45);
+  color: $text-primary;
+}

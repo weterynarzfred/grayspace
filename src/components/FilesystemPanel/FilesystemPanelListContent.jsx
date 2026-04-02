@@ -80,6 +80,10 @@ export default function FilesystemPanelListContent({
           meta={drive.path}
           isSelected={selectedPathSet.has(drive.path)}
           isDirectory
+          contextKind="folder"
+          contextId={drive.path}
+          contextLabel={drive.name}
+          contextPath={drive.path}
           onClick={() => onDriveSelect?.(drive.path)}
           onDoubleClick={() => onDriveOpen?.(drive.path)}
         />)}

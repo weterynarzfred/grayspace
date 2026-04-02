@@ -1,0 +1,32 @@
+@use "../../styles/variables" as *;
+
+.menu {
+  width: min(24rem, calc(100vw - 1rem));
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.title {
+  margin: 0 0 0.25rem 0;
+  font-size: $font-size-small;
+  color: $text-strong;
+}
+
+.row {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  gap: 0.5rem;
+  font-size: $font-size-small;
+  color: $text-secondary;
+}
+
+.label {
+  color: $text-tertiary;
+}
+
+.path {
+  word-break: break-word;
+}

@@ -32,7 +32,13 @@ export default function WorkspaceTabItem({ tab, isActive, onActivate, onClose })
     isOver ? styles.tabItemDropTarget : "",
   ].filter(Boolean).join(" ");
 
-  return <div ref={setNodeRef} className={className}>
+  return <div
+    ref={setNodeRef}
+    className={className}
+    data-context-kind="tab"
+    data-context-id={tab.tabId}
+    data-context-label={tab.title}
+  >
     <button
       type="button"
       className={styles.tabButton}

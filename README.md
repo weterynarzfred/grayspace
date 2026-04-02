@@ -39,9 +39,9 @@ npm run tauri_dev
 * [x] multiple windows and tabs
 * [x] drag in/out of app
 * [ ] menu bar
-* [ ] custom context menu
+* [ ] custom context menu (scaffold ready)
   * [ ] custom commands, global and per workspace
-* [ ] global config system
+* [ ] global config system (scaffold ready)
 * [x] remove the native window bar at the top, add draggable region and minimize/maximize/close buttons
 * [ ] when closing a tab, first check if any panels don't require a confirmation
 * [ ] when closing a window, first check if tabs don't require a confirmation
@@ -113,7 +113,7 @@ npm run tauri_dev
 
 * [x] load from config
 * [x] run via UI buttons
-* [ ] move toward **command palette-based execution** and remove the panel
+* [ ] move toward **command palette-based execution** and remove the panel (scaffold ready)
 
 ### preview
 

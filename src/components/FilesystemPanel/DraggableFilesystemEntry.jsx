@@ -90,6 +90,10 @@ function DraggableFilesystemEntry({
     isDropTarget={isDropTarget}
     thumbnailSrc={!entry.is_dir ? thumbnailSrc : ""}
     dropDestinationPath={destinationPath}
+    contextKind={entry.is_dir ? "folder" : "file"}
+    contextId={entry.path}
+    contextLabel={entry.name}
+    contextPath={entry.path}
     nestingDepth={nestingDepth}
     showExpander={entry.is_dir}
     isExpanded={isExpanded}

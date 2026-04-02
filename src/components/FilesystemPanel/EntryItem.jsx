@@ -17,6 +17,10 @@ function EntryItem({
   isDropTarget = false,
   thumbnailSrc = "",
   dropDestinationPath = "",
+  contextKind = "",
+  contextId = "",
+  contextLabel = "",
+  contextPath = "",
   buttonRef,
   buttonStyle,
   dndAttributes,
@@ -79,6 +83,10 @@ function EntryItem({
       draggable={isDraggable && !hasDndListeners}
       style={resolvedButtonStyle}
       data-drop-destination-path={dropDestinationPath || undefined}
+      data-context-kind={contextKind || undefined}
+      data-context-id={contextId || undefined}
+      data-context-label={contextLabel || label}
+      data-context-path={contextPath || undefined}
       {...dndAttributes}
       {...dndListeners}
       onClick={onClick}
