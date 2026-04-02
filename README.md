@@ -55,7 +55,7 @@ npm run tauri_dev
 * [ ] UI for workspace config
 * [ ] pane-level config (e.g. styling)
 * [ ] folder preview and thumbnail
-* [ ] add better scrollbars
+* [x] add better scrollbars
 * [ ] persist scroll position on tab switch
 
 ### QOL

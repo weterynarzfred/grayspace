@@ -96,6 +96,7 @@ function WorkspacePanelLayout({
       key={`${tabId || "tab"}::${paneState?.paneId ?? paneId}`}
       className={`${styles.paneViewport} ${isActivePane ? styles.activePane : ""}`}
       data-pane-id={paneId}
+      data-pane-active={isActivePane ? "true" : "false"}
       onPointerDownCapture={() => onPaneActivate?.(tabId, paneId)}
     >
       {splitPreview?.paneId === paneId ? <div

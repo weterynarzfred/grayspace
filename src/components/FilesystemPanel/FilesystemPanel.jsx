@@ -21,6 +21,7 @@ import useVirtualizedEntryWindow from "./hooks/useVirtualizedEntryWindow";
 import useFilesystemPanelLoadMore from "./hooks/useFilesystemPanelLoadMore";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
 import styles from "./FilesystemPanel.module.scss";
+import shellStyles from "../PanelShell.module.scss";
 
 const UP_ENTRY_SELECTION_ID = "__up__";
 const ENTRY_WINDOWING_THRESHOLD = 200;
@@ -38,6 +39,7 @@ function FilesystemPanel({
   filesystemState = undefined,
 }) {
   const panelRef = useRef(null);
+  const panelScrollRef = useRef(null);
   const entryWindowAnchorRef = useRef(null);
   const onCurrentPathChangeRef = useRef(onCurrentPathChange);
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
@@ -81,7 +83,7 @@ function FilesystemPanel({
     tabId,
     paneId,
     onFilesystemStateChange,
-    panelListRef: panelRef,
+    panelListRef: panelScrollRef,
     initialFilesystemState: initialFilesystemStateRef.current,
     currentDrive,
     currentPath,
@@ -115,7 +117,7 @@ function FilesystemPanel({
     itemCount: virtualRowCount,
     rowHeightPx: entryRowHeightPx,
     isEnabled: isEntryWindowingEnabled,
-    scrollContainerRef: panelRef,
+    scrollContainerRef: panelScrollRef,
     listStartAnchorRef: entryWindowAnchorRef,
   });
   const visibleRows = useMemo(() => {
@@ -223,7 +225,7 @@ function FilesystemPanel({
     onCurrentPathChangeRef.current?.(currentPath);
   }, [currentPath]);
   const { handlePanelScroll } = useFilesystemPanelLoadMore({
-    panelRef,
+    panelRef: panelScrollRef,
     handlePanelListScroll,
     scheduleEntryWindowRecompute,
     isEntryWindowingEnabled,
@@ -254,10 +256,8 @@ function FilesystemPanel({
     className={`${styles.panelContent} ${isPanelDropOver && isInternalDragActive ? styles.panelDropTarget : ""} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
     style={panelStyle}
     aria-label="Filesystem panel"
-    data-testid="filesystem-panel-scroll-container"
     data-drop-destination-path={currentPath || undefined}
     onKeyDown={handlePanelKeyDown}
-    onScroll={handlePanelScroll}
   >
     <PanelHeader
       panelType={panelType}
@@ -280,59 +280,67 @@ function FilesystemPanel({
         aria-label={`Toggle icon and thumbnail size. Current: ${thumbnailSizePx}px`}
       >{thumbnailSizePx}px</button>
     </PanelHeader>
-    <FilesystemPanelListContent
-      paneId={paneId}
-      browse={{
-        isBrowsing,
-        isLoadingDrives,
-        isLoadingEntries,
-        error,
-        isEntryOperationInProgress,
-      }}
-      drives={{
-        items: drives,
-        selectedPathSet,
-        onSelect: setSelectedPath,
-        onOpen: selectDrive,
-      }}
-      breadcrumbs={{
-        currentPath,
-        currentDrive,
-        onSelect: handleBreadcrumbSelect,
-        activeDragPaths: effectiveActiveDragPaths,
-        isMovingEntry,
-        getDropIdForPath: dnd.getBreadcrumbDropId,
-        workspaceFolderPathSet,
-      }}
-      upEntry={{
-        destinationPath: upDestinationPath,
-        isSelected: selectedPathSet.has(UP_ENTRY_SELECTION_ID),
-        onSelect: () => setSelectedPath(UP_ENTRY_SELECTION_ID),
-        onOpen: handleGoUpDoubleClick,
-      }}
-      windowing={{
-        entryWindowAnchorRef,
-        isEnabled: isEntryWindowingEnabled,
-        topSpacerHeight,
-        bottomSpacerHeight,
-      }}
-      entries={{
-        rows: renderedRows,
-        selectedEntryPaths,
-        selectedEntryPathSet,
-        activeDragPathSet: effectiveActiveDragPathSet,
-        activeDropDestinationPath: effectiveActiveDropDestinationPath,
-        thumbnailSrcByPath,
-        onToggleDirectoryExpanded: toggleDirectoryExpanded,
-        onEntryClick: handleEntryClick,
-        onEntryDoubleClick: handleEntryDoubleClick,
-        onEntryMiddleClick: handleEntryMiddleClick,
-      }}
-      drag={{
-        activeEntry: activeDragEntry,
-        activeEntries: activeDragEntries,
-      }}
-    />
+    <div
+      ref={panelScrollRef}
+      className={shellStyles.panelBody}
+      data-testid="filesystem-panel-scroll-container"
+      data-panel-scroll="true"
+      onScroll={handlePanelScroll}
+    >
+      <FilesystemPanelListContent
+        paneId={paneId}
+        browse={{
+          isBrowsing,
+          isLoadingDrives,
+          isLoadingEntries,
+          error,
+          isEntryOperationInProgress,
+        }}
+        drives={{
+          items: drives,
+          selectedPathSet,
+          onSelect: setSelectedPath,
+          onOpen: selectDrive,
+        }}
+        breadcrumbs={{
+          currentPath,
+          currentDrive,
+          onSelect: handleBreadcrumbSelect,
+          activeDragPaths: effectiveActiveDragPaths,
+          isMovingEntry,
+          getDropIdForPath: dnd.getBreadcrumbDropId,
+          workspaceFolderPathSet,
+        }}
+        upEntry={{
+          destinationPath: upDestinationPath,
+          isSelected: selectedPathSet.has(UP_ENTRY_SELECTION_ID),
+          onSelect: () => setSelectedPath(UP_ENTRY_SELECTION_ID),
+          onOpen: handleGoUpDoubleClick,
+        }}
+        windowing={{
+          entryWindowAnchorRef,
+          isEnabled: isEntryWindowingEnabled,
+          topSpacerHeight,
+          bottomSpacerHeight,
+        }}
+        entries={{
+          rows: renderedRows,
+          selectedEntryPaths,
+          selectedEntryPathSet,
+          activeDragPathSet: effectiveActiveDragPathSet,
+          activeDropDestinationPath: effectiveActiveDropDestinationPath,
+          thumbnailSrcByPath,
+          onToggleDirectoryExpanded: toggleDirectoryExpanded,
+          onEntryClick: handleEntryClick,
+          onEntryDoubleClick: handleEntryDoubleClick,
+          onEntryMiddleClick: handleEntryMiddleClick,
+        }}
+        drag={{
+          activeEntry: activeDragEntry,
+          activeEntries: activeDragEntries,
+        }}
+      />
+    </div>
   </section>;
 }
 
