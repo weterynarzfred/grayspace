@@ -1,4 +1,5 @@
 import { DragOverlay } from "@dnd-kit/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import WorkspaceTabItem from "./WorkspaceTabItem";
 import styles from "./WorkspaceTabStrip.module.scss";
 
@@ -22,6 +23,19 @@ function WorkspaceTabStrip({
   onDismissNotification = undefined,
   onResolveNotificationConfirm = undefined,
 }) {
+  const handleStartWindowDrag = (event) => {
+    if (event.button !== 0) return;
+    void getCurrentWindow().startDragging();
+  };
+  const handleMinimizeWindow = () => {
+    void getCurrentWindow().minimize();
+  };
+  const handleToggleMaximizeWindow = () => {
+    void getCurrentWindow().toggleMaximize();
+  };
+  const handleCloseWindow = () => {
+    void getCurrentWindow().close();
+  };
   const activeTabTitle = tabs.find(tab => tab.tabId === activeDragTabId)?.title ?? "";
   const hasNotifications = notifications.length > 0;
   const notificationsButtonClassName = `${styles.notificationsButton} ${hasNotifications ? styles.notificationsButtonAlert : ""}`;
@@ -57,6 +71,12 @@ function WorkspaceTabStrip({
   };
 
   return <header className={styles.tabStrip}>
+    <div
+      className={styles.dragRegion}
+      data-tauri-drag-region
+      onMouseDown={handleStartWindowDrag}
+      aria-hidden
+    />
     <div className={styles.tabList}>
       {tabs.map(tab => <WorkspaceTabItem
         key={tab.tabId}
@@ -71,6 +91,12 @@ function WorkspaceTabStrip({
         +
       </button>
     </div>
+    <div
+      className={styles.tabSpacer}
+      data-tauri-drag-region
+      onMouseDown={handleStartWindowDrag}
+      aria-hidden
+    />
     <button
       type="button"
       className={notificationsButtonClassName}
@@ -78,6 +104,26 @@ function WorkspaceTabStrip({
       aria-label={`Notifications (${notifications.length})`}
       data-has-notifications={hasNotifications ? "true" : "false"}
     >!</button>
+    <div className={styles.windowControls}>
+      <button
+        type="button"
+        className={styles.windowControlButton}
+        aria-label="Minimize window"
+        onClick={handleMinimizeWindow}
+      >&#8211;</button>
+      <button
+        type="button"
+        className={styles.windowControlButton}
+        aria-label="Maximize window"
+        onClick={handleToggleMaximizeWindow}
+      >&#9723;</button>
+      <button
+        type="button"
+        className={`${styles.windowControlButton} ${styles.windowControlClose}`}
+        aria-label="Close window"
+        onClick={handleCloseWindow}
+      >&times;</button>
+    </div>
     {isNotificationsOpen ? <div
       className={styles.notificationsFlyout}
     >

@@ -42,7 +42,7 @@ npm run tauri_dev
 * [ ] custom context menu
   * [ ] custom commands, global and per workspace
 * [ ] global config system
-* [ ] remove the native window bar at the top, add draggable region and minimize/maximize/close buttons
+* [x] remove the native window bar at the top, add draggable region and minimize/maximize/close buttons
 * [ ] when closing a tab, first check if any panels don't require a confirmation
 * [ ] when closing a window, first check if tabs don't require a confirmation
 * [ ] trigger thumbnail cache pruning
@@ -82,6 +82,7 @@ npm run tauri_dev
   * [ ] font thumbnails
   * [ ] maybe try integrating providers through the Windows shell?
 * [ ] rename (F2)
+  * [ ] bulk rename
 * [ ] cut / copy / paste
   * [ ] system integration
 * [ ] undo (ctrl+z)
@@ -95,7 +96,6 @@ npm run tauri_dev
 * [x] thumbnail sizing
 * [ ] filters (incl. custom JS)
 * [ ] bulk rename (regex)
-* [ ] performance improvement for huge folders
 * [ ] archive (zip, rar, 7z, etc) operations
 * [ ] add middle click on breadcrumbs, drives, and ".."
 * [ ] figure out what a "main" filesystem panel is, because when there's multiple, they fight

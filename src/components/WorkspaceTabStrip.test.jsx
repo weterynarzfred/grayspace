@@ -1,8 +1,24 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import WorkspaceTabStrip from "./WorkspaceTabStrip";
 
+const { closeMock, minimizeMock, startDraggingMock, toggleMaximizeMock } = vi.hoisted(() => ({
+  closeMock: vi.fn(),
+  minimizeMock: vi.fn(),
+  startDraggingMock: vi.fn(),
+  toggleMaximizeMock: vi.fn(),
+}));
+
 vi.mock("@dnd-kit/core", () => ({
   DragOverlay: ({ children }) => <>{children}</>,
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: () => ({
+    startDragging: startDraggingMock,
+    minimize: minimizeMock,
+    toggleMaximize: toggleMaximizeMock,
+    close: closeMock,
+  }),
 }));
 
 vi.mock("./WorkspaceTabItem", () => ({
@@ -34,6 +50,13 @@ function renderStrip(overrides = {}) {
 }
 
 describe("WorkspaceTabStrip notifications", () => {
+  beforeEach(() => {
+    startDraggingMock.mockReset();
+    minimizeMock.mockReset();
+    toggleMaximizeMock.mockReset();
+    closeMock.mockReset();
+  });
+
   it("toggles notifications flyout and marks the button as active when notifications exist", () => {
     const props = renderStrip({
       notifications: [
@@ -93,5 +116,25 @@ describe("WorkspaceTabStrip notifications", () => {
   it("shows an empty-state message when flyout is open without notifications", () => {
     renderStrip({ isNotificationsOpen: true, notifications: [] });
     expect(screen.getByText("No notifications.")).toBeInTheDocument();
+  });
+
+  it("renders custom window control buttons", () => {
+    renderStrip();
+    fireEvent.click(screen.getByRole("button", { name: "Minimize window" }));
+    expect(minimizeMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Maximize window" }));
+    expect(toggleMaximizeMock).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close window" }));
+    expect(closeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts native window drag when drag region is pressed", () => {
+    renderStrip();
+    const dragRegion = document.querySelector("[data-tauri-drag-region]");
+    expect(dragRegion).toBeTruthy();
+    fireEvent.mouseDown(dragRegion, { button: 0 });
+    expect(startDraggingMock).toHaveBeenCalledTimes(1);
   });
 });

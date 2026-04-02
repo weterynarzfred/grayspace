@@ -60,6 +60,13 @@ export function resolveTabDropAction({
       tabId: activeTabId,
     };
   }
+  if (tabOrder.length <= 1) {
+    return {
+      kind: "noop",
+      sourceWindowId,
+      tabId: activeTabId,
+    };
+  }
 
   return {
     kind: "detach",

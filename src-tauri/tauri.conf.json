@@ -14,7 +14,9 @@
       {
         "title": "grayspace",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "decorations": false,
+        "shadow": false
       }
     ],
     "security": {

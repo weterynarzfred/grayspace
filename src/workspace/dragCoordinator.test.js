@@ -53,7 +53,7 @@ describe("dragCoordinator", () => {
     });
   });
 
-  it("returns detach action when pointer is outside known windows", () => {
+  it("returns noop when pointer is outside known windows and source window has one tab", () => {
     const action = resolveTabDropAction({
       snapshot,
       sourceWindowId: "window-1",
@@ -64,9 +64,26 @@ describe("dragCoordinator", () => {
     });
 
     expect(action).toEqual({
-      kind: "detach",
+      kind: "noop",
       sourceWindowId: "window-1",
       tabId: "tab-1",
+    });
+  });
+
+  it("returns detach action when pointer is outside known windows and source window has many tabs", () => {
+    const action = resolveTabDropAction({
+      snapshot,
+      sourceWindowId: "window-1",
+      tabOrder: ["tab-1", "tab-2"],
+      activeTabId: "tab-2",
+      overId: null,
+      pointer: { x: 1300, y: 900 },
+    });
+
+    expect(action).toEqual({
+      kind: "detach",
+      sourceWindowId: "window-1",
+      tabId: "tab-2",
       point: { x: 1300, y: 900 },
     });
   });

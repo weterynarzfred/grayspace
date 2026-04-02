@@ -6,16 +6,26 @@
   border-bottom: 1px solid $border-default;
   overflow: visible;
   display: flex;
-  align-items: start;
+  align-items: stretch;
+}
+
+.dragRegion {
+  flex: 0 0 2.5rem;
+  border-right: 1px solid $border-default;
+  background: $bg-surface;
+  cursor: move;
+  user-select: none;
 }
 
 .tabList {
+  flex: 0 1 auto;
+  min-width: 0;
+  width: fit-content;
+  max-width: 100%;
   overflow: auto;
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(8rem, 12rem);
-  width: fit-content;
-  max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
@@ -109,7 +119,6 @@
   align-items: center;
   justify-content: center;
   height: 100%;
-  margin-left: auto;
   padding: 0 0.5rem 0.15rem 0.5rem;
   border-left: 1px solid $border-default;
   color: $text-tertiary;
@@ -119,6 +128,42 @@
   &:hover {
     color: $accent-active;
     background: $bg-accent;
+  }
+}
+
+.tabSpacer {
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: move;
+  user-select: none;
+}
+
+.windowControls {
+  display: flex;
+  align-items: stretch;
+}
+
+.windowControlButton {
+  @include interactive-tile;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  border-left: 1px solid $border-default;
+  color: $text-tertiary;
+  font-size: 0.95rem;
+  line-height: 0;
+
+  &:hover {
+    color: $accent-active;
+    background: $bg-accent;
+  }
+}
+
+.windowControlClose {
+  &:hover {
+    color: #fff;
+    background: #a22;
   }
 }
 

@@ -32,6 +32,8 @@ export async function ensureWorkspaceWindowCreated(windowPayload) {
   const nextWindow = new WebviewWindow(windowLabel, {
     url: window.location.href,
     title: "grayspace",
+    decorations: false,
+    shadow: false,
     x: typeof bounds.x === "number" ? bounds.x : undefined,
     y: typeof bounds.y === "number" ? bounds.y : undefined,
     width: typeof bounds.width === "number" ? bounds.width : undefined,
