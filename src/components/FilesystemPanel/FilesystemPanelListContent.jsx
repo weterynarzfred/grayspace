@@ -8,43 +8,65 @@ import styles from "./FilesystemPanel.module.scss";
 
 export default function FilesystemPanelListContent({
   paneId = "",
-  isBrowsing = false,
-  isLoadingDrives = false,
-  isLoadingEntries = false,
-  error = "",
-  drives = [],
-  selectedPathSet = new Set(),
-  onDriveSelect = undefined,
-  onDriveOpen = undefined,
-  currentPath = "",
-  currentDrive = "",
-  onBreadcrumbSelect = undefined,
-  activeDragPaths = [],
-  isMovingEntry = false,
-  getBreadcrumbDropId = undefined,
-  workspaceFolderPathSet = new Set(),
-  upDestinationPath = "",
-  isUpSelected = false,
-  isEntryOperationInProgress = false,
-  onUpSelect = undefined,
-  onUpOpen = undefined,
-  entryWindowAnchorRef = undefined,
-  isEntryWindowingEnabled = false,
-  topSpacerHeight = 0,
-  bottomSpacerHeight = 0,
-  renderedRows = [],
-  selectedEntryPaths = [],
-  selectedEntryPathSet = new Set(),
-  activeDragPathSet = new Set(),
-  activeDropDestinationPath = "",
-  thumbnailSrcByPath = {},
-  onToggleDirectoryExpanded = undefined,
-  onEntryClick = undefined,
-  onEntryDoubleClick = undefined,
-  onEntryMiddleClick = undefined,
-  activeDragEntry = null,
-  activeDragEntries = [],
+  browse = {},
+  drives = {},
+  breadcrumbs = {},
+  upEntry = {},
+  windowing = {},
+  entries = {},
+  drag = {},
 }) {
+  const {
+    isBrowsing = false,
+    isLoadingDrives = false,
+    isLoadingEntries = false,
+    error = "",
+    isEntryOperationInProgress = false,
+  } = browse;
+  const {
+    items: driveItems = [],
+    selectedPathSet = new Set(),
+    onSelect: onDriveSelect = undefined,
+    onOpen: onDriveOpen = undefined,
+  } = drives;
+  const {
+    currentPath = "",
+    currentDrive = "",
+    onSelect: onBreadcrumbSelect = undefined,
+    activeDragPaths = [],
+    isMovingEntry = false,
+    getDropIdForPath: getBreadcrumbDropId = undefined,
+    workspaceFolderPathSet = new Set(),
+  } = breadcrumbs;
+  const {
+    destinationPath: upDestinationPath = "",
+    isSelected: isUpSelected = false,
+    onSelect: onUpSelect = undefined,
+    onOpen: onUpOpen = undefined,
+  } = upEntry;
+  const {
+    entryWindowAnchorRef = undefined,
+    isEnabled: isEntryWindowingEnabled = false,
+    topSpacerHeight = 0,
+    bottomSpacerHeight = 0,
+  } = windowing;
+  const {
+    rows: renderedRows = [],
+    selectedEntryPaths = [],
+    selectedEntryPathSet = new Set(),
+    activeDragPathSet = new Set(),
+    activeDropDestinationPath = "",
+    thumbnailSrcByPath = {},
+    onToggleDirectoryExpanded = undefined,
+    onEntryClick = undefined,
+    onEntryDoubleClick = undefined,
+    onEntryMiddleClick = undefined,
+  } = entries;
+  const {
+    activeEntry: activeDragEntry = null,
+    activeEntries: activeDragEntries = [],
+  } = drag;
+
   return <div
     className={styles.panelList}
     data-testid="filesystem-panel-list"
@@ -52,7 +74,7 @@ export default function FilesystemPanelListContent({
 
     {!isBrowsing && !isLoadingDrives && !error && (
       <ul className={styles.entryList}>
-        {drives.map((drive) => <EntryItem
+        {driveItems.map((drive) => <EntryItem
           key={drive.path}
           label={drive.name}
           meta={drive.path}
@@ -102,21 +124,29 @@ export default function FilesystemPanelListContent({
               <DraggableFilesystemEntry
                 paneId={paneId}
                 entry={row.entry}
-                dropDestinationPath={row.entry.is_dir ? row.entry.path : row.parentPath}
-                selectedEntryPaths={selectedEntryPaths}
-                isSelectedForDrag={selectedEntryPathSet.has(row.entry.path)}
-                isSelected={selectedPathSet.has(row.entry.path)}
-                isMovingEntry={isEntryOperationInProgress}
-                activeDragPathSet={activeDragPathSet}
-                activeDropDestinationPath={activeDropDestinationPath}
-                isWorkspaceFolder={workspaceFolderPathSet.has(row.entry.path)}
-                thumbnailSrc={thumbnailSrcByPath[row.entry.path] ?? ""}
-                nestingDepth={row.depth}
-                isExpanded={row.isExpanded}
-                onToggleExpand={row.entry.is_dir ? () => onToggleDirectoryExpanded?.(row.entry.path) : undefined}
-                onEntryClick={onEntryClick}
-                onEntryDoubleClick={onEntryDoubleClick}
-                onEntryMiddleClick={onEntryMiddleClick}
+                drag={{
+                  dropDestinationPath: row.entry.is_dir ? row.entry.path : row.parentPath,
+                  selectedEntryPaths,
+                  isSelectedForDrag: selectedEntryPathSet.has(row.entry.path),
+                  isMovingEntry: isEntryOperationInProgress,
+                  activeDragPathSet,
+                  activeDropDestinationPath,
+                }}
+                view={{
+                  isSelected: selectedPathSet.has(row.entry.path),
+                  isWorkspaceFolder: workspaceFolderPathSet.has(row.entry.path),
+                  thumbnailSrc: thumbnailSrcByPath[row.entry.path] ?? "",
+                  nestingDepth: row.depth,
+                  isExpanded: row.isExpanded,
+                }}
+                actions={{
+                  onToggleExpand: row.entry.is_dir
+                    ? () => onToggleDirectoryExpanded?.(row.entry.path)
+                    : undefined,
+                  onEntryClick,
+                  onEntryDoubleClick,
+                  onEntryMiddleClick,
+                }}
               />
               {row.isLoadingChildren && (
                 <EntryItem

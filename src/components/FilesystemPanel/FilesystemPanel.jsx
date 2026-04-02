@@ -282,42 +282,56 @@ function FilesystemPanel({
     </PanelHeader>
     <FilesystemPanelListContent
       paneId={paneId}
-      isBrowsing={isBrowsing}
-      isLoadingDrives={isLoadingDrives}
-      isLoadingEntries={isLoadingEntries}
-      error={error}
-      drives={drives}
-      selectedPathSet={selectedPathSet}
-      onDriveSelect={setSelectedPath}
-      onDriveOpen={selectDrive}
-      currentPath={currentPath}
-      currentDrive={currentDrive}
-      onBreadcrumbSelect={handleBreadcrumbSelect}
-      activeDragPaths={effectiveActiveDragPaths}
-      isMovingEntry={isMovingEntry}
-      getBreadcrumbDropId={dnd.getBreadcrumbDropId}
-      workspaceFolderPathSet={workspaceFolderPathSet}
-      upDestinationPath={upDestinationPath}
-      isUpSelected={selectedPathSet.has(UP_ENTRY_SELECTION_ID)}
-      isEntryOperationInProgress={isEntryOperationInProgress}
-      onUpSelect={() => setSelectedPath(UP_ENTRY_SELECTION_ID)}
-      onUpOpen={handleGoUpDoubleClick}
-      entryWindowAnchorRef={entryWindowAnchorRef}
-      isEntryWindowingEnabled={isEntryWindowingEnabled}
-      topSpacerHeight={topSpacerHeight}
-      bottomSpacerHeight={bottomSpacerHeight}
-      renderedRows={renderedRows}
-      selectedEntryPaths={selectedEntryPaths}
-      selectedEntryPathSet={selectedEntryPathSet}
-      activeDragPathSet={effectiveActiveDragPathSet}
-      activeDropDestinationPath={effectiveActiveDropDestinationPath}
-      thumbnailSrcByPath={thumbnailSrcByPath}
-      onToggleDirectoryExpanded={toggleDirectoryExpanded}
-      onEntryClick={handleEntryClick}
-      onEntryDoubleClick={handleEntryDoubleClick}
-      onEntryMiddleClick={handleEntryMiddleClick}
-      activeDragEntry={activeDragEntry}
-      activeDragEntries={activeDragEntries}
+      browse={{
+        isBrowsing,
+        isLoadingDrives,
+        isLoadingEntries,
+        error,
+        isEntryOperationInProgress,
+      }}
+      drives={{
+        items: drives,
+        selectedPathSet,
+        onSelect: setSelectedPath,
+        onOpen: selectDrive,
+      }}
+      breadcrumbs={{
+        currentPath,
+        currentDrive,
+        onSelect: handleBreadcrumbSelect,
+        activeDragPaths: effectiveActiveDragPaths,
+        isMovingEntry,
+        getDropIdForPath: dnd.getBreadcrumbDropId,
+        workspaceFolderPathSet,
+      }}
+      upEntry={{
+        destinationPath: upDestinationPath,
+        isSelected: selectedPathSet.has(UP_ENTRY_SELECTION_ID),
+        onSelect: () => setSelectedPath(UP_ENTRY_SELECTION_ID),
+        onOpen: handleGoUpDoubleClick,
+      }}
+      windowing={{
+        entryWindowAnchorRef,
+        isEnabled: isEntryWindowingEnabled,
+        topSpacerHeight,
+        bottomSpacerHeight,
+      }}
+      entries={{
+        rows: renderedRows,
+        selectedEntryPaths,
+        selectedEntryPathSet,
+        activeDragPathSet: effectiveActiveDragPathSet,
+        activeDropDestinationPath: effectiveActiveDropDestinationPath,
+        thumbnailSrcByPath,
+        onToggleDirectoryExpanded: toggleDirectoryExpanded,
+        onEntryClick: handleEntryClick,
+        onEntryDoubleClick: handleEntryDoubleClick,
+        onEntryMiddleClick: handleEntryMiddleClick,
+      }}
+      drag={{
+        activeEntry: activeDragEntry,
+        activeEntries: activeDragEntries,
+      }}
     />
   </section>;
 }

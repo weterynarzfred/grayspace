@@ -6,22 +6,32 @@ import { getDragEntryDndId, getEntryDndId } from "./dndIds";
 function DraggableFilesystemEntry({
   paneId = "",
   entry,
-  dropDestinationPath = "",
-  selectedEntryPaths = [],
-  isSelectedForDrag = false,
-  isSelected,
-  isMovingEntry,
-  activeDragPathSet = undefined,
-  activeDropDestinationPath = "",
-  isWorkspaceFolder = false,
-  thumbnailSrc = "",
-  nestingDepth = 0,
-  isExpanded = false,
-  onToggleExpand = undefined,
-  onEntryClick,
-  onEntryDoubleClick,
-  onEntryMiddleClick = undefined,
+  drag = {},
+  view = {},
+  actions = {},
 }) {
+  const {
+    dropDestinationPath = "",
+    selectedEntryPaths = [],
+    isSelectedForDrag = false,
+    isMovingEntry = false,
+    activeDragPathSet = undefined,
+    activeDropDestinationPath = "",
+  } = drag;
+  const {
+    isSelected = false,
+    isWorkspaceFolder = false,
+    thumbnailSrc = "",
+    nestingDepth = 0,
+    isExpanded = false,
+  } = view;
+  const {
+    onToggleExpand = undefined,
+    onEntryClick = undefined,
+    onEntryDoubleClick = undefined,
+    onEntryMiddleClick = undefined,
+  } = actions;
+
   const selfDragPath = useMemo(() => [entry.path], [entry.path]);
   const dragPaths = isSelectedForDrag ? selectedEntryPaths : selfDragPath;
   const draggableId = getDragEntryDndId(paneId, entry.path);
