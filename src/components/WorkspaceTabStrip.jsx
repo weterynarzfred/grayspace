@@ -23,10 +23,6 @@ function WorkspaceTabStrip({
   onDismissNotification = undefined,
   onResolveNotificationConfirm = undefined,
 }) {
-  const handleStartWindowDrag = (event) => {
-    if (event.button !== 0) return;
-    void getCurrentWindow().startDragging();
-  };
   const handleMinimizeWindow = () => {
     void getCurrentWindow().minimize();
   };
@@ -74,7 +70,6 @@ function WorkspaceTabStrip({
     <div
       className={styles.dragRegion}
       data-tauri-drag-region
-      onMouseDown={handleStartWindowDrag}
       aria-hidden
     />
     <div className={styles.tabList}>
@@ -94,7 +89,6 @@ function WorkspaceTabStrip({
     <div
       className={styles.tabSpacer}
       data-tauri-drag-region
-      onMouseDown={handleStartWindowDrag}
       aria-hidden
     />
     <button

@@ -1,10 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import WorkspaceTabStrip from "./WorkspaceTabStrip";
 
-const { closeMock, minimizeMock, startDraggingMock, toggleMaximizeMock } = vi.hoisted(() => ({
+const { closeMock, minimizeMock, toggleMaximizeMock } = vi.hoisted(() => ({
   closeMock: vi.fn(),
   minimizeMock: vi.fn(),
-  startDraggingMock: vi.fn(),
   toggleMaximizeMock: vi.fn(),
 }));
 
@@ -14,7 +13,6 @@ vi.mock("@dnd-kit/core", () => ({
 
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: () => ({
-    startDragging: startDraggingMock,
     minimize: minimizeMock,
     toggleMaximize: toggleMaximizeMock,
     close: closeMock,
@@ -51,7 +49,6 @@ function renderStrip(overrides = {}) {
 
 describe("WorkspaceTabStrip notifications", () => {
   beforeEach(() => {
-    startDraggingMock.mockReset();
     minimizeMock.mockReset();
     toggleMaximizeMock.mockReset();
     closeMock.mockReset();
@@ -128,13 +125,5 @@ describe("WorkspaceTabStrip notifications", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close window" }));
     expect(closeMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("starts native window drag when drag region is pressed", () => {
-    renderStrip();
-    const dragRegion = document.querySelector("[data-tauri-drag-region]");
-    expect(dragRegion).toBeTruthy();
-    fireEvent.mouseDown(dragRegion, { button: 0 });
-    expect(startDraggingMock).toHaveBeenCalledTimes(1);
   });
 });
