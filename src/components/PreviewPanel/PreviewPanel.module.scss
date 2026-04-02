@@ -2,8 +2,8 @@
 @use "../../styles/mixins" as *;
 
 .previewLabel {
+  flex: 1 0 auto;
   margin: 0;
-  max-width: 50%;
   overflow: hidden;
   text-overflow: ellipsis;
 }

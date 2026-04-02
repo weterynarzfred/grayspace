@@ -45,7 +45,7 @@ function FilesystemPanel({
   const [thumbnailSizePx, setThumbnailSizePx] = useState(
     initialFilesystemStateRef.current.thumbnailSizePx,
   );
-  const entryRowHeightPx = thumbnailSizePx + 2;
+  const entryRowHeightPx = thumbnailSizePx;
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current, {
     tabId,
     tabWorkspaceRoot,

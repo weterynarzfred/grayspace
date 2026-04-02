@@ -20,13 +20,7 @@
 }
 
 .workspaceCrumb {
-  background: $bg-accent;
   color: $text-accent;
-
-  &:hover {
-    background: $bg-accent-2;
-    border-color: $accent;
-  }
 }
 
 .dropTarget {

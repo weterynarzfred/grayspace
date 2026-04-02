@@ -1,5 +1,6 @@
 import { DragOverlay } from "@dnd-kit/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import appIcon from "../../src-tauri/icons/icon.svg";
 import WorkspaceTabItem from "./WorkspaceTabItem";
 import styles from "./WorkspaceTabStrip.module.scss";
 
@@ -71,7 +72,14 @@ function WorkspaceTabStrip({
       className={styles.dragRegion}
       data-tauri-drag-region
       aria-hidden
-    />
+    >
+      <img
+        src={appIcon}
+        alt=""
+        className={styles.dragRegionIcon}
+        draggable={false}
+      />
+    </div>
     <div className={styles.tabList}>
       {tabs.map(tab => <WorkspaceTabItem
         key={tab.tabId}

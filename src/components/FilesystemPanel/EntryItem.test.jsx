@@ -146,4 +146,19 @@ describe("EntryItem", () => {
 
     expect(handleDoubleClick).not.toHaveBeenCalled();
   });
+
+  it("renders one indent guide per nesting level", () => {
+    render(
+      <EntryItem
+        label="nested-file.txt"
+        meta="File"
+        isFile
+        nestingDepth={3}
+      />,
+    );
+
+    const button = screen.getByRole("button", { name: /nested-file\.txt/i });
+    const guides = button.querySelectorAll("[class*='indentGuide']");
+    expect(guides.length).toBe(3);
+  });
 });

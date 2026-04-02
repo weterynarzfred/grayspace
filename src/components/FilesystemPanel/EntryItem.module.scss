@@ -4,7 +4,7 @@
 .entryItem {
   margin: 0;
   content-visibility: auto;
-  contain-intrinsic-size: var(--entry-row-height, 34px);
+  contain-intrinsic-size: var(--entry-row-height, 32px);
 }
 
 .entryButton {
@@ -14,13 +14,24 @@
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
-  padding: 0 0.5rem 0 calc(var(--entry-depth) * 1rem);
-  min-height: var(--entry-row-height, 34px);
+  padding: 0 0.5rem;
+  min-height: var(--entry-row-height, 32px);
   text-align: left;
+  background: none;
+  transition: 0.15s;
 
   &:hover {
     background: $bg-surface-hover;
     border-color: $border-hover;
+  }
+}
+
+.entryItem {
+  &:nth-of-type(2n) {
+    background-color: #fff1;
+  }
+  &:nth-of-type(2n + 1) {
+    background-color: #0001;
   }
 }
 
@@ -29,6 +40,19 @@
   align-items: center;
   min-width: 0;
   flex: 1 1 auto;
+}
+
+.entryIndent {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-self: stretch;
+  min-height: 100%;
+}
+
+.indentGuide {
+  width: 1rem;
+  min-height: 100%;
+  border-right: 1px solid $border-default;
 }
 
 .entryExpander,
@@ -101,37 +125,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: $font-size-small;
-}
-
-.selected {
-  border-color: $accent;
-  background: $bg-selected;
+  padding-left: 0.2em;
 }
 
 .configEntry {
-  background: $bg-accent;
-  color: $text-accent;
-
-  &:hover,
-  &.selected {
-    background: $bg-accent-2;
-    border-color: $accent;
+  &,
+  :global(.folder-icon) {
+    color: $text-accent-2;
   }
+}
 
-  .entryPath {
-    color: $text-accent;
-  }
-
-  .entryIcon {
-    border-color: $accent;
-    background: $bg-accent-2;
-  }
-
-  .entryThumbnail {
-    border-color: $accent;
-    background: $bg-accent-2;
-  }
+.selected {
+  background: $bg-selected;
+  color: $accent-active;
 }
 
 .file {

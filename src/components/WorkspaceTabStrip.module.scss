@@ -3,6 +3,7 @@
 
 .tabStrip {
   position: relative;
+  height: 22px;
   border-bottom: 1px solid $border-default;
   overflow: visible;
   display: flex;
@@ -10,10 +11,19 @@
 }
 
 .dragRegion {
-  flex: 0 0 2.5rem;
+  flex: 0 0 auto;
   border-right: 1px solid $border-default;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: move;
   user-select: none;
+
+  .dragRegionIcon {
+    width: auto;
+    height: 100%;
+    padding: 2px;
+  }
 }
 
 .tabList {
@@ -55,7 +65,7 @@
 .tabOverlay {
   flex: 1;
   min-width: 0;
-  padding: 0.2rem 0.3rem 0.1rem 0.3rem;
+  padding: 0 0.3rem;
   text-align: left;
   color: $text-primary;
   white-space: nowrap;

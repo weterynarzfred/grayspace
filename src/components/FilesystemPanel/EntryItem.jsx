@@ -36,10 +36,7 @@ function EntryItem({
   const entryIconClassName = useMemo(() => resolveFilesystemIconClass(label, {
     isDirectory,
   }), [isDirectory, label]);
-  const resolvedButtonStyle = {
-    ...(buttonStyle ?? {}),
-    "--entry-depth": nestingDepth,
-  };
+  const resolvedButtonStyle = buttonStyle;
   const buttonClassName = [
     styles.entryButton,
     isSelected ? styles.selected : "",
@@ -96,6 +93,12 @@ function EntryItem({
       onDrop={onDrop}
     >
       <span className={styles.entryMain}>
+        {nestingDepth > 0 ? <span className={styles.entryIndent} aria-hidden>
+          {Array.from({ length: nestingDepth }, (_, index) => <span
+            key={`indent-${index}`}
+            className={styles.indentGuide}
+          />)}
+        </span> : null}
         {showExpander
           ? <span
             className={`${styles.entryExpander} ${isExpanded ? styles.expanded : ""}`}
