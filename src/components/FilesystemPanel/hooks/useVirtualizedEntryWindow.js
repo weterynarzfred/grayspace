@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const DEFAULT_OVERSCAN_ROWS = 10;
+const DEFAULT_MAX_VISIBLE_ROWS = 300;
 
 function clamp(value, minimum, maximum) {
   return Math.max(minimum, Math.min(value, maximum));
@@ -31,6 +32,7 @@ export default function useVirtualizedEntryWindow({
   itemCount = 0,
   rowHeightPx = 29,
   overscanRows = DEFAULT_OVERSCAN_ROWS,
+  maxVisibleRows = DEFAULT_MAX_VISIBLE_ROWS,
   isEnabled = false,
   scrollContainerRef = undefined,
   listStartAnchorRef = undefined,
@@ -60,18 +62,23 @@ export default function useVirtualizedEntryWindow({
     }
 
     const scrollContainer = scrollContainerRef?.current;
-    const listStartAnchor = listStartAnchorRef?.current;
-    if (!scrollContainer || !listStartAnchor) {
+    if (!scrollContainer) {
       setStateIfChanged(getFullWindowState(itemCount));
       return;
     }
+    const listStartAnchor = listStartAnchorRef?.current ?? null;
 
     const scrollTop = Math.max(0, scrollContainer.scrollTop);
     const viewportHeight = Math.max(rowHeightPx, scrollContainer.clientHeight);
-    const startOffset = getOffsetTopWithinContainer(scrollContainer, listStartAnchor);
+    const startOffset = listStartAnchor
+      ? getOffsetTopWithinContainer(scrollContainer, listStartAnchor)
+      : 0;
     const relativeScrollTop = Math.max(0, scrollTop - startOffset);
     const firstVisibleIndex = Math.floor(relativeScrollTop / rowHeightPx);
-    const visibleItemCount = Math.ceil(viewportHeight / rowHeightPx);
+    const visibleItemCount = Math.min(
+      Math.ceil(viewportHeight / rowHeightPx),
+      Math.max(1, maxVisibleRows),
+    );
     const startIndex = clamp(firstVisibleIndex - overscanRows, 0, itemCount);
     const endIndex = clamp(
       firstVisibleIndex + visibleItemCount + overscanRows,
@@ -88,6 +95,7 @@ export default function useVirtualizedEntryWindow({
   }, [
     isEnabled,
     itemCount,
+    maxVisibleRows,
     overscanRows,
     rowHeightPx,
     scrollContainerRef,
@@ -96,11 +104,6 @@ export default function useVirtualizedEntryWindow({
   ]);
 
   const scheduleRecompute = useCallback(() => {
-    if (typeof window === "undefined") {
-      recomputeWindow();
-      return;
-    }
-
     if (frameRef.current !== null) return;
 
     frameRef.current = window.requestAnimationFrame(() => {
@@ -129,14 +132,14 @@ export default function useVirtualizedEntryWindow({
   useEffect(() => {
     if (!isEnabled || typeof ResizeObserver === "undefined") return undefined;
     const scrollContainer = scrollContainerRef?.current;
-    const listStartAnchor = listStartAnchorRef?.current;
-    if (!scrollContainer || !listStartAnchor) return undefined;
+    if (!scrollContainer) return undefined;
 
     const observer = new ResizeObserver(() => {
       scheduleRecompute();
     });
     observer.observe(scrollContainer);
-    observer.observe(listStartAnchor);
+    const listStartAnchor = listStartAnchorRef?.current;
+    if (listStartAnchor) observer.observe(listStartAnchor);
     return () => {
       observer.disconnect();
     };
@@ -144,7 +147,7 @@ export default function useVirtualizedEntryWindow({
 
   useEffect(() => {
     return () => {
-      if (typeof window !== "undefined" && frameRef.current !== null) {
+      if (frameRef.current !== null) {
         window.cancelAnimationFrame(frameRef.current);
       }
     };

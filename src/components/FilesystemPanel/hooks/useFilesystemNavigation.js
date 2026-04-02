@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { normalizeInitialFilesystemState } from "./filesystemNavigationUtils";
 import useFilesystemBrowsingState from "./useFilesystemBrowsingState";
 import useFilesystemEntryOperations from "./useFilesystemEntryOperations";
@@ -33,6 +33,9 @@ export default function useFilesystemNavigation(
     entries,
     isLoadingDrives,
     isLoadingEntries,
+    isLoadingMoreEntries,
+    hasMoreEntries,
+    totalEntriesCount,
     error,
     setCurrentPath,
     setError,
@@ -40,6 +43,7 @@ export default function useFilesystemNavigation(
     selectDrive,
     goUp,
     refreshEntriesForPath,
+    loadMoreEntries,
   } = useFilesystemBrowsingState({
     initialCurrentDrive: initialStateRef.current.currentDrive,
     initialCurrentPath: initialStateRef.current.currentPath,
@@ -50,11 +54,6 @@ export default function useFilesystemNavigation(
   const [isMovingEntry, setIsMovingEntry] = useState(false);
   const [isDeletingEntries, setIsDeletingEntries] = useState(false);
   const [isImportingExternal, setIsImportingExternal] = useState(false);
-
-  const selectedEntryPaths = useMemo(() => {
-    const entryPathSet = new Set(entries.map(entry => entry.path));
-    return selectedPaths.filter(path => entryPathSet.has(path));
-  }, [entries, selectedPaths]);
 
   const selectEntry = useCallback((entryPath, options = {}) => {
     const entryPaths = Array.isArray(options.entryPaths) && options.entryPaths.length > 0
@@ -94,10 +93,12 @@ export default function useFilesystemNavigation(
     currentDrive,
     currentPath,
     selectedPaths,
-    selectedEntryPaths,
     entries,
     isLoadingDrives,
     isLoadingEntries,
+    isLoadingMoreEntries,
+    hasMoreEntries,
+    totalEntriesCount,
     isMovingEntry,
     isDeletingEntries,
     isImportingExternal,
@@ -106,6 +107,7 @@ export default function useFilesystemNavigation(
     setSelectedPath,
     selectDrive,
     goUp,
+    loadMoreEntries,
     selectEntry,
     openEntry,
     moveEntries,

@@ -1,4 +1,5 @@
 use super::{
+  build_directory_page, read_sorted_directory_entries,
   delete_paths, filesystem_get_properties, filesystem_resolve_workspace_folders,
   handle_move_rename_error, import_paths, list_directory, move_path, parent_path,
 };
@@ -40,6 +41,53 @@ fn list_directory_sorts_directories_before_files() {
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
 
   assert_eq!(ordered_names, vec!["A_dir", "b_dir", "A.txt", "b.txt"]);
+}
+
+#[test]
+fn list_directory_page_returns_limited_chunk_with_has_more() {
+  let test_root = unique_test_root("grayspace_page");
+  fs::create_dir_all(&test_root).expect("should create temp root");
+  fs::write(test_root.join("a.txt"), "a").expect("should create a.txt");
+  fs::write(test_root.join("b.txt"), "b").expect("should create b.txt");
+  fs::write(test_root.join("c.txt"), "c").expect("should create c.txt");
+
+  let test_root_path = test_root.to_string_lossy().to_string();
+  let entries = read_sorted_directory_entries(&test_root_path)
+    .expect("read_sorted_directory_entries should succeed");
+  let first_page = build_directory_page(&entries, 0, 2);
+  let second_page = build_directory_page(&entries, 2, 2);
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+
+  assert_eq!(first_page.entries.len(), 2);
+  assert!(first_page.has_more);
+  assert_eq!(second_page.entries.len(), 1);
+  assert!(!second_page.has_more);
+}
+
+#[test]
+fn list_directory_page_preserves_directory_first_sorting() {
+  let test_root = unique_test_root("grayspace_page_sorted");
+  fs::create_dir_all(&test_root).expect("should create temp root");
+  fs::create_dir(test_root.join("b_dir")).expect("should create b_dir");
+  fs::create_dir(test_root.join("A_dir")).expect("should create A_dir");
+  fs::write(test_root.join("b.txt"), "b").expect("should create b.txt");
+  fs::write(test_root.join("A.txt"), "a").expect("should create A.txt");
+
+  let test_root_path = test_root.to_string_lossy().to_string();
+  let all_entries = list_directory(&test_root_path).expect("list_directory should succeed");
+  let expected_names: Vec<String> = all_entries.into_iter().map(|entry| entry.name).collect();
+
+  let entries = read_sorted_directory_entries(&test_root_path)
+    .expect("read_sorted_directory_entries should succeed");
+  let first_page = build_directory_page(&entries, 0, 2);
+  let second_page = build_directory_page(&entries, 2, 2);
+  let mut paged_names: Vec<String> = first_page.entries.into_iter().map(|entry| entry.name).collect();
+  paged_names.extend(second_page.entries.into_iter().map(|entry| entry.name));
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+
+  assert_eq!(paged_names, expected_names);
 }
 
 #[cfg(target_os = "windows")]

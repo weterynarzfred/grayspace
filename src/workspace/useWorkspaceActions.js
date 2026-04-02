@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { getErrorMessage } from "./appRuntime";
 import {
   workspaceCloseTab,
@@ -47,6 +47,15 @@ export default function useWorkspaceActions({
   setRuntimeError,
 }) {
   const paneDirtyStateRef = useRef(new Map());
+  const terminalCwdByTabRef = useRef(new Map());
+  const activeTabId = activeTab?.tabId ?? "";
+  const activeTabTerminalCwdHint = activeTab?.terminalCwdHint ?? "";
+
+  useEffect(() => {
+    if (!activeTabId) return;
+    terminalCwdByTabRef.current.set(activeTabId, activeTabTerminalCwdHint);
+  }, [activeTabId, activeTabTerminalCwdHint]);
+
   const showActionErrorNotification = useCallback((message) => {
     pushNotification?.({
       title: "Action failed",
@@ -90,7 +99,14 @@ export default function useWorkspaceActions({
   const handleSetTabCwdHint = useCallback((tabId, paneId, path) => {
     if (!tabId) return;
     const nextPath = path ?? "";
-    workspaceSetTabTerminalCwd(tabId, nextPath).catch(handleTabScopedCommandError);
+    const previousPath = terminalCwdByTabRef.current.get(tabId);
+    if (previousPath !== nextPath) {
+      terminalCwdByTabRef.current.set(tabId, nextPath);
+      workspaceSetTabTerminalCwd(tabId, nextPath).catch((error) => {
+        terminalCwdByTabRef.current.delete(tabId);
+        handleTabScopedCommandError(error);
+      });
+    }
 
     const isActivePane = activeTab?.tabId === tabId
       && (!paneId || !activeTab?.activePaneId || paneId === activeTab.activePaneId);

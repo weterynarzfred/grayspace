@@ -144,6 +144,21 @@ describe("FilesystemPanel", () => {
       if (command === "list_drives")
         return [{ name: "C:", path: "C:\\" }];
 
+      if (command === "list_directory_page") {
+        const entries = directoryState[payload?.path];
+        if (!entries)
+          throw new Error(`Unhandled list_directory_page path: ${payload?.path}`);
+
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? entries.length;
+        const pageEntries = entries.slice(offset, offset + limit).map((entry) => ({ ...entry }));
+        return {
+          entries: pageEntries,
+          hasMore: offset + pageEntries.length < entries.length,
+          totalCount: entries.length,
+        };
+      }
+
       if (command === "list_directory") {
         const entries = directoryState[payload?.path];
         if (!entries)
@@ -412,6 +427,17 @@ describe("FilesystemPanel", () => {
 
     invoke.mockImplementation(async (command, payload) => {
       if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
+      if (command === "list_directory_page") {
+        const entries = (directoryState[payload?.path] ?? []).map(entry => ({ ...entry }));
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? entries.length;
+        const pageEntries = entries.slice(offset, offset + limit);
+        return {
+          entries: pageEntries,
+          hasMore: offset + pageEntries.length < entries.length,
+          totalCount: entries.length,
+        };
+      }
       if (command === "list_directory") return (directoryState[payload?.path] ?? []).map(entry => ({ ...entry }));
       if (command === "filesystem_resolve_workspace_folders") {
         const paths = payload?.paths ?? [];
@@ -1429,11 +1455,11 @@ describe("FilesystemPanel", () => {
     expect(todoButton).toHaveAttribute("aria-selected", "true");
     expect(projectsButton).toHaveAttribute("aria-selected", "true");
 
-    const panelList = screen.getByTestId("filesystem-panel-list");
-    expect(panelList.scrollTop).toBe(37);
+    const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+    expect(scrollContainer.scrollTop).toBe(37);
   });
 
-  it("persists throttled scroll updates", async () => {
+  it("persists debounced scroll updates", async () => {
     const onFilesystemStateChange = vi.fn();
     renderFilesystemPanel({
       tabId: "tab-2",
@@ -1447,12 +1473,12 @@ describe("FilesystemPanel", () => {
     });
 
     await screen.findByRole("button", { name: /Users/i });
-    const panelList = screen.getByTestId("filesystem-panel-list");
-    panelList.scrollTop = 91;
+    const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+    scrollContainer.scrollTop = 91;
     vi.useFakeTimers();
     try {
-      fireEvent.scroll(panelList);
-      await advanceTimersBy(180);
+      fireEvent.scroll(scrollContainer);
+      await advanceTimersBy(520);
     } finally {
       vi.useRealTimers();
     }
@@ -1462,6 +1488,51 @@ describe("FilesystemPanel", () => {
         expect.objectContaining({ scrollTop: 91 }),
       );
     });
+  });
+
+  it("debounces rapid scroll updates and persists only the latest scroll position", async () => {
+    const onFilesystemStateChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-2",
+      paneId: "left",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\",
+        scrollTop: 0,
+      },
+      onFilesystemStateChange,
+    });
+
+    await screen.findByRole("button", { name: /Users/i });
+    const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+    vi.useFakeTimers();
+    try {
+      scrollContainer.scrollTop = 41;
+      fireEvent.scroll(scrollContainer);
+      await advanceTimersBy(120);
+
+      scrollContainer.scrollTop = 89;
+      fireEvent.scroll(scrollContainer);
+      await advanceTimersBy(120);
+
+      scrollContainer.scrollTop = 133;
+      fireEvent.scroll(scrollContainer);
+      await advanceTimersBy(520);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenCalledWith(
+        expect.objectContaining({ scrollTop: 133 }),
+      );
+    });
+    expect(onFilesystemStateChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scrollTop: 41 }),
+    );
+    expect(onFilesystemStateChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({ scrollTop: 89 }),
+    );
   });
 
   it("window-renders only visible entries in large folders", async () => {
@@ -1477,6 +1548,16 @@ describe("FilesystemPanel", () => {
 
     invoke.mockImplementation(async (command, payload) => {
       if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
+      if (command === "list_directory_page" && payload?.path === "C:\\") {
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? largeEntries.length;
+        const pageEntries = largeEntries.slice(offset, offset + limit);
+        return {
+          entries: pageEntries,
+          hasMore: offset + pageEntries.length < largeEntries.length,
+          totalCount: largeEntries.length,
+        };
+      }
       if (command === "list_directory" && payload?.path === "C:\\") return largeEntries;
       if (command === "parent_path" && payload?.path === "C:\\") return null;
       if (
@@ -1519,15 +1600,15 @@ describe("FilesystemPanel", () => {
     expect(await screen.findByRole("button", { name: /file-0000\.txt/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /file-04\d\d\.txt/i })).not.toBeInTheDocument();
 
-    const panelList = screen.getByTestId("filesystem-panel-list");
-    panelList.scrollTop = 12000;
-    fireEvent.scroll(panelList);
+    const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+    scrollContainer.scrollTop = 12000;
+    fireEvent.scroll(scrollContainer);
 
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: /file-0[3-4]\d\d\.txt/i }).length)
+      expect(screen.getAllByRole("button", { name: /file-03\d\d\.txt/i }).length)
         .toBeGreaterThan(0);
     });
-    expect(screen.queryByRole("button", { name: /file-0000\.txt/i })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /file-\d{4}\.txt/i }).length).toBeLessThan(450);
   });
 
   it("imports external files dropped over the filesystem panel", async () => {

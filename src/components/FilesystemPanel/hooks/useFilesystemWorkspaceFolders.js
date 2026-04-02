@@ -1,17 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useState } from "react";
-
-function mergeWorkspaceByPath(previous, updates) {
-  let hasChanged = false;
-  const next = { ...previous };
-  Object.entries(updates).forEach(([path, isWorkspace]) => {
-    const normalizedValue = Boolean(isWorkspace);
-    if (next[path] === normalizedValue) return;
-    next[path] = normalizedValue;
-    hasChanged = true;
-  });
-  return hasChanged ? next : previous;
-}
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export default function useFilesystemWorkspaceFolders({ entries = [], paths = [] }) {
   const directoryPaths = useMemo(() => {
@@ -27,55 +15,46 @@ export default function useFilesystemWorkspaceFolders({ entries = [], paths = []
     return Array.from(trackedPathSet);
   }, [entries, paths]);
   const [workspaceByPath, setWorkspaceByPath] = useState({});
-
-  useEffect(() => {
-    const trackedPathSet = new Set(directoryPaths);
-    setWorkspaceByPath(previous => {
-      const next = {};
-      let hasChanged = false;
-      Object.entries(previous).forEach(([path, isWorkspace]) => {
-        if (!trackedPathSet.has(path)) {
-          hasChanged = true;
-          return;
-        }
-        next[path] = isWorkspace;
-      });
-      return hasChanged ? next : previous;
-    });
-  }, [directoryPaths]);
+  const pendingPathSetRef = useRef(new Set());
 
   const unresolvedPaths = useMemo(() => directoryPaths.filter(
-    path => workspaceByPath[path] === undefined,
+    path => workspaceByPath[path] === undefined && !pendingPathSetRef.current.has(path),
   ), [directoryPaths, workspaceByPath]);
 
   useEffect(() => {
     if (unresolvedPaths.length === 0) return undefined;
+    unresolvedPaths.forEach(path => pendingPathSetRef.current.add(path));
 
-    let isCancelled = false;
-    const fallback = {};
-    unresolvedPaths.forEach(path => {
-      fallback[path] = false;
-    });
+    function updateWorkspaceFlags(nextFlags = {}) {
+      setWorkspaceByPath((previous) => {
+        const next = { ...previous };
+        let hasChanged = false;
+
+        unresolvedPaths.forEach((path) => {
+          const nextValue = Boolean(nextFlags[path]);
+          if (next[path] === nextValue) return;
+          next[path] = nextValue;
+          hasChanged = true;
+        });
+
+        return hasChanged ? next : previous;
+      });
+    }
 
     async function resolveWorkspaceFolders() {
       try {
         const resolved = await invoke("filesystem_resolve_workspace_folders", {
           paths: unresolvedPaths,
         });
-        if (isCancelled || typeof resolved !== "object" || resolved === null) return;
-
-        setWorkspaceByPath(previous => mergeWorkspaceByPath(previous, resolved));
+        updateWorkspaceFlags(resolved ?? {});
       } catch {
-        if (isCancelled) return;
-        setWorkspaceByPath(previous => mergeWorkspaceByPath(previous, fallback));
+        updateWorkspaceFlags({});
+      } finally {
+        unresolvedPaths.forEach(path => pendingPathSetRef.current.delete(path));
       }
     }
 
     void resolveWorkspaceFolders();
-
-    return () => {
-      isCancelled = true;
-    };
   }, [unresolvedPaths]);
 
   return useMemo(() => {

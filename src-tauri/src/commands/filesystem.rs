@@ -14,11 +14,19 @@ pub struct DriveInfo {
   path: String,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct FsEntry {
   name: String,
   path: String,
   is_dir: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsDirectoryPage {
+  entries: Vec<FsEntry>,
+  has_more: bool,
+  total_count: usize,
 }
 
 #[derive(Serialize)]
@@ -36,6 +44,11 @@ const FILESYSTEM_WATCH_EVENT: &str = "filesystem-watch-event";
 #[derive(Default)]
 pub struct FilesystemWatchState {
   watchers: Mutex<HashMap<String, RecommendedWatcher>>,
+}
+
+#[derive(Default)]
+pub struct FilesystemDirectoryListingState {
+  listings: Mutex<HashMap<String, Vec<FsEntry>>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -63,6 +76,41 @@ fn is_watch_event_relevant(kind: &EventKind) -> bool {
 
 fn sort_entries(entries: &mut [FsEntry]) {
   entries.sort_by_cached_key(|entry| (!entry.is_dir, entry.name.to_lowercase()));
+}
+
+fn read_sorted_directory_entries(path: &str) -> Result<Vec<FsEntry>, String> {
+  let mut entries = Vec::new();
+  let read_dir = fs::read_dir(path).map_err(|error| error.to_string())?;
+  for entry_result in read_dir {
+    let dir_entry = entry_result.map_err(|error| error.to_string())?;
+    let entry_path = dir_entry.path();
+    let name = dir_entry.file_name().to_string_lossy().to_string();
+    let is_dir = dir_entry
+      .file_type()
+      .map_err(|error| error.to_string())?
+      .is_dir();
+
+    entries.push(FsEntry {
+      name,
+      path: entry_path.to_string_lossy().to_string(),
+      is_dir,
+    });
+  }
+
+  sort_entries(&mut entries);
+  Ok(entries)
+}
+
+fn build_directory_page(entries: &[FsEntry], offset: usize, limit: usize) -> FsDirectoryPage {
+  let normalized_limit = limit.clamp(1, 1024);
+  let start = offset.min(entries.len());
+  let end = (start + normalized_limit).min(entries.len());
+
+  FsDirectoryPage {
+    entries: entries[start..end].to_vec(),
+    has_more: end < entries.len(),
+    total_count: entries.len(),
+  }
 }
 
 fn infer_entry_type(path: &Path, is_dir: bool) -> String {
@@ -143,28 +191,43 @@ pub fn list_drives() -> Vec<DriveInfo> {
 
 #[tauri::command]
 pub fn list_directory(path: &str) -> Result<Vec<FsEntry>, String> {
-  let mut entries = Vec::new();
+  read_sorted_directory_entries(path)
+}
 
-  let read_dir = fs::read_dir(path).map_err(|error| error.to_string())?;
-  for entry in read_dir {
-    let dir_entry = entry.map_err(|error| error.to_string())?;
-    let entry_path = dir_entry.path();
-    let name = dir_entry.file_name().to_string_lossy().to_string();
-    let is_dir = dir_entry
-      .file_type()
-      .map_err(|error| error.to_string())?
-      .is_dir();
-
-    entries.push(FsEntry {
-      name,
-      path: entry_path.to_string_lossy().to_string(),
-      is_dir,
-    });
+#[tauri::command]
+pub fn list_directory_page(
+  state: State<FilesystemDirectoryListingState>,
+  path: &str,
+  offset: usize,
+  limit: usize,
+  refresh: Option<bool>,
+) -> Result<FsDirectoryPage, String> {
+  let normalized_path = path.trim();
+  if normalized_path.is_empty() {
+    return Err("A path is required.".to_string());
   }
 
-  sort_entries(&mut entries);
+  let cache_key = normalized_path.to_string();
+  let should_refresh = refresh.unwrap_or(false);
+  let mut listings = state
+    .listings
+    .lock()
+    .map_err(|_| "Failed to access directory listing cache.".to_string())?;
 
-  Ok(entries)
+  if should_refresh {
+    listings.remove(&cache_key);
+  }
+
+  if !listings.contains_key(&cache_key) {
+    let entries = read_sorted_directory_entries(normalized_path)?;
+    listings.insert(cache_key.clone(), entries);
+  }
+
+  let cached_entries = listings
+    .get(&cache_key)
+    .expect("directory listing should be cached after insertion");
+
+  Ok(build_directory_page(cached_entries, offset, limit))
 }
 
 #[tauri::command]

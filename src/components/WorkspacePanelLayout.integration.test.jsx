@@ -174,6 +174,25 @@ describe("WorkspacePanelLayout integration", () => {
         return [{ name: "C:", path: "C:\\" }];
       }
 
+      if (command === "list_directory_page") {
+        let entries = [];
+        if (payload?.path === "C:\\") {
+          entries = [
+            { name: "Users", path: "C:\\Users", is_dir: true },
+            { name: "notes.txt", path: "C:\\notes.txt", is_dir: false },
+            { name: "draft.md", path: "C:\\draft.md", is_dir: false },
+          ];
+        }
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? entries.length;
+        const pageEntries = entries.slice(offset, offset + limit);
+        return {
+          entries: pageEntries,
+          hasMore: offset + pageEntries.length < entries.length,
+          totalCount: entries.length,
+        };
+      }
+
       if (command === "list_directory") {
         if (payload?.path === "C:\\") {
           return [

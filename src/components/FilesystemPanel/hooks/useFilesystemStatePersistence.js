@@ -4,7 +4,7 @@ import {
   normalizeFilesystemPaneState,
 } from "../filesystemPaneState";
 
-const SCROLL_PERSIST_DEBOUNCE_MS = 120;
+const SCROLL_PERSIST_DEBOUNCE_MS = 450;
 
 export default function useFilesystemStatePersistence({
   tabId = "",
@@ -21,11 +21,40 @@ export default function useFilesystemStatePersistence({
   const initialFilesystemStateRef = useRef(
     normalizeFilesystemPaneState(initialFilesystemState),
   );
+  const onFilesystemStateChangeRef = useRef(onFilesystemStateChange);
   const lastPersistedStateRef = useRef(initialFilesystemStateRef.current);
+  const latestStateRef = useRef({
+    currentDrive,
+    currentPath,
+    selectedPaths,
+    expandedPaths,
+    thumbnailSizePx,
+  });
   const latestScrollTopRef = useRef(initialFilesystemStateRef.current.scrollTop);
   const scrollPersistTimeoutRef = useRef(null);
 
+  useEffect(() => {
+    onFilesystemStateChangeRef.current = onFilesystemStateChange;
+  }, [onFilesystemStateChange]);
+
+  useEffect(() => {
+    latestStateRef.current = {
+      currentDrive,
+      currentPath,
+      selectedPaths,
+      expandedPaths,
+      thumbnailSizePx,
+    };
+  }, [
+    currentDrive,
+    currentPath,
+    expandedPaths,
+    selectedPaths,
+    thumbnailSizePx,
+  ]);
+
   const persistFilesystemState = useCallback((nextState) => {
+    const onFilesystemStateChange = onFilesystemStateChangeRef.current;
     if (!onFilesystemStateChange || !tabId || !paneId) return;
 
     const normalizedState = normalizeFilesystemPaneState(nextState);
@@ -41,25 +70,19 @@ export default function useFilesystemStatePersistence({
 
     lastPersistedStateRef.current = normalizedState;
     onFilesystemStateChange(normalizedState);
-  }, [onFilesystemStateChange, paneId, tabId]);
+  }, [paneId, tabId]);
 
   const persistCurrentFilesystemState = useCallback(() => {
+    const latestState = latestStateRef.current;
     persistFilesystemState({
-      currentDrive,
-      currentPath,
-      selectedPaths,
-      expandedPaths,
+      currentDrive: latestState.currentDrive,
+      currentPath: latestState.currentPath,
+      selectedPaths: latestState.selectedPaths,
+      expandedPaths: latestState.expandedPaths,
       scrollTop: latestScrollTopRef.current,
-      thumbnailSizePx,
+      thumbnailSizePx: latestState.thumbnailSizePx,
     });
-  }, [
-    currentDrive,
-    currentPath,
-    expandedPaths,
-    persistFilesystemState,
-    selectedPaths,
-    thumbnailSizePx,
-  ]);
+  }, [persistFilesystemState]);
 
   useEffect(() => {
     if (!panelListRef?.current) return;
@@ -70,7 +93,14 @@ export default function useFilesystemStatePersistence({
 
   useEffect(() => {
     persistCurrentFilesystemState();
-  }, [persistCurrentFilesystemState]);
+  }, [
+    currentDrive,
+    currentPath,
+    expandedPaths,
+    persistCurrentFilesystemState,
+    selectedPaths,
+    thumbnailSizePx,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -86,7 +116,10 @@ export default function useFilesystemStatePersistence({
     const nextScrollTop = Math.max(0, Math.round(event.currentTarget.scrollTop));
     latestScrollTopRef.current = nextScrollTop;
 
-    if (scrollPersistTimeoutRef.current) return;
+    if (scrollPersistTimeoutRef.current) {
+      clearTimeout(scrollPersistTimeoutRef.current);
+      scrollPersistTimeoutRef.current = null;
+    }
     scrollPersistTimeoutRef.current = setTimeout(() => {
       scrollPersistTimeoutRef.current = null;
       persistCurrentFilesystemState();

@@ -100,6 +100,7 @@ npm run tauri_dev
 * [ ] add middle click on breadcrumbs, drives, and ".."
 * [ ] figure out what a "main" filesystem panel is, because when there's multiple, they fight
 * [ ] deselect file on empty space click
+* [x] virtualize file lists in large folders
 
 ### terminal (ctrl + shift + `)
 

@@ -36,19 +36,31 @@ function createDeferred() {
 function mockFilesystemInvoke({
   parentPathForUsers = "C:\\",
 } = {}) {
+  const directoryState = {
+    "C:\\": [{ name: "Users", path: "C:\\Users", is_dir: true }],
+    "C:\\Users": [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }],
+  };
+
   invoke.mockImplementation(async (command, payload) => {
     if (command === "list_drives") {
       return [{ name: "C:", path: "C:\\" }];
     }
 
+    if (command === "list_directory_page") {
+      const path = payload?.path ?? "";
+      const entries = directoryState[path] ?? [];
+      const offset = payload?.offset ?? 0;
+      const limit = payload?.limit ?? entries.length;
+      const pageEntries = entries.slice(offset, offset + limit);
+      return {
+        entries: pageEntries,
+        hasMore: offset + pageEntries.length < entries.length,
+        totalCount: entries.length,
+      };
+    }
+
     if (command === "list_directory") {
-      if (payload?.path === "C:\\")
-        return [{ name: "Users", path: "C:\\Users", is_dir: true }];
-
-      if (payload?.path === "C:\\Users")
-        return [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }];
-
-      return [];
+      return directoryState[payload?.path ?? ""] ?? [];
     }
 
     if (command === "parent_path") {
@@ -111,20 +123,28 @@ describe("useFilesystemNavigation", () => {
       if (command === "list_drives")
         return [{ name: "C:", path: "C:\\" }];
 
-      if (command === "list_directory") {
+      if (command === "list_directory_page") {
         const currentCount = (listDirectoryCallCount.get(payload?.path ?? "") ?? 0) + 1;
         listDirectoryCallCount.set(payload?.path ?? "", currentCount);
 
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? 120;
         if (payload?.path === "C:\\") {
-          if (currentCount === 1)
-            return [{ name: "Users", path: "C:\\Users", is_dir: true }];
-          return [
+          const entries = currentCount === 1
+            ? [{ name: "Users", path: "C:\\Users", is_dir: true }]
+            : [
             { name: "Users", path: "C:\\Users", is_dir: true },
             { name: "new.txt", path: "C:\\new.txt", is_dir: false },
           ];
+          const pageEntries = entries.slice(offset, offset + limit);
+          return {
+            entries: pageEntries,
+            hasMore: offset + pageEntries.length < entries.length,
+            totalCount: entries.length,
+          };
         }
 
-        return [];
+        return { entries: [], hasMore: false, totalCount: 0 };
       }
 
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
@@ -241,6 +261,18 @@ describe("useFilesystemNavigation", () => {
       if (command === "list_drives")
         return [{ name: "C:", path: "C:\\" }];
 
+      if (command === "list_directory_page") {
+        const entries = (directoryState[payload?.path] ?? []).map((entry) => ({ ...entry }));
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? entries.length;
+        const pageEntries = entries.slice(offset, offset + limit);
+        return {
+          entries: pageEntries,
+          hasMore: offset + pageEntries.length < entries.length,
+          totalCount: entries.length,
+        };
+      }
+
       if (command === "list_directory")
         return (directoryState[payload?.path] ?? []).map((entry) => ({ ...entry }));
 
@@ -276,7 +308,7 @@ describe("useFilesystemNavigation", () => {
       result.current.selectEntry("C:\\todo.txt");
     });
 
-    expect(result.current.selectedEntryPaths).toEqual(["C:\\todo.txt"]);
+    expect(result.current.selectedPaths).toEqual(["C:\\todo.txt"]);
 
     await act(async () => {
       await result.current.deleteEntries(["C:\\todo.txt"]);
@@ -285,7 +317,7 @@ describe("useFilesystemNavigation", () => {
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users"]);
     });
-    expect(result.current.selectedEntryPaths).toEqual([]);
+    expect(result.current.selectedPaths).toEqual([]);
     expect(invoke).toHaveBeenCalledWith("delete_paths", {
       paths: ["C:\\todo.txt"],
     });
@@ -299,21 +331,36 @@ describe("useFilesystemNavigation", () => {
       if (command === "list_drives")
         return [{ name: "C:", path: "C:\\" }];
 
-      if (command === "list_directory") {
+      if (command === "list_directory_page") {
         const path = payload?.path ?? "";
         const nextCount = (listDirectoryCallCount.get(path) ?? 0) + 1;
         listDirectoryCallCount.set(path, nextCount);
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? 120;
 
         if (path === "C:\\Users") {
-          if (nextCount === 1)
-            return [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }];
-          return staleRefresh.promise;
+          const entries = nextCount === 1
+            ? [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }]
+            : await staleRefresh.promise;
+          const pageEntries = entries.slice(offset, offset + limit);
+          return {
+            entries: pageEntries,
+            hasMore: offset + pageEntries.length < entries.length,
+            totalCount: entries.length,
+          };
         }
 
-        if (path === "C:\\Projects")
-          return [{ name: "readme.md", path: "C:\\Projects\\readme.md", is_dir: false }];
+        if (path === "C:\\Projects") {
+          const entries = [{ name: "readme.md", path: "C:\\Projects\\readme.md", is_dir: false }];
+          const pageEntries = entries.slice(offset, offset + limit);
+          return {
+            entries: pageEntries,
+            hasMore: false,
+            totalCount: entries.length,
+          };
+        }
 
-        return [];
+        return { entries: [], hasMore: false, totalCount: 0 };
       }
 
       if (command === "move_path")
@@ -376,21 +423,36 @@ describe("useFilesystemNavigation", () => {
       if (command === "list_drives")
         return [{ name: "C:", path: "C:\\" }];
 
-      if (command === "list_directory") {
+      if (command === "list_directory_page") {
         const path = payload?.path ?? "";
         const nextCount = (listDirectoryCallCount.get(path) ?? 0) + 1;
         listDirectoryCallCount.set(path, nextCount);
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? 120;
 
         if (path === "C:\\Users") {
-          if (nextCount === 1)
-            return [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }];
-          return staleRefresh.promise;
+          const entries = nextCount === 1
+            ? [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }]
+            : await staleRefresh.promise;
+          const pageEntries = entries.slice(offset, offset + limit);
+          return {
+            entries: pageEntries,
+            hasMore: offset + pageEntries.length < entries.length,
+            totalCount: entries.length,
+          };
         }
 
-        if (path === "C:\\Projects")
-          return [{ name: "readme.md", path: "C:\\Projects\\readme.md", is_dir: false }];
+        if (path === "C:\\Projects") {
+          const entries = [{ name: "readme.md", path: "C:\\Projects\\readme.md", is_dir: false }];
+          const pageEntries = entries.slice(offset, offset + limit);
+          return {
+            entries: pageEntries,
+            hasMore: false,
+            totalCount: entries.length,
+          };
+        }
 
-        return [];
+        return { entries: [], hasMore: false, totalCount: 0 };
       }
 
       if (command === "import_paths")
@@ -440,5 +502,59 @@ describe("useFilesystemNavigation", () => {
     expect(result.current.entries.map((entry) => entry.path)).toEqual([
       "C:\\Projects\\readme.md",
     ]);
+  });
+
+  it("loads additional directory pages on demand", async () => {
+    const pagedEntries = [
+      { name: "a.txt", path: "C:\\a.txt", is_dir: false },
+      { name: "b.txt", path: "C:\\b.txt", is_dir: false },
+      { name: "c.txt", path: "C:\\c.txt", is_dir: false },
+    ];
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives")
+        return [{ name: "C:", path: "C:\\" }];
+
+      if (command === "list_directory_page") {
+        const offset = payload?.offset ?? 0;
+        const page = pagedEntries.slice(offset, offset + 2);
+        return {
+          entries: page,
+          hasMore: offset + page.length < pagedEntries.length,
+          totalCount: pagedEntries.length,
+        };
+      }
+
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
+        return null;
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useFilesystemNavigation({
+      currentDrive: "C:\\",
+      currentPath: "C:\\",
+    }));
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual([
+        "C:\\a.txt",
+        "C:\\b.txt",
+      ]);
+      expect(result.current.hasMoreEntries).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.loadMoreEntries();
+    });
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual([
+        "C:\\a.txt",
+        "C:\\b.txt",
+        "C:\\c.txt",
+      ]);
+      expect(result.current.hasMoreEntries).toBe(false);
+    });
   });
 });

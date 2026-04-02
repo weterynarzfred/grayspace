@@ -6,6 +6,7 @@ import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 const THUMBNAIL_UPDATE_EVENT = "thumbnail:update";
 const DEFAULT_THUMBNAIL_SIZE_HINT_PX = 32;
 const LARGER_THUMBNAIL_BUCKET_MIN_SIZE_PX = 128;
+const THUMBNAIL_REQUEST_DEBOUNCE_MS = 40;
 
 function resolveThumbnailBucketPx(sizeHintPx) {
   return sizeHintPx >= LARGER_THUMBNAIL_BUCKET_MIN_SIZE_PX ? 256 : 64;
@@ -58,7 +59,6 @@ function applyThumbnailResults(previousMap, results, trackedPathSet) {
 
 export default function useFilesystemThumbnails({
   currentPath = "",
-  entries = [],
   visibleEntries = [],
   thumbnailSizePx = DEFAULT_THUMBNAIL_SIZE_HINT_PX,
 }) {
@@ -69,19 +69,14 @@ export default function useFilesystemThumbnails({
     () => resolveThumbnailBucketPx(thumbnailSizePx),
     [thumbnailSizePx],
   );
-  const allFilePaths = useMemo(() => getEntryFilePaths(entries), [entries]);
   const visibleFilePaths = useMemo(() => getEntryFilePaths(visibleEntries), [visibleEntries]);
-  const visibleFilePathsSignature = useMemo(
-    () => visibleFilePaths.join("\n"),
-    [visibleFilePaths],
-  );
 
   useEffect(() => {
     latestPathRef.current = currentPath;
   }, [currentPath]);
 
   useEffect(() => {
-    const trackedPathSet = new Set(allFilePaths);
+    const trackedPathSet = new Set(visibleFilePaths);
     trackedPathSetRef.current = trackedPathSet;
     setThumbnailSrcByPath((previousMap) => {
       const previousPaths = Object.keys(previousMap);
@@ -99,7 +94,7 @@ export default function useFilesystemThumbnails({
 
       return hasChanged ? nextMap : previousMap;
     });
-  }, [allFilePaths]);
+  }, [visibleFilePaths]);
 
   useEffect(() => {
     setThumbnailSrcByPath({});
@@ -142,6 +137,7 @@ export default function useFilesystemThumbnails({
     };
     let cancelled = false;
 
+    let timeoutId = null;
     async function resolveVisibleThumbnails() {
       try {
         const response = await invoke("thumbnail_resolve_batch", { request });
@@ -154,11 +150,12 @@ export default function useFilesystemThumbnails({
       }
     }
 
-    resolveVisibleThumbnails();
+    timeoutId = setTimeout(resolveVisibleThumbnails, THUMBNAIL_REQUEST_DEBOUNCE_MS);
     return () => {
       cancelled = true;
+      if (timeoutId !== null) clearTimeout(timeoutId);
     };
-  }, [currentPath, thumbnailSizePx, visibleFilePathsSignature, visibleFilePaths]);
+  }, [currentPath, thumbnailSizePx, visibleFilePaths]);
 
   return {
     thumbnailSrcByPath,

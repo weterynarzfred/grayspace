@@ -94,4 +94,49 @@ describe("useWorkspaceActions handleSetTabCwdHint", () => {
     expect(workspaceSetTabTerminalCwd).toHaveBeenCalledWith("tab-1", "C:\\workspace\\src");
     expect(workspaceSetTabWorkspaceRoot).not.toHaveBeenCalled();
   });
+
+  it("does not resend terminal cwd when path is unchanged", async () => {
+    const activeTab = {
+      tabId: "tab-1",
+      activePaneId: "pane-1",
+      terminalCwdHint: "C:\\workspace\\src",
+      workspaceRoot: "C:\\workspace",
+      paneStates: {},
+    };
+    const { result } = renderHook(() => useWorkspaceActions({
+      currentWindow: { windowId: "window-1" },
+      activeTab,
+    }));
+
+    await act(async () => {
+      result.current.handleSetTabCwdHint("tab-1", "pane-1", "C:\\workspace\\src");
+      await Promise.resolve();
+    });
+
+    expect(workspaceSetTabTerminalCwd).not.toHaveBeenCalled();
+    expect(workspaceSetTabWorkspaceRoot).not.toHaveBeenCalled();
+  });
+
+  it("dedupes repeated path updates before tab snapshot catches up", async () => {
+    const activeTab = {
+      tabId: "tab-1",
+      activePaneId: "pane-1",
+      terminalCwdHint: "",
+      workspaceRoot: "C:\\workspace",
+      paneStates: {},
+    };
+    const { result } = renderHook(() => useWorkspaceActions({
+      currentWindow: { windowId: "window-1" },
+      activeTab,
+    }));
+
+    await act(async () => {
+      result.current.handleSetTabCwdHint("tab-1", "pane-1", "C:\\workspace\\src");
+      result.current.handleSetTabCwdHint("tab-1", "pane-1", "C:\\workspace\\src");
+      await Promise.resolve();
+    });
+
+    expect(workspaceSetTabTerminalCwd).toHaveBeenCalledTimes(1);
+    expect(workspaceSetTabTerminalCwd).toHaveBeenCalledWith("tab-1", "C:\\workspace\\src");
+  });
 });

@@ -5,8 +5,8 @@ use tauri::Manager;
 use commands::filesystem::{
   delete_paths, filesystem_get_properties, filesystem_watch_start, filesystem_watch_stop,
   filesystem_resolve_workspace_folders, handle_filesystem_window_destroyed, import_paths,
-  list_directory, list_drives, move_path, open_path, parent_path, start_external_drag,
-  FilesystemWatchState,
+  list_directory, list_directory_page, list_drives, move_path, open_path, parent_path,
+  start_external_drag, FilesystemDirectoryListingState, FilesystemWatchState,
 };
 use commands::preview::{preview_read_file, preview_write_text_file};
 use commands::terminal::{
@@ -35,6 +35,7 @@ pub fn run() {
     .manage(TerminalState::default())
     .manage(WorkspaceState::default())
     .manage(FilesystemWatchState::default())
+    .manage(FilesystemDirectoryListingState::default())
     .manage(ThumbnailState::default())
     .on_window_event(|window, event| {
       if let tauri::WindowEvent::Destroyed = event {
@@ -54,6 +55,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       list_drives,
       list_directory,
+      list_directory_page,
       filesystem_resolve_workspace_folders,
       filesystem_get_properties,
       parent_path,
