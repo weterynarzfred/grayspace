@@ -20,6 +20,7 @@ import useFilesystemWorkspaceFolders from "./hooks/useFilesystemWorkspaceFolders
 import useVirtualizedEntryWindow from "./hooks/useVirtualizedEntryWindow";
 import useFilesystemPanelLoadMore from "./hooks/useFilesystemPanelLoadMore";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
+import isEditableKeyboardTarget from "../../utils/isEditableKeyboardTarget";
 import styles from "./FilesystemPanel.module.scss";
 import shellStyles from "../PanelShell.module.scss";
 
@@ -78,6 +79,8 @@ function FilesystemPanel({
     copyEntries,
     deleteEntries,
     importExternalPaths,
+    undoEntries,
+    redoEntries,
   } = nav;
   const { handlePanelListScroll } = useFilesystemStatePersistence({
     tabId,
@@ -224,6 +227,35 @@ function FilesystemPanel({
   useEffect(() => {
     onCurrentPathChangeRef.current?.(currentPath);
   }, [currentPath]);
+
+  useEffect(() => {
+    const handleUndoRedoShortcut = (event) => {
+      if (event.defaultPrevented) return;
+      if (event.metaKey || event.altKey || !event.ctrlKey) return;
+      if (isEditableKeyboardTarget(event.target)) return;
+
+      const pressedKey = event.key.toLowerCase();
+      const wantsUndo = pressedKey === "z" && !event.shiftKey;
+      const wantsRedo = pressedKey === "y" || (pressedKey === "z" && event.shiftKey);
+      if (!wantsUndo && !wantsRedo) return;
+
+      const paneViewport = panelRef.current?.closest("[data-pane-active]");
+      if (!paneViewport || paneViewport.getAttribute("data-pane-active") !== "true") return;
+      if (isEntryOperationInProgress) return;
+
+      event.preventDefault();
+      if (wantsUndo) {
+        void undoEntries();
+      } else {
+        void redoEntries();
+      }
+    };
+
+    window.addEventListener("keydown", handleUndoRedoShortcut);
+    return () => {
+      window.removeEventListener("keydown", handleUndoRedoShortcut);
+    };
+  }, [isEntryOperationInProgress, redoEntries, undoEntries]);
   const { handlePanelScroll } = useFilesystemPanelLoadMore({
     panelRef: panelScrollRef,
     handlePanelListScroll,

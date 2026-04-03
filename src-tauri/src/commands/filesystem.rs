@@ -373,12 +373,7 @@ pub fn delete_paths(paths: Vec<String>) -> Result<(), String> {
         path.to_string_lossy()
       ));
     }
-
-    if path.is_dir() {
-      fs::remove_dir_all(&path).map_err(|error| error.to_string())?;
-    } else {
-      fs::remove_file(&path).map_err(|error| error.to_string())?;
-    }
+    trash::delete(&path).map_err(|error| error.to_string())?;
   }
 
   Ok(())

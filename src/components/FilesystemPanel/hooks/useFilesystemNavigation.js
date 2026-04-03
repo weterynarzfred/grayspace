@@ -73,6 +73,8 @@ export default function useFilesystemNavigation(
     copyEntries,
     deleteEntries,
     importExternalPaths,
+    undoEntries,
+    redoEntries,
   } = useFilesystemEntryOperations({
     tabId,
     tabWorkspaceRoot,
@@ -114,5 +116,7 @@ export default function useFilesystemNavigation(
     copyEntries,
     deleteEntries,
     importExternalPaths,
+    undoEntries,
+    redoEntries,
   };
 }
