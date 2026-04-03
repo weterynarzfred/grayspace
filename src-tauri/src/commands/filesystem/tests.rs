@@ -1,8 +1,11 @@
 use super::{
   build_directory_page, read_sorted_directory_entries,
+  create_filesystem_watcher, drain_watchers_in_path_tree,
   delete_paths, filesystem_get_properties, filesystem_resolve_workspace_folders,
-  handle_move_rename_error, import_paths, list_directory, move_path, parent_path, rename_path,
+  handle_move_rename_error, import_paths, list_directory, move_path, parent_path, remap_path_prefix, rename_path_core,
+  watch_state_key, ManagedFilesystemWatcher,
 };
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -304,7 +307,7 @@ fn rename_path_renames_file_when_target_name_is_available() {
   fs::create_dir_all(&test_root).expect("should create temp root");
   fs::write(&source_file, "hello").expect("should create source file");
 
-  let result = rename_path(&source_file.to_string_lossy(), "renamed.txt", None)
+  let result = rename_path_core(&source_file.to_string_lossy(), "renamed.txt", None)
     .expect("rename_path should rename file");
 
   assert_eq!(result.name, "renamed.txt");
@@ -326,7 +329,7 @@ fn rename_path_appends_increment_suffix_when_target_exists() {
   fs::write(&source_file, "hello").expect("should create source file");
   fs::write(&existing_file, "existing").expect("should create existing file");
 
-  let result = rename_path(&source_file.to_string_lossy(), "draft.md", None)
+  let result = rename_path_core(&source_file.to_string_lossy(), "draft.md", None)
     .expect("rename_path should auto-adjust colliding target");
 
   assert_eq!(result.name, "draft.001.md");
@@ -353,7 +356,7 @@ fn rename_path_increments_existing_numeric_suffix_until_available() {
   fs::write(&existing_file_a, "existing").expect("should create first existing file");
   fs::write(&existing_file_b, "existing").expect("should create second existing file");
 
-  let result = rename_path(&source_file.to_string_lossy(), "draft.001.md", None)
+  let result = rename_path_core(&source_file.to_string_lossy(), "draft.001.md", None)
     .expect("rename_path should increment numeric suffix");
 
   assert_eq!(result.name, "draft.003.md");
@@ -378,13 +381,96 @@ fn rename_path_rejects_collisions_when_adjustment_is_disabled() {
   fs::write(&source_file, "hello").expect("should create source file");
   fs::write(&existing_file, "existing").expect("should create existing file");
 
-  let result = rename_path(&source_file.to_string_lossy(), "draft.md", Some(false));
+  let result = rename_path_core(&source_file.to_string_lossy(), "draft.md", Some(false));
 
   assert!(result.is_err());
   assert!(result
     .expect_err("should reject strict collision")
     .contains("already exists"));
   assert!(source_file.exists(), "source file should remain in place");
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn remap_path_prefix_updates_renamed_folder_and_descendants() {
+  let source = PathBuf::from("C:\\Users");
+  let destination = PathBuf::from("C:\\People");
+
+  let remapped_root = remap_path_prefix(&source, &source, &destination);
+  assert_eq!(remapped_root, destination);
+
+  let source_child = PathBuf::from("C:\\Users\\docs\\note.txt");
+  let remapped_child = remap_path_prefix(&source_child, &source, &destination);
+  assert_eq!(remapped_child, PathBuf::from("C:\\People\\docs\\note.txt"));
+
+  let outside_path = PathBuf::from("C:\\Other\\file.txt");
+  let remapped_outside = remap_path_prefix(&outside_path, &source, &destination);
+  assert_eq!(remapped_outside, outside_path);
+}
+
+#[test]
+fn drain_watchers_in_path_tree_keeps_unrelated_watchers_active() {
+  let test_root = unique_test_root("grayspace_rename_watchers");
+  let source_dir = test_root.join("source");
+  let child_dir = source_dir.join("nested");
+  let outside_dir = test_root.join("outside");
+
+  fs::create_dir_all(&child_dir).expect("should create source child dir");
+  fs::create_dir_all(&outside_dir).expect("should create outside dir");
+
+  let source_canonical = fs::canonicalize(&source_dir).expect("source path should canonicalize");
+  let child_canonical = fs::canonicalize(&child_dir).expect("child path should canonicalize");
+  let outside_canonical = fs::canonicalize(&outside_dir).expect("outside path should canonicalize");
+
+  let mut watchers: HashMap<String, ManagedFilesystemWatcher> = HashMap::new();
+  let make_watcher = || {
+    create_filesystem_watcher(|_| {})
+      .expect("watcher should initialize for test")
+  };
+
+  watchers.insert(
+    watch_state_key("main", "root"),
+    ManagedFilesystemWatcher {
+      _watcher: make_watcher(),
+      canonical_path: source_canonical.clone(),
+      window_label: "main".to_string(),
+      watch_id: "root".to_string(),
+    },
+  );
+  watchers.insert(
+    watch_state_key("main", "child"),
+    ManagedFilesystemWatcher {
+      _watcher: make_watcher(),
+      canonical_path: child_canonical.clone(),
+      window_label: "main".to_string(),
+      watch_id: "child".to_string(),
+    },
+  );
+  watchers.insert(
+    watch_state_key("main", "outside"),
+    ManagedFilesystemWatcher {
+      _watcher: make_watcher(),
+      canonical_path: outside_canonical.clone(),
+      window_label: "main".to_string(),
+      watch_id: "outside".to_string(),
+    },
+  );
+
+  let suspended = drain_watchers_in_path_tree(&mut watchers, &source_canonical);
+  let suspended_ids: Vec<String> = suspended
+    .iter()
+    .map(|watcher| watcher.watch_id.clone())
+    .collect();
+
+  assert_eq!(suspended.len(), 2);
+  assert!(suspended_ids.contains(&"root".to_string()));
+  assert!(suspended_ids.contains(&"child".to_string()));
+  assert_eq!(watchers.len(), 1);
+  assert!(watchers
+    .get(&watch_state_key("main", "outside"))
+    .map(|watcher| watcher.watch_id.as_str())
+    == Some("outside"));
 
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
 }

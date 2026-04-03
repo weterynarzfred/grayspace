@@ -5,13 +5,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, State};
 
-#[cfg(target_os = "windows")]
-type FilesystemWatcher = notify::PollWatcher;
-#[cfg(not(target_os = "windows"))]
 type FilesystemWatcher = notify::RecommendedWatcher;
+
+struct ManagedFilesystemWatcher {
+  _watcher: FilesystemWatcher,
+  canonical_path: PathBuf,
+  window_label: String,
+  watch_id: String,
+}
 
 #[derive(Serialize)]
 pub struct DriveInfo {
@@ -57,7 +61,7 @@ const FILESYSTEM_WATCH_EVENT: &str = "filesystem-watch-event";
 
 #[derive(Default)]
 pub struct FilesystemWatchState {
-  watchers: Mutex<HashMap<String, FilesystemWatcher>>,
+  watchers: Mutex<HashMap<String, ManagedFilesystemWatcher>>,
 }
 
 #[derive(Default)]
@@ -92,19 +96,37 @@ fn create_filesystem_watcher<F>(event_handler: F) -> Result<FilesystemWatcher, S
 where
   F: FnMut(notify::Result<notify::Event>) + Send + 'static,
 {
-  #[cfg(target_os = "windows")]
-  {
-    notify::PollWatcher::new(
-      event_handler,
-      notify::Config::default().with_poll_interval(Duration::from_millis(250)),
-    )
-    .map_err(|error| error.to_string())
-  }
+  notify::recommended_watcher(event_handler).map_err(|error| error.to_string())
+}
 
-  #[cfg(not(target_os = "windows"))]
-  {
-    notify::recommended_watcher(event_handler).map_err(|error| error.to_string())
-  }
+fn create_emitting_filesystem_watcher(
+  app_handle: tauri::AppHandle,
+  watch_id: String,
+) -> Result<FilesystemWatcher, String> {
+  create_filesystem_watcher(move |event_result: notify::Result<notify::Event>| {
+    let event = match event_result {
+      Ok(event) => event,
+      Err(_) => return,
+    };
+
+    if !is_watch_event_relevant(&event.kind) {
+      return;
+    }
+
+    let changed_path = event
+      .paths
+      .first()
+      .map(|entry_path| entry_path.to_string_lossy().to_string())
+      .unwrap_or_default();
+
+    let _ = app_handle.emit(
+      FILESYSTEM_WATCH_EVENT,
+      FilesystemWatchEventPayload {
+        watch_id: watch_id.clone(),
+        changed_path,
+      },
+    );
+  })
 }
 
 fn sort_entries(entries: &mut [FsEntry]) {
@@ -256,6 +278,111 @@ fn path_conflicts_with_existing(candidate_path: &Path, source_canonical_path: &P
   match fs::canonicalize(candidate_path) {
     Ok(candidate_canonical_path) => candidate_canonical_path != source_canonical_path,
     Err(_) => true,
+  }
+}
+
+fn is_same_or_descendant_path(path: &Path, root: &Path) -> bool {
+  path == root || path.starts_with(root)
+}
+
+fn remap_path_prefix(path: &Path, source: &Path, destination: &Path) -> PathBuf {
+  if path == source {
+    return destination.to_path_buf();
+  }
+
+  match path.strip_prefix(source) {
+    Ok(suffix) => destination.join(suffix),
+    Err(_) => path.to_path_buf(),
+  }
+}
+
+fn drain_watchers_in_path_tree(
+  watchers: &mut HashMap<String, ManagedFilesystemWatcher>,
+  source_canonical_path: &Path,
+) -> Vec<ManagedFilesystemWatcher> {
+  let keys_to_remove: Vec<String> = watchers
+    .iter()
+    .filter_map(|(key, watcher)| {
+      is_same_or_descendant_path(&watcher.canonical_path, source_canonical_path)
+        .then_some(key.clone())
+    })
+    .collect();
+
+  let mut suspended = Vec::with_capacity(keys_to_remove.len());
+  for key in keys_to_remove {
+    if let Some(watcher) = watchers.remove(&key) {
+      suspended.push(watcher);
+    }
+  }
+
+  suspended
+}
+
+fn suspend_watchers_for_path(
+  state: &State<FilesystemWatchState>,
+  source_canonical_path: &Path,
+) -> Result<Vec<ManagedFilesystemWatcher>, String> {
+  let mut watchers = state
+    .watchers
+    .lock()
+    .map_err(|_| "Failed to access filesystem watcher state.".to_string())?;
+  Ok(drain_watchers_in_path_tree(&mut watchers, source_canonical_path))
+}
+
+fn restore_suspended_watchers(
+  state: &State<FilesystemWatchState>,
+  app_handle: &tauri::AppHandle,
+  source_canonical_path: &Path,
+  destination_canonical_path: &Path,
+  suspended_watchers: Vec<ManagedFilesystemWatcher>,
+) {
+  let mut restored = Vec::new();
+  for suspended in suspended_watchers {
+    let remapped_path = remap_path_prefix(
+      &suspended.canonical_path,
+      source_canonical_path,
+      destination_canonical_path,
+    );
+
+    let mut watcher = match create_emitting_filesystem_watcher(
+      app_handle.clone(),
+      suspended.watch_id.clone(),
+    ) {
+      Ok(watcher) => watcher,
+      Err(error) => {
+        eprintln!("[filesystem-watch] Failed to recreate watcher: {error}");
+        continue;
+      }
+    };
+
+    if let Err(error) = watcher.watch(&remapped_path, RecursiveMode::NonRecursive) {
+      eprintln!(
+        "[filesystem-watch] Failed to restore watcher for '{}': {}",
+        remapped_path.to_string_lossy(),
+        error
+      );
+      continue;
+    }
+
+    restored.push(ManagedFilesystemWatcher {
+      _watcher: watcher,
+      canonical_path: remapped_path,
+      window_label: suspended.window_label,
+      watch_id: suspended.watch_id,
+    });
+  }
+
+  let mut watchers = match state.watchers.lock() {
+    Ok(guard) => guard,
+    Err(_) => {
+      eprintln!("[filesystem-watch] Failed to reinsert restored watchers.");
+      return;
+    }
+  };
+
+  for watcher in restored {
+    let watcher_key = watch_state_key(&watcher.window_label, &watcher.watch_id);
+    watchers.insert(watcher_key, watcher);
   }
 }
 
@@ -479,8 +606,7 @@ pub fn move_path(source: &str, destination_dir: &str) -> Result<(), String> {
   }
 }
 
-#[tauri::command]
-pub fn rename_path(
+fn rename_path_core(
   path: &str,
   new_name: &str,
   allow_adjustment: Option<bool>,
@@ -549,6 +675,45 @@ pub fn rename_path(
     requested_name: normalized_name.to_string(),
     adjusted: resolved_name != normalized_name,
   })
+}
+
+#[tauri::command]
+pub fn rename_path(
+  window: tauri::Window,
+  watch_state: State<FilesystemWatchState>,
+  path: &str,
+  new_name: &str,
+  allow_adjustment: Option<bool>,
+) -> Result<RenamePathResult, String> {
+  let normalized_path = path.trim();
+  if normalized_path.is_empty() {
+    return Err("A path is required.".to_string());
+  }
+
+  let source_path = PathBuf::from(normalized_path);
+  if !source_path.exists() || !source_path.is_dir() {
+    return rename_path_core(path, new_name, allow_adjustment);
+  }
+
+  let source_canonical_path = fs::canonicalize(&source_path).map_err(|error| error.to_string())?;
+  let suspended_watchers = suspend_watchers_for_path(&watch_state, &source_canonical_path)?;
+  let rename_result = rename_path_core(path, new_name, allow_adjustment);
+
+  let destination_canonical_path = rename_result
+    .as_ref()
+    .ok()
+    .and_then(|result| fs::canonicalize(&result.path).ok())
+    .unwrap_or_else(|| source_canonical_path.clone());
+
+  restore_suspended_watchers(
+    &watch_state,
+    &window.app_handle(),
+    &source_canonical_path,
+    &destination_canonical_path,
+    suspended_watchers,
+  );
+
+  rename_result
 }
 
 #[tauri::command]
@@ -672,30 +837,7 @@ pub fn filesystem_watch_start(
   let watcher_key = watch_state_key(&window_label, normalized_watch_id);
   let watched_id = normalized_watch_id.to_string();
 
-  let mut watcher = create_filesystem_watcher(move |event_result: notify::Result<notify::Event>| {
-      let event = match event_result {
-        Ok(event) => event,
-        Err(_) => return,
-      };
-
-      if !is_watch_event_relevant(&event.kind) {
-        return;
-      }
-
-      let changed_path = event
-        .paths
-        .first()
-        .map(|entry_path| entry_path.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-      let _ = app_handle.emit(
-        FILESYSTEM_WATCH_EVENT,
-        FilesystemWatchEventPayload {
-          watch_id: watched_id.clone(),
-          changed_path,
-        },
-      );
-    })?;
+  let mut watcher = create_emitting_filesystem_watcher(app_handle, watched_id.clone())?;
 
   watcher
     .watch(&canonical_watch_path, RecursiveMode::NonRecursive)
@@ -705,7 +847,15 @@ pub fn filesystem_watch_start(
     .watchers
     .lock()
     .map_err(|_| "Failed to access filesystem watcher state.".to_string())?;
-  watchers.insert(watcher_key, watcher);
+  watchers.insert(
+    watcher_key,
+    ManagedFilesystemWatcher {
+      _watcher: watcher,
+      canonical_path: canonical_watch_path,
+      window_label,
+      watch_id: watched_id,
+    },
+  );
   Ok(())
 }
 
