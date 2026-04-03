@@ -1,0 +1,36 @@
+@use "../../styles/variables" as *;
+
+.panelContent {
+  background: $bg-panel;
+}
+
+.panelBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0;
+}
+
+.cwdLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: $text-secondary;
+  padding: 0 0.4rem;
+}
+
+.status {
+  margin: 0;
+  padding: 0.75rem 1rem 0 1rem;
+  color: $text-secondary;
+}
+
+.externalFrame {
+  border: 0;
+  width: 100%;
+  height: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  background: #fff;
+}
