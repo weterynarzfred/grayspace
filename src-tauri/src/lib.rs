@@ -6,6 +6,7 @@ use commands::filesystem::{
   delete_paths, filesystem_get_properties, filesystem_watch_start, filesystem_watch_stop,
   filesystem_resolve_workspace_folders, handle_filesystem_window_destroyed, import_paths,
   list_directory, list_directory_page, list_drives, move_path, open_path, parent_path,
+  rename_path,
   start_external_drag, FilesystemDirectoryListingState, FilesystemWatchState,
 };
 use commands::preview::{preview_read_file, preview_write_text_file};
@@ -61,6 +62,7 @@ pub fn run() {
       parent_path,
       open_path,
       move_path,
+      rename_path,
       delete_paths,
       import_paths,
       preview_read_file,

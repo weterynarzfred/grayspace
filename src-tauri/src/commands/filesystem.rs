@@ -39,6 +39,15 @@ pub struct FsPathProperties {
   date_created_ms: Option<u64>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenamePathResult {
+  path: String,
+  name: String,
+  requested_name: String,
+  adjusted: bool,
+}
+
 const FILESYSTEM_WATCH_EVENT: &str = "filesystem-watch-event";
 
 #[derive(Default)]
@@ -148,6 +157,97 @@ fn remove_source_path(source_path: &Path) -> Result<(), String> {
   }
 
   Ok(())
+}
+
+fn has_valid_extension_suffix(suffix: &str) -> bool {
+  if suffix.is_empty() {
+    return true;
+  }
+  if !suffix.starts_with('.') {
+    return false;
+  }
+  suffix[1..].split('.').all(|segment| !segment.is_empty())
+}
+
+fn parse_incrementable_suffix(name: &str) -> Option<(String, u64, usize, String)> {
+  let mut last_match: Option<(String, u64, usize, String)> = None;
+
+  for (dot_index, character) in name.char_indices() {
+    if character != '.' {
+      continue;
+    }
+
+    let prefix = &name[..dot_index];
+    if prefix.is_empty() {
+      continue;
+    }
+
+    let remainder = &name[(dot_index + 1)..];
+    let digits_len = remainder
+      .chars()
+      .take_while(|character| character.is_ascii_digit())
+      .count();
+    if digits_len < 3 {
+      continue;
+    }
+
+    let digits = &remainder[..digits_len];
+    let suffix = &remainder[digits_len..];
+    if !has_valid_extension_suffix(suffix) {
+      continue;
+    }
+
+    let number = digits.parse::<u64>().ok()?;
+    last_match = Some((prefix.to_string(), number, digits.len(), suffix.to_string()));
+  }
+
+  last_match
+}
+
+fn split_name_for_fallback_suffix(name: &str) -> (String, String) {
+  match name.rfind('.') {
+    Some(dot_index) if dot_index > 0 => (
+      name[..dot_index].to_string(),
+      name[dot_index..].to_string(),
+    ),
+    _ => (name.to_string(), String::new()),
+  }
+}
+
+fn build_next_collision_name(name: &str) -> String {
+  if let Some((prefix, number, width, suffix)) = parse_incrementable_suffix(name) {
+    let incremented = number.saturating_add(1);
+    return format!("{prefix}.{incremented:0width$}{suffix}");
+  }
+
+  let (base_name, extension_suffix) = split_name_for_fallback_suffix(name);
+  format!("{base_name}.001{extension_suffix}")
+}
+
+fn path_conflicts_with_existing(candidate_path: &Path, source_canonical_path: &Path) -> bool {
+  if !candidate_path.exists() {
+    return false;
+  }
+
+  match fs::canonicalize(candidate_path) {
+    Ok(candidate_canonical_path) => candidate_canonical_path != source_canonical_path,
+    Err(_) => true,
+  }
+}
+
+fn resolve_non_conflicting_name(
+  parent_path: &Path,
+  requested_name: &str,
+  source_canonical_path: &Path,
+) -> String {
+  let mut candidate_name = requested_name.to_string();
+  loop {
+    let candidate_path = parent_path.join(&candidate_name);
+    if !path_conflicts_with_existing(&candidate_path, source_canonical_path) {
+      return candidate_name;
+    }
+    candidate_name = build_next_collision_name(&candidate_name);
+  }
 }
 
 fn handle_move_rename_error(
@@ -353,6 +453,78 @@ pub fn move_path(source: &str, destination_dir: &str) -> Result<(), String> {
     Ok(()) => Ok(()),
     Err(rename_error) => handle_move_rename_error(&source_path, &destination_path, rename_error),
   }
+}
+
+#[tauri::command]
+pub fn rename_path(
+  path: &str,
+  new_name: &str,
+  allow_adjustment: Option<bool>,
+) -> Result<RenamePathResult, String> {
+  let normalized_path = path.trim();
+  let normalized_name = new_name.trim();
+  let should_allow_adjustment = allow_adjustment.unwrap_or(true);
+
+  if normalized_path.is_empty() {
+    return Err("A path is required.".to_string());
+  }
+  if normalized_name.is_empty() {
+    return Err("A new name is required.".to_string());
+  }
+  if normalized_name.contains('\\') || normalized_name.contains('/') {
+    return Err("The new name cannot contain path separators.".to_string());
+  }
+  if normalized_name == "." || normalized_name == ".." {
+    return Err("The new name cannot be '.' or '..'.".to_string());
+  }
+
+  let source_path = PathBuf::from(normalized_path);
+  if !source_path.exists() {
+    return Err("The source path does not exist.".to_string());
+  }
+
+  let parent_path = source_path
+    .parent()
+    .ok_or_else(|| "Failed to resolve parent folder for this path.".to_string())?;
+  let source_canonical_path = fs::canonicalize(&source_path).map_err(|error| error.to_string())?;
+
+  let source_name = source_path
+    .file_name()
+    .and_then(|file_name| file_name.to_str())
+    .ok_or_else(|| "Failed to resolve source name.".to_string())?;
+  if source_name == normalized_name {
+    return Ok(RenamePathResult {
+      path: source_path.to_string_lossy().to_string(),
+      name: source_name.to_string(),
+      requested_name: normalized_name.to_string(),
+      adjusted: false,
+    });
+  }
+
+  let resolved_name = if should_allow_adjustment {
+    resolve_non_conflicting_name(parent_path, normalized_name, &source_canonical_path)
+  } else {
+    let candidate_path = parent_path.join(normalized_name);
+    if path_conflicts_with_existing(&candidate_path, &source_canonical_path) {
+      return Err(format!(
+        "An item named '{}' already exists in this folder.",
+        normalized_name
+      ));
+    }
+    normalized_name.to_string()
+  };
+  let destination_path = parent_path.join(&resolved_name);
+
+  if destination_path != source_path {
+    fs::rename(&source_path, &destination_path).map_err(|error| error.to_string())?;
+  }
+
+  Ok(RenamePathResult {
+    path: destination_path.to_string_lossy().to_string(),
+    name: resolved_name.clone(),
+    requested_name: normalized_name.to_string(),
+    adjusted: resolved_name != normalized_name,
+  })
 }
 
 #[tauri::command]

@@ -1,5 +1,5 @@
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { memo, useMemo } from "react";
+import { memo } from "react";
 import EntryItem from "./EntryItem";
 import { getDragEntryDndId, getEntryDndId } from "./dndIds";
 
@@ -24,16 +24,18 @@ function DraggableFilesystemEntry({
     thumbnailSrc = "",
     nestingDepth = 0,
     isExpanded = false,
+    isRenaming = false,
   } = view;
   const {
     onToggleExpand = undefined,
     onEntryClick = undefined,
     onEntryDoubleClick = undefined,
     onEntryMiddleClick = undefined,
+    onEntryRenameSubmit = undefined,
+    onEntryRenameCancel = undefined,
   } = actions;
 
-  const selfDragPath = useMemo(() => [entry.path], [entry.path]);
-  const dragPaths = isSelectedForDrag ? selectedEntryPaths : selfDragPath;
+  const dragPaths = isSelectedForDrag ? selectedEntryPaths : [entry.path];
   const draggableId = getDragEntryDndId(paneId, entry.path);
   const droppableId = getEntryDndId(entry.path);
   const destinationPath = entry.is_dir ? entry.path : dropDestinationPath;
@@ -44,7 +46,7 @@ function DraggableFilesystemEntry({
     isDragging,
   } = useDraggable({
     id: draggableId,
-    disabled: isMovingEntry,
+    disabled: isMovingEntry || isRenaming,
     data: {
       sourcePath: entry.path,
       sourcePaneId: paneId,
@@ -53,7 +55,7 @@ function DraggableFilesystemEntry({
   });
   const { setNodeRef: setDroppableNodeRef } = useDroppable({
     id: droppableId,
-    disabled: isMovingEntry || !destinationPath,
+    disabled: isMovingEntry || isRenaming || !destinationPath,
     data: {
       kind: "entry",
       path: destinationPath,
@@ -76,7 +78,7 @@ function DraggableFilesystemEntry({
   const isConfigFolder =
     entry.is_dir && (entry.name ?? "").toLowerCase() === ".grayspace";
   const shouldUseConfigStyle = isConfigFolder || isWorkspaceFolder;
-  const metaLabel = isConfigFolder ? "config" : (entry.is_dir ? "Folder" : "File");
+  const metaLabel = isConfigFolder ? "config" : entry.is_dir ? "Folder" : "File";
 
   return <EntryItem
     label={entry.name}
@@ -97,6 +99,8 @@ function DraggableFilesystemEntry({
     nestingDepth={nestingDepth}
     showExpander={entry.is_dir}
     isExpanded={isExpanded}
+    isRenaming={isRenaming}
+    renameInitialValue={entry.name}
     onToggleExpand={onToggleExpand}
     buttonRef={setNodeRef}
     dndAttributes={attributes}
@@ -104,6 +108,8 @@ function DraggableFilesystemEntry({
     onClick={(event) => onEntryClick?.(entry.path, event)}
     onDoubleClick={() => onEntryDoubleClick?.(entry)}
     onAuxClick={(event) => onEntryMiddleClick?.(entry, event)}
+    onRenameSubmit={(nextName) => onEntryRenameSubmit?.(entry.path, nextName)}
+    onRenameCancel={() => onEntryRenameCancel?.(entry.path)}
   />;
 }
 

@@ -73,6 +73,7 @@ export default function useFilesystemNavigation(
     copyEntries,
     deleteEntries,
     importExternalPaths,
+    renameEntry,
     undoEntries,
     redoEntries,
   } = useFilesystemEntryOperations({
@@ -116,6 +117,7 @@ export default function useFilesystemNavigation(
     copyEntries,
     deleteEntries,
     importExternalPaths,
+    renameEntry,
     undoEntries,
     redoEntries,
   };

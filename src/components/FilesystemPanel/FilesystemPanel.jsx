@@ -8,9 +8,7 @@ import {
   FILESYSTEM_THUMBNAIL_SIZE_STEPS,
   normalizeFilesystemPaneState,
 } from "./filesystemPaneState";
-import {
-  isPathInsideRoot,
-} from "./filesystemPanelUtils";
+import { isPathInsideRoot } from "./filesystemPanelUtils";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import useFilesystemPanelInteractions from "./hooks/useFilesystemPanelInteractions";
 import useFilesystemStatePersistence from "./hooks/useFilesystemStatePersistence";
@@ -79,6 +77,7 @@ function FilesystemPanel({
     copyEntries,
     deleteEntries,
     importExternalPaths,
+    renameEntry,
     undoEntries,
     redoEntries,
   } = nav;
@@ -153,9 +152,13 @@ function FilesystemPanel({
     isInternalDragActive,
     activeDragEntries,
     activeDragEntry,
+    renamingPath,
     handleEntryClick,
     handleEntryDoubleClick,
     handleEntryMiddleClick,
+    handleBeginRenameSelectedEntry,
+    handleEntryRenameCancel,
+    handleEntryRenameSubmit,
     handlePanelKeyDown,
     isExternalDragOver,
   } = useFilesystemPanelInteractions({
@@ -174,6 +177,7 @@ function FilesystemPanel({
     copyEntries,
     importExternalPaths,
     deleteEntries,
+    renameEntry,
     onTabSelectedFilesChange,
     workspaceFolderPathSet,
     openConfirm,
@@ -195,6 +199,11 @@ function FilesystemPanel({
     panelRef.current = node;
     setPanelDropNodeRef(node);
   }, [setPanelDropNodeRef]);
+  const isPanelActive = useCallback(() => {
+    const paneViewport = panelRef.current?.closest("[data-pane-active]");
+    if (!paneViewport) return panelRef.current?.contains(document.activeElement);
+    return paneViewport.getAttribute("data-pane-active") === "true";
+  }, []);
   const canLeaveWorkspaceWithoutConfirm = useCallback((nextPath) => {
     if (!tabWorkspaceRoot) return true;
     return isPathInsideRoot(nextPath, tabWorkspaceRoot);
@@ -239,8 +248,7 @@ function FilesystemPanel({
       const wantsRedo = pressedKey === "y" || (pressedKey === "z" && event.shiftKey);
       if (!wantsUndo && !wantsRedo) return;
 
-      const paneViewport = panelRef.current?.closest("[data-pane-active]");
-      if (!paneViewport || paneViewport.getAttribute("data-pane-active") !== "true") return;
+      if (!isPanelActive()) return;
       if (isEntryOperationInProgress) return;
 
       event.preventDefault();
@@ -255,7 +263,27 @@ function FilesystemPanel({
     return () => {
       window.removeEventListener("keydown", handleUndoRedoShortcut);
     };
-  }, [isEntryOperationInProgress, redoEntries, undoEntries]);
+  }, [isEntryOperationInProgress, isPanelActive, redoEntries, undoEntries]);
+
+  useEffect(() => {
+    const handleRenameShortcut = event => {
+      if (event.defaultPrevented || event.repeat) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+      if (event.key !== "F2") return;
+      if (isEditableKeyboardTarget(event.target)) return;
+
+      if (!isPanelActive()) return;
+      if (isEntryOperationInProgress) return;
+
+      event.preventDefault();
+      handleBeginRenameSelectedEntry();
+    };
+
+    window.addEventListener("keydown", handleRenameShortcut);
+    return () => {
+      window.removeEventListener("keydown", handleRenameShortcut);
+    };
+  }, [handleBeginRenameSelectedEntry, isEntryOperationInProgress, isPanelActive]);
   const { handlePanelScroll } = useFilesystemPanelLoadMore({
     panelRef: panelScrollRef,
     handlePanelListScroll,
@@ -361,11 +389,14 @@ function FilesystemPanel({
           selectedEntryPathSet,
           activeDragPathSet: effectiveActiveDragPathSet,
           activeDropDestinationPath: effectiveActiveDropDestinationPath,
+          renamingPath,
           thumbnailSrcByPath,
           onToggleDirectoryExpanded: toggleDirectoryExpanded,
           onEntryClick: handleEntryClick,
           onEntryDoubleClick: handleEntryDoubleClick,
           onEntryMiddleClick: handleEntryMiddleClick,
+          onEntryRenameSubmit: handleEntryRenameSubmit,
+          onEntryRenameCancel: handleEntryRenameCancel,
         }}
         drag={{
           activeEntry: activeDragEntry,

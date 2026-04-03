@@ -26,11 +26,13 @@ export default function useFilesystemPanelInteractions({
   copyEntries,
   importExternalPaths,
   deleteEntries,
+  renameEntry,
   onTabSelectedFilesChange,
   workspaceFolderPathSet = new Set(),
   openConfirm,
 }) {
   const [externalDropDestinationPath, setExternalDropDestinationPath] = useState("");
+  const [renamingPath, setRenamingPath] = useState("");
   const treeData = useMemo(() => buildTreeData(treeRows), [treeRows]);
   const selectedEntryPaths = useMemo(() => (
     selectedPaths.filter((path) => treeData.entryPathSet.has(path))
@@ -151,6 +153,61 @@ export default function useFilesystemPanelInteractions({
     });
   }, [openEntry, workspaceFolderPathSet]);
 
+  const handleBeginRenameSelectedEntry = useCallback(() => {
+    if (!isBrowsing || isEntryOperationInProgress) return false;
+    if (selectedEntryPaths.length !== 1) return false;
+    const selectedPath = selectedEntryPaths[0];
+    const selectedEntry = treeData.entryByPath[selectedPath];
+    if (!selectedEntry || selectedEntry.is_dir) return false;
+    setRenamingPath(selectedPath);
+    return true;
+  }, [
+    isBrowsing,
+    isEntryOperationInProgress,
+    selectedEntryPaths,
+    treeData.entryByPath,
+  ]);
+
+  const handleEntryRenameCancel = useCallback((entryPath) => {
+    if (entryPath !== renamingPath) return;
+    setRenamingPath("");
+  }, [renamingPath]);
+
+  const handleEntryRenameSubmit = useCallback(async (entryPath, nextName) => {
+    if (entryPath !== renamingPath) return;
+
+    const targetEntry = treeData.entryByPath[entryPath];
+    if (!targetEntry || targetEntry.is_dir) {
+      setRenamingPath("");
+      return;
+    }
+
+    const normalizedName = nextName.trim();
+    if (!normalizedName || normalizedName === targetEntry.name) {
+      setRenamingPath("");
+      return;
+    }
+
+    try {
+      const renameResult = await renameEntry(entryPath, normalizedName);
+      if (renameResult?.adjusted && renameResult?.name && renameResult.name !== normalizedName) {
+        console.log(
+          `[filesystem-rename] Requested "${normalizedName}", resolved to "${renameResult.name}".`,
+        );
+      }
+      emitTabSelectedFiles([renameResult.path]);
+    } catch (renameError) {
+      console.error("[filesystem-rename] Failed to rename item.", renameError);
+    } finally {
+      setRenamingPath("");
+    }
+  }, [
+    emitTabSelectedFiles,
+    renameEntry,
+    renamingPath,
+    treeData.entryByPath,
+  ]);
+
   useEffect(() => {
     setExternalDropDestinationPath("");
   }, [currentPath]);
@@ -158,6 +215,10 @@ export default function useFilesystemPanelInteractions({
   useEffect(() => {
     if (!isExternalDragEnabled) setExternalDropDestinationPath("");
   }, [isExternalDragEnabled]);
+
+  useEffect(() => {
+    if (renamingPath && !treeData.entryByPath[renamingPath]) setRenamingPath("");
+  }, [renamingPath, treeData.entryByPath]);
 
   const handleDeleteSelectedEntries = useCallback(async () => {
     const normalizedSelection = uniqueNonEmptyPaths(selectedEntryPaths);
@@ -224,11 +285,14 @@ export default function useFilesystemPanelInteractions({
     isInternalDragActive,
     activeDragEntries,
     activeDragEntry,
+    renamingPath,
     handleEntryClick,
     handleEntryDoubleClick,
     handleEntryMiddleClick,
+    handleBeginRenameSelectedEntry,
+    handleEntryRenameCancel,
+    handleEntryRenameSubmit,
     handlePanelKeyDown,
     isExternalDragOver,
   };
 }
-

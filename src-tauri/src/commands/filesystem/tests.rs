@@ -1,7 +1,7 @@
 use super::{
   build_directory_page, read_sorted_directory_entries,
   delete_paths, filesystem_get_properties, filesystem_resolve_workspace_folders,
-  handle_move_rename_error, import_paths, list_directory, move_path, parent_path,
+  handle_move_rename_error, import_paths, list_directory, move_path, parent_path, rename_path,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -292,6 +292,99 @@ fn move_path_rejects_missing_source() {
     result.expect_err("should return an error"),
     "The source path does not exist."
   );
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn rename_path_renames_file_when_target_name_is_available() {
+  let test_root = unique_test_root("grayspace_rename_available");
+  let source_file = test_root.join("notes.txt");
+
+  fs::create_dir_all(&test_root).expect("should create temp root");
+  fs::write(&source_file, "hello").expect("should create source file");
+
+  let result = rename_path(&source_file.to_string_lossy(), "renamed.txt", None)
+    .expect("rename_path should rename file");
+
+  assert_eq!(result.name, "renamed.txt");
+  assert_eq!(result.requested_name, "renamed.txt");
+  assert!(!result.adjusted);
+  assert!(test_root.join("renamed.txt").exists(), "renamed file should exist");
+  assert!(!source_file.exists(), "source path should be renamed");
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn rename_path_appends_increment_suffix_when_target_exists() {
+  let test_root = unique_test_root("grayspace_rename_collision");
+  let source_file = test_root.join("notes.txt");
+  let existing_file = test_root.join("draft.md");
+
+  fs::create_dir_all(&test_root).expect("should create temp root");
+  fs::write(&source_file, "hello").expect("should create source file");
+  fs::write(&existing_file, "existing").expect("should create existing file");
+
+  let result = rename_path(&source_file.to_string_lossy(), "draft.md", None)
+    .expect("rename_path should auto-adjust colliding target");
+
+  assert_eq!(result.name, "draft.001.md");
+  assert_eq!(result.requested_name, "draft.md");
+  assert!(result.adjusted);
+  assert!(
+    test_root.join("draft.001.md").exists(),
+    "adjusted rename target should exist"
+  );
+  assert!(!source_file.exists(), "source path should be renamed");
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn rename_path_increments_existing_numeric_suffix_until_available() {
+  let test_root = unique_test_root("grayspace_rename_increment");
+  let source_file = test_root.join("notes.txt");
+  let existing_file_a = test_root.join("draft.001.md");
+  let existing_file_b = test_root.join("draft.002.md");
+
+  fs::create_dir_all(&test_root).expect("should create temp root");
+  fs::write(&source_file, "hello").expect("should create source file");
+  fs::write(&existing_file_a, "existing").expect("should create first existing file");
+  fs::write(&existing_file_b, "existing").expect("should create second existing file");
+
+  let result = rename_path(&source_file.to_string_lossy(), "draft.001.md", None)
+    .expect("rename_path should increment numeric suffix");
+
+  assert_eq!(result.name, "draft.003.md");
+  assert_eq!(result.requested_name, "draft.001.md");
+  assert!(result.adjusted);
+  assert!(
+    test_root.join("draft.003.md").exists(),
+    "incremented target should exist"
+  );
+  assert!(!source_file.exists(), "source path should be renamed");
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn rename_path_rejects_collisions_when_adjustment_is_disabled() {
+  let test_root = unique_test_root("grayspace_rename_strict_collision");
+  let source_file = test_root.join("notes.txt");
+  let existing_file = test_root.join("draft.md");
+
+  fs::create_dir_all(&test_root).expect("should create temp root");
+  fs::write(&source_file, "hello").expect("should create source file");
+  fs::write(&existing_file, "existing").expect("should create existing file");
+
+  let result = rename_path(&source_file.to_string_lossy(), "draft.md", Some(false));
+
+  assert!(result.is_err());
+  assert!(result
+    .expect_err("should reject strict collision")
+    .contains("already exists"));
+  assert!(source_file.exists(), "source file should remain in place");
 
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
 }

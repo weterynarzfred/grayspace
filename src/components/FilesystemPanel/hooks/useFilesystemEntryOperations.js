@@ -7,52 +7,13 @@ import {
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 import { getParentDirectoryPath, isSamePath } from "../../../utils/pathWatch";
 import { getNavigationErrorMessage } from "./filesystemNavigationUtils";
+import {
+  getPathName,
+  normalizeMoveHistoryItems,
+  resolveDestinationPath,
+} from "./filesystemEntryOperationUtils";
 
 const MAX_FILESYSTEM_HISTORY_ITEMS = 100;
-
-function getPathName(path) {
-  if (typeof path !== "string") return "";
-  const trimmedPath = path.trim().replace(/[\\/]+$/, "");
-  if (!trimmedPath) return "";
-
-  const separatorIndex = Math.max(
-    trimmedPath.lastIndexOf("\\"),
-    trimmedPath.lastIndexOf("/"),
-  );
-  return separatorIndex >= 0 ? trimmedPath.slice(separatorIndex + 1) : trimmedPath;
-}
-
-function joinPath(directoryPath, pathName) {
-  if (typeof directoryPath !== "string" || typeof pathName !== "string") return "";
-  const trimmedDirectoryPath = directoryPath.trim().replace(/[\\/]+$/, "");
-  const trimmedPathName = pathName.trim();
-  if (!trimmedDirectoryPath || !trimmedPathName) return "";
-
-  if (trimmedDirectoryPath === "/") return `/${trimmedPathName}`;
-  if (/^[A-Za-z]:$/.test(trimmedDirectoryPath)) return `${trimmedDirectoryPath}\\${trimmedPathName}`;
-
-  const separator = trimmedDirectoryPath.includes("\\") ? "\\" : "/";
-  return `${trimmedDirectoryPath}${separator}${trimmedPathName}`;
-}
-
-function resolveDestinationPath(sourcePath, destinationDir, movedResult) {
-  if (typeof movedResult === "string" && movedResult.trim()) return movedResult;
-  return joinPath(destinationDir, getPathName(sourcePath));
-}
-
-function normalizeMoveHistoryItems(items = []) {
-  return items
-    .filter(item =>
-      typeof item?.sourcePath === "string"
-      && item.sourcePath
-      && typeof item?.destinationPath === "string"
-      && item.destinationPath,
-    )
-    .map(item => ({
-      sourcePath: item.sourcePath,
-      destinationPath: item.destinationPath,
-    }));
-}
 
 export default function useFilesystemEntryOperations({
   tabId = "",
@@ -71,22 +32,39 @@ export default function useFilesystemEntryOperations({
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
 
+  const trimUndoStack = useCallback(() => {
+    if (undoStackRef.current.length <= MAX_FILESYSTEM_HISTORY_ITEMS) return;
+    undoStackRef.current.splice(
+      0,
+      undoStackRef.current.length - MAX_FILESYSTEM_HISTORY_ITEMS,
+    );
+  }, []);
+
+  const pushHistoryEntry = useCallback((entry) => {
+    undoStackRef.current.push(entry);
+    trimUndoStack();
+    redoStackRef.current = [];
+  }, [trimUndoStack]);
+
   const pushMoveHistoryEntry = useCallback((items = []) => {
     const normalizedItems = normalizeMoveHistoryItems(items);
     if (normalizedItems.length === 0) return;
-
-    undoStackRef.current.push({
+    pushHistoryEntry({
       kind: "move",
       items: normalizedItems,
     });
-    if (undoStackRef.current.length > MAX_FILESYSTEM_HISTORY_ITEMS) {
-      undoStackRef.current.splice(
-        0,
-        undoStackRef.current.length - MAX_FILESYSTEM_HISTORY_ITEMS,
-      );
-    }
-    redoStackRef.current = [];
-  }, []);
+  }, [pushHistoryEntry]);
+
+  const pushRenameHistoryEntry = useCallback((sourcePath = "", destinationPath = "") => {
+    if (!sourcePath || !destinationPath || isSamePath(sourcePath, destinationPath)) return;
+    pushHistoryEntry({
+      kind: "rename",
+      items: [{
+        sourcePath,
+        destinationPath,
+      }],
+    });
+  }, [pushHistoryEntry]);
 
   const runMovePairs = useCallback(async (
     movePairs,
@@ -153,6 +131,73 @@ export default function useFilesystemEntryOperations({
   }, [
     refreshEntriesForPath,
     removeSelectionPaths,
+    setError,
+    setIsMovingEntry,
+  ]);
+
+  const runRenameHistoryItems = useCallback(async (
+    items = [],
+    {
+      reverse = false,
+      activePath = "",
+      errorMessage = "Failed to rename item.",
+    } = {},
+  ) => {
+    const normalizedItems = normalizeMoveHistoryItems(items);
+    if (normalizedItems.length === 0) return false;
+
+    const operationItems = reverse
+      ? normalizedItems.slice().reverse()
+      : normalizedItems;
+    const refreshPathSet = new Set();
+    let renameErrorToThrow = null;
+
+    setIsMovingEntry(true);
+    setError("");
+
+    try {
+      for (const item of operationItems) {
+        const sourcePath = reverse ? item.destinationPath : item.sourcePath;
+        const destinationPath = reverse ? item.sourcePath : item.destinationPath;
+        const destinationName = getPathName(destinationPath);
+        if (!destinationName) continue;
+
+        await invoke("rename_path", {
+          path: sourcePath,
+          newName: destinationName,
+          allowAdjustment: false,
+        });
+
+        const sourceParentPath = getParentDirectoryPath(sourcePath);
+        if (sourceParentPath) refreshPathSet.add(sourceParentPath);
+        const destinationParentPath = getParentDirectoryPath(destinationPath);
+        if (destinationParentPath) refreshPathSet.add(destinationParentPath);
+      }
+    } catch (renameError) {
+      setError(getNavigationErrorMessage(renameError, errorMessage));
+      renameErrorToThrow = renameError;
+    } finally {
+      if (activePath) refreshPathSet.add(activePath);
+
+      for (const refreshPath of refreshPathSet) {
+        if (!refreshPath) continue;
+        try {
+          await refreshEntriesForPath(refreshPath);
+        } catch (refreshError) {
+          if (!renameErrorToThrow) {
+            setError(getNavigationErrorMessage(refreshError, "Failed to refresh folder."));
+            renameErrorToThrow = refreshError;
+          }
+        }
+      }
+
+      setIsMovingEntry(false);
+    }
+
+    if (renameErrorToThrow) throw renameErrorToThrow;
+    return true;
+  }, [
+    refreshEntriesForPath,
     setError,
     setIsMovingEntry,
   ]);
@@ -361,63 +406,141 @@ export default function useFilesystemEntryOperations({
     setIsImportingExternal,
   ]);
 
-  const undoEntries = useCallback(async () => {
-    const lastEntry = undoStackRef.current.at(-1);
-    if (!lastEntry || lastEntry.kind !== "move") return false;
+  const renameEntry = useCallback(async (sourcePath, nextName) => {
+    const normalizedSourcePath = typeof sourcePath === "string" ? sourcePath.trim() : "";
+    const normalizedNextName = typeof nextName === "string" ? nextName.trim() : "";
+    if (!normalizedSourcePath || !normalizedNextName) return null;
 
-    const undoPairs = lastEntry.items
-      .slice()
-      .reverse()
-      .map((item) => ({
-        sourcePath: item.destinationPath,
-        destinationDir: getParentDirectoryPath(item.sourcePath),
-      }))
-      .filter(pair => pair.destinationDir);
+    const parentPath = getParentDirectoryPath(normalizedSourcePath);
+    if (!parentPath) return null;
 
-    if (undoPairs.length === 0) return false;
+    setIsMovingEntry(true);
+    setError("");
 
     try {
-      await runMovePairs(undoPairs, {
-        activePath: currentPathRef.current || currentPath,
-        removeSelection: false,
-        errorMessage: "Failed to undo move.",
+      const renameResult = await invoke("rename_path", {
+        path: normalizedSourcePath,
+        newName: normalizedNextName,
       });
-      undoStackRef.current.pop();
-      redoStackRef.current.push(lastEntry);
-      return true;
-    } catch (undoError) {
-      console.error("[filesystem-undo] Failed to undo move operation.", undoError);
-      return false;
+
+      if (!isSamePath(renameResult.path, normalizedSourcePath)) {
+        pushRenameHistoryEntry(normalizedSourcePath, renameResult.path);
+      }
+
+      await refreshEntriesForPath(parentPath);
+      return renameResult;
+    } catch (renameError) {
+      setError(getNavigationErrorMessage(renameError, "Failed to rename item."));
+      throw renameError;
+    } finally {
+      setIsMovingEntry(false);
     }
-  }, [currentPath, currentPathRef, runMovePairs]);
+  }, [
+    pushRenameHistoryEntry,
+    refreshEntriesForPath,
+    setError,
+    setIsMovingEntry,
+  ]);
+
+  const undoEntries = useCallback(async () => {
+    const lastEntry = undoStackRef.current.at(-1);
+    if (!lastEntry) return false;
+
+    const activePath = currentPathRef.current || currentPath;
+
+    if (lastEntry.kind === "move") {
+      const undoPairs = lastEntry.items
+        .slice()
+        .reverse()
+        .map((item) => ({
+          sourcePath: item.destinationPath,
+          destinationDir: getParentDirectoryPath(item.sourcePath),
+        }))
+        .filter(pair => pair.destinationDir);
+      if (undoPairs.length === 0) return false;
+
+      try {
+        await runMovePairs(undoPairs, {
+          activePath,
+          removeSelection: false,
+          errorMessage: "Failed to undo move.",
+        });
+        undoStackRef.current.pop();
+        redoStackRef.current.push(lastEntry);
+        return true;
+      } catch (undoError) {
+        console.error("[filesystem-undo] Failed to undo move operation.", undoError);
+        return false;
+      }
+    }
+
+    if (lastEntry.kind === "rename") {
+      try {
+        await runRenameHistoryItems(lastEntry.items, {
+          reverse: true,
+          activePath,
+          errorMessage: "Failed to undo rename.",
+        });
+        undoStackRef.current.pop();
+        redoStackRef.current.push(lastEntry);
+        return true;
+      } catch (undoError) {
+        console.error("[filesystem-undo] Failed to undo rename operation.", undoError);
+        return false;
+      }
+    }
+
+    return false;
+  }, [currentPath, currentPathRef, runMovePairs, runRenameHistoryItems]);
 
   const redoEntries = useCallback(async () => {
     const lastEntry = redoStackRef.current.at(-1);
-    if (!lastEntry || lastEntry.kind !== "move") return false;
+    if (!lastEntry) return false;
 
-    const redoPairs = lastEntry.items
-      .map(item => ({
-        sourcePath: item.sourcePath,
-        destinationDir: getParentDirectoryPath(item.destinationPath),
-      }))
-      .filter(pair => pair.destinationDir);
+    const activePath = currentPathRef.current || currentPath;
 
-    if (redoPairs.length === 0) return false;
+    if (lastEntry.kind === "move") {
+      const redoPairs = lastEntry.items
+        .map(item => ({
+          sourcePath: item.sourcePath,
+          destinationDir: getParentDirectoryPath(item.destinationPath),
+        }))
+        .filter(pair => pair.destinationDir);
+      if (redoPairs.length === 0) return false;
 
-    try {
-      await runMovePairs(redoPairs, {
-        activePath: currentPathRef.current || currentPath,
-        removeSelection: false,
-        errorMessage: "Failed to redo move.",
-      });
-      redoStackRef.current.pop();
-      undoStackRef.current.push(lastEntry);
-      return true;
-    } catch (redoError) {
-      console.error("[filesystem-redo] Failed to redo move operation.", redoError);
-      return false;
+      try {
+        await runMovePairs(redoPairs, {
+          activePath,
+          removeSelection: false,
+          errorMessage: "Failed to redo move.",
+        });
+        redoStackRef.current.pop();
+        undoStackRef.current.push(lastEntry);
+        return true;
+      } catch (redoError) {
+        console.error("[filesystem-redo] Failed to redo move operation.", redoError);
+        return false;
+      }
     }
-  }, [currentPath, currentPathRef, runMovePairs]);
+
+    if (lastEntry.kind === "rename") {
+      try {
+        await runRenameHistoryItems(lastEntry.items, {
+          reverse: false,
+          activePath,
+          errorMessage: "Failed to redo rename.",
+        });
+        redoStackRef.current.pop();
+        undoStackRef.current.push(lastEntry);
+        return true;
+      } catch (redoError) {
+        console.error("[filesystem-redo] Failed to redo rename operation.", redoError);
+        return false;
+      }
+    }
+
+    return false;
+  }, [currentPath, currentPathRef, runMovePairs, runRenameHistoryItems]);
 
   return {
     openEntry,
@@ -425,6 +548,7 @@ export default function useFilesystemEntryOperations({
     copyEntries,
     deleteEntries,
     importExternalPaths,
+    renameEntry,
     undoEntries,
     redoEntries,
   };

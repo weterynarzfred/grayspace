@@ -216,6 +216,52 @@ describe("FilesystemPanel", () => {
         return null;
       }
 
+      if (command === "rename_path") {
+        const sourcePath = payload?.path ?? "";
+        const requestedName = String(payload?.newName ?? "").trim();
+        const allowAdjustment = payload?.allowAdjustment !== false;
+        const parentPath = path.win32.dirname(sourcePath);
+        const sourceEntries = directoryState[parentPath] ?? [];
+        const sourceEntry = sourceEntries.find((entry) => entry.path === sourcePath);
+
+        if (!sourceEntry)
+          throw new Error(`Missing source entry for ${sourcePath}`);
+
+        let resolvedName = requestedName;
+        const extensionIndex = requestedName.lastIndexOf(".");
+        const baseName = extensionIndex > 0 ? requestedName.slice(0, extensionIndex) : requestedName;
+        const extension = extensionIndex > 0 ? requestedName.slice(extensionIndex) : "";
+        let suffixCounter = 1;
+
+        const hasNameConflict = (candidateName) => sourceEntries.some((entry) => (
+          entry.path !== sourcePath && entry.name === candidateName
+        ));
+        while (hasNameConflict(resolvedName)) {
+          if (!allowAdjustment) {
+            throw new Error(`An item named '${requestedName}' already exists in this folder.`);
+          }
+          resolvedName = `${baseName}.${String(suffixCounter).padStart(3, "0")}${extension}`;
+          suffixCounter += 1;
+        }
+
+        const renamedPath = path.win32.join(parentPath, resolvedName);
+        directoryState[parentPath] = sourceEntries.map((entry) => {
+          if (entry.path !== sourcePath) return entry;
+          return {
+            ...entry,
+            name: resolvedName,
+            path: renamedPath,
+          };
+        });
+
+        return {
+          path: renamedPath,
+          name: resolvedName,
+          requestedName,
+          adjusted: resolvedName !== requestedName,
+        };
+      }
+
       if (command === "import_paths") {
         const destinationDir = payload?.destinationDir;
         const importPaths = payload?.paths ?? [];
@@ -1751,6 +1797,119 @@ describe("FilesystemPanel", () => {
     } finally {
       document.elementFromPoint = originalElementFromPoint;
     }
+  });
+
+  it("starts inline rename on F2 and commits on Enter", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "F2" });
+
+    const renameInput = await screen.findByRole("textbox");
+    expect(renameInput).toHaveValue("notes.txt");
+    fireEvent.change(renameInput, { target: { value: "renamed.txt" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("rename_path", {
+        path: "C:\\notes.txt",
+        newName: "renamed.txt",
+      });
+    });
+    expect(await screen.findByRole("button", { name: /renamed\.txt/i })).toBeInTheDocument();
+  });
+
+  it("cancels inline rename on Escape", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "F2" });
+
+    const renameInput = await screen.findByRole("textbox");
+    fireEvent.change(renameInput, { target: { value: "renamed.txt" } });
+    fireEvent.keyDown(renameInput, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    });
+    expect(invoke).not.toHaveBeenCalledWith("rename_path", expect.objectContaining({
+      path: "C:\\notes.txt",
+      newName: "renamed.txt",
+    }));
+    expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+  });
+
+  it("treats empty blur rename as a no-op", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "F2" });
+
+    const renameInput = await screen.findByRole("textbox");
+    fireEvent.change(renameInput, { target: { value: "   " } });
+    fireEvent.blur(renameInput);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    });
+    expect(invoke).not.toHaveBeenCalledWith("rename_path", expect.objectContaining({
+      path: "C:\\notes.txt",
+    }));
+    expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+  });
+
+  it("undos and redos a rename with ctrl+z and ctrl+y", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "F2" });
+
+    const renameInput = await screen.findByRole("textbox");
+    fireEvent.change(renameInput, { target: { value: "renamed.txt" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    const renamedButton = await screen.findByRole("button", { name: /renamed\.txt/i });
+    fireEvent.click(renamedButton);
+    renamedButton.focus();
+    fireEvent.keyDown(renamedButton, { key: "z", ctrlKey: true });
+
+    const restoredButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    expect(restoredButton).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("rename_path", {
+      path: "C:\\renamed.txt",
+      newName: "notes.txt",
+      allowAdjustment: false,
+    });
+
+    fireEvent.click(restoredButton);
+    restoredButton.focus();
+    fireEvent.keyDown(restoredButton, { key: "y", ctrlKey: true });
+    expect(await screen.findByRole("button", { name: /renamed\.txt/i })).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("rename_path", {
+      path: "C:\\notes.txt",
+      newName: "renamed.txt",
+      allowAdjustment: false,
+    });
   });
 
   it("opens confirmation and deletes selected entries on Delete key", async () => {
