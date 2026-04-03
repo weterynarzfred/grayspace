@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { COMMANDS } from "../../commands/commandRegistry";
 import FloatingPopover from "./FloatingPopover";
 import styles from "./CommandPalettePopover.module.scss";
 
 function CommandPalettePopover({
   open = false,
   position = { x: 8, y: 8 },
+  commands = [],
   onClose = undefined,
 }) {
   const inputRef = useRef(null);
@@ -36,7 +36,7 @@ function CommandPalettePopover({
       />
     </label>
     <ul className={styles.commandList}>
-      {COMMANDS.map(command => <li key={command.id} className={styles.commandRow}>
+      {commands.map(command => <li key={command.id} className={styles.commandRow}>
         <span className={styles.commandName}>{command.title}</span>
         <span className={styles.commandShortcut}>{command.shortcut || ""}</span>
       </li>)}

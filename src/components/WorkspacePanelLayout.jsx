@@ -95,6 +95,11 @@ function WorkspacePanelLayout({
     return <div
       key={`${tabId || "tab"}::${paneState?.paneId ?? paneId}`}
       className={`${styles.paneViewport} ${isActivePane ? styles.activePane : ""}`}
+      data-contextmenu-boundary="panel"
+      data-context-kind="panel"
+      data-context-id={paneId}
+      data-context-label={panelType}
+      data-context-panel-type={panelType}
       data-pane-id={paneId}
       data-pane-active={isActivePane ? "true" : "false"}
       onPointerEnter={() => onPaneActivate?.(tabId, paneId)}

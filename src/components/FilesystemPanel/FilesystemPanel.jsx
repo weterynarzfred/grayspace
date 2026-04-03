@@ -19,6 +19,8 @@ import useVirtualizedEntryWindow from "./hooks/useVirtualizedEntryWindow";
 import useFilesystemPanelLoadMore from "./hooks/useFilesystemPanelLoadMore";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
 import isEditableKeyboardTarget from "../../utils/isEditableKeyboardTarget";
+import { COMMAND_IDS, isCommandShortcutMatch } from "../../commands/commandRegistry";
+import { APP_COMMAND_EVENT } from "../../commands/commandEvents";
 import styles from "./FilesystemPanel.module.scss";
 import shellStyles from "../PanelShell.module.scss";
 
@@ -99,6 +101,7 @@ function FilesystemPanel({
   const {
     treeRows,
     toggleDirectoryExpanded,
+    remapRenamedPath,
   } = useFilesystemTree({
     currentPath,
     rootEntries: entries,
@@ -156,9 +159,13 @@ function FilesystemPanel({
     handleEntryClick,
     handleEntryDoubleClick,
     handleEntryMiddleClick,
+    handleEntryContextMenu,
+    handlePanelBackgroundClick,
+    handlePanelBackgroundContextMenu,
     handleBeginRenameSelectedEntry,
     handleEntryRenameCancel,
     handleEntryRenameSubmit,
+    handleDeleteSelectedEntries,
     handlePanelKeyDown,
     isExternalDragOver,
   } = useFilesystemPanelInteractions({
@@ -171,6 +178,7 @@ function FilesystemPanel({
     isBrowsing,
     isEntryOperationInProgress,
     isExternalDragEnabled,
+    setSelectedPath,
     selectEntry,
     openEntry,
     moveEntries,
@@ -178,6 +186,7 @@ function FilesystemPanel({
     importExternalPaths,
     deleteEntries,
     renameEntry,
+    onEntryPathRenamed: remapRenamedPath,
     onTabSelectedFilesChange,
     workspaceFolderPathSet,
     openConfirm,
@@ -268,8 +277,7 @@ function FilesystemPanel({
   useEffect(() => {
     const handleRenameShortcut = event => {
       if (event.defaultPrevented || event.repeat) return;
-      if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
-      if (event.key !== "F2") return;
+      if (!isCommandShortcutMatch(COMMAND_IDS.FILESYSTEM_RENAME_SELECTED, event)) return;
       if (isEditableKeyboardTarget(event.target)) return;
 
       if (!isPanelActive()) return;
@@ -284,6 +292,33 @@ function FilesystemPanel({
       window.removeEventListener("keydown", handleRenameShortcut);
     };
   }, [handleBeginRenameSelectedEntry, isEntryOperationInProgress, isPanelActive]);
+  useEffect(() => {
+    const handleAppCommand = (event) => {
+      const detail = event?.detail ?? {};
+      const { commandId = "", context = {} } = detail;
+      if (!commandId) return;
+
+      const targetPaneId = context?.targetPaneId || context?.activePaneId || "";
+      if (targetPaneId && targetPaneId !== paneId) return;
+
+      if (commandId === COMMAND_IDS.FILESYSTEM_RENAME_SELECTED) {
+        handleBeginRenameSelectedEntry();
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_DELETE_SELECTED) {
+        void handleDeleteSelectedEntries();
+      }
+    };
+
+    window.addEventListener(APP_COMMAND_EVENT, handleAppCommand);
+    return () => {
+      window.removeEventListener(APP_COMMAND_EVENT, handleAppCommand);
+    };
+  }, [
+    handleBeginRenameSelectedEntry,
+    handleDeleteSelectedEntries,
+    paneId,
+  ]);
   const { handlePanelScroll } = useFilesystemPanelLoadMore({
     panelRef: panelScrollRef,
     handlePanelListScroll,
@@ -345,6 +380,8 @@ function FilesystemPanel({
       className={shellStyles.panelBody}
       data-testid="filesystem-panel-scroll-container"
       data-panel-scroll="true"
+      onClick={handlePanelBackgroundClick}
+      onContextMenuCapture={handlePanelBackgroundContextMenu}
       onScroll={handlePanelScroll}
     >
       <FilesystemPanelListContent
@@ -395,6 +432,7 @@ function FilesystemPanel({
           onEntryClick: handleEntryClick,
           onEntryDoubleClick: handleEntryDoubleClick,
           onEntryMiddleClick: handleEntryMiddleClick,
+          onEntryContextMenu: handleEntryContextMenu,
           onEntryRenameSubmit: handleEntryRenameSubmit,
           onEntryRenameCancel: handleEntryRenameCancel,
         }}

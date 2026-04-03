@@ -11,6 +11,7 @@ function createTarget(attributes = {}) {
 describe("resolveContextMenuTarget", () => {
   it("extracts tab context target data", () => {
     const target = createTarget({
+      "data-contextmenu-boundary": "tab",
       "data-context-kind": "tab",
       "data-context-id": "tab-1",
       "data-context-label": "Workspace",
@@ -21,15 +22,38 @@ describe("resolveContextMenuTarget", () => {
       id: "tab-1",
       label: "Workspace",
       path: "",
+      scope: "",
+      paneId: "",
+      panelType: "",
     });
   });
 
-  it("returns null for unsupported context kinds", () => {
+  it("returns null for unsupported context boundaries", () => {
     const target = createTarget({
+      "data-contextmenu-boundary": "notification",
       "data-context-kind": "notification",
-      "data-context-id": "n-1",
     });
 
     expect(resolveContextMenuTarget(target)).toBeNull();
+  });
+
+  it("reads panel type for panel targets", () => {
+    const target = createTarget({
+      "data-contextmenu-boundary": "panel",
+      "data-context-kind": "panel",
+      "data-context-id": "pane-1",
+      "data-context-label": "Filesystem",
+      "data-context-panel-type": "Filesystem",
+    });
+
+    expect(resolveContextMenuTarget(target)).toEqual({
+      kind: "panel",
+      id: "pane-1",
+      label: "Filesystem",
+      path: "",
+      scope: "",
+      paneId: "",
+      panelType: "Filesystem",
+    });
   });
 });

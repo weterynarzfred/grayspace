@@ -1,18 +1,18 @@
 import { useEffect } from "react";
+import { COMMAND_IDS, isCommandShortcutMatch } from "../commands/commandRegistry";
 import isEditableKeyboardTarget from "../utils/isEditableKeyboardTarget";
 
 export default function usePaneSplitShortcuts(onSplitActivePane) {
   useEffect(() => {
     const handleKeyDown = event => {
       if (event.defaultPrevented || event.repeat) return;
-      if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
       if (isEditableKeyboardTarget(event.target)) return;
-
-      const key = event.key.toLowerCase();
-      if (key !== "v" && key !== "h") return;
+      const isVertical = isCommandShortcutMatch(COMMAND_IDS.PANE_SPLIT_VERTICAL, event);
+      const isHorizontal = isCommandShortcutMatch(COMMAND_IDS.PANE_SPLIT_HORIZONTAL, event);
+      if (!isVertical && !isHorizontal) return;
 
       event.preventDefault();
-      onSplitActivePane?.(key === "v" ? "right" : "bottom");
+      onSplitActivePane?.(isVertical ? "right" : "bottom");
     };
 
     window.addEventListener("keydown", handleKeyDown);

@@ -5,6 +5,7 @@ import { cursorPosition } from "@tauri-apps/api/window";
 import { useDroppable } from "@dnd-kit/core";
 import FilesystemPanel from "./FilesystemPanel";
 import PanelsDndLayer from "../PanelsDndLayer";
+import { APP_COMMAND_EVENT } from "../../commands/commandEvents";
 import { runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
 import { advanceTimersBy } from "../../test/utils/timers";
 
@@ -245,14 +246,29 @@ describe("FilesystemPanel", () => {
         }
 
         const renamedPath = path.win32.join(parentPath, resolvedName);
-        directoryState[parentPath] = sourceEntries.map((entry) => {
-          if (entry.path !== sourcePath) return entry;
-          return {
-            ...entry,
-            name: resolvedName,
-            path: renamedPath,
-          };
+        const remapPath = (candidatePath) => {
+          if (candidatePath === sourcePath) return renamedPath;
+          if (sourceEntry.is_dir && candidatePath.startsWith(`${sourcePath}\\`))
+            return `${renamedPath}${candidatePath.slice(sourcePath.length)}`;
+          return candidatePath;
+        };
+        const nextDirectoryState = {};
+        Object.entries(directoryState).forEach(([directoryPath, directoryEntries]) => {
+          const remappedDirectoryPath = remapPath(directoryPath);
+          nextDirectoryState[remappedDirectoryPath] = directoryEntries.map((entry) => {
+            const remappedEntryPath = remapPath(entry.path);
+            if (remappedEntryPath === entry.path) return entry;
+            return {
+              ...entry,
+              name: entry.path === sourcePath ? resolvedName : entry.name,
+              path: remappedEntryPath,
+            };
+          });
         });
+        Object.keys(directoryState).forEach((key) => {
+          delete directoryState[key];
+        });
+        Object.assign(directoryState, nextDirectoryState);
 
         return {
           path: renamedPath,
@@ -1824,6 +1840,247 @@ describe("FilesystemPanel", () => {
     expect(await screen.findByRole("button", { name: /renamed\.txt/i })).toBeInTheDocument();
   });
 
+  it("renames a selected folder on F2", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.click(usersButton);
+    usersButton.focus();
+    fireEvent.keyDown(usersButton, { key: "F2" });
+
+    const renameInput = await screen.findByRole("textbox");
+    expect(renameInput).toHaveValue("Users");
+    fireEvent.change(renameInput, { target: { value: "People" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("rename_path", {
+        path: "C:\\Users",
+        newName: "People",
+      });
+    });
+    expect(await screen.findByRole("button", { name: /People/i })).toBeInTheDocument();
+  });
+
+  it("keeps renamed folders expanded and refreshes them via watcher", async () => {
+    const directoryState = {
+      "C:\\": [
+        { name: "Users", path: "C:\\Users", is_dir: true },
+      ],
+      "C:\\Users": [
+        { name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false },
+      ],
+    };
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
+      if (command === "list_directory_page") {
+        const entries = (directoryState[payload?.path] ?? []).map(entry => ({ ...entry }));
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? entries.length;
+        const pageEntries = entries.slice(offset, offset + limit);
+        return {
+          entries: pageEntries,
+          hasMore: offset + pageEntries.length < entries.length,
+          totalCount: entries.length,
+        };
+      }
+      if (command === "list_directory") return (directoryState[payload?.path] ?? []).map(entry => ({ ...entry }));
+      if (command === "filesystem_resolve_workspace_folders") return {};
+      if (command === "parent_path") {
+        if (payload?.path === "C:\\") return null;
+        return path.win32.dirname(payload?.path ?? "");
+      }
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+      if (command === "thumbnail_resolve_batch") return { results: [] };
+      if (command === "rename_path") {
+        const sourcePath = payload?.path ?? "";
+        const nextName = payload?.newName ?? "";
+        const parentPath = path.win32.dirname(sourcePath);
+        const sourceEntries = directoryState[parentPath] ?? [];
+        const sourceEntry = sourceEntries.find(entry => entry.path === sourcePath);
+        if (!sourceEntry) throw new Error("Missing source entry");
+
+        const renamedPath = path.win32.join(parentPath, nextName);
+        const remapPath = (candidatePath) => {
+          if (candidatePath === sourcePath) return renamedPath;
+          if (sourceEntry.is_dir && candidatePath.startsWith(`${sourcePath}\\`))
+            return `${renamedPath}${candidatePath.slice(sourcePath.length)}`;
+          return candidatePath;
+        };
+        const nextDirectoryState = {};
+        Object.entries(directoryState).forEach(([directoryPath, directoryEntries]) => {
+          const remappedDirectoryPath = remapPath(directoryPath);
+          nextDirectoryState[remappedDirectoryPath] = directoryEntries.map((entry) => {
+            const remappedEntryPath = remapPath(entry.path);
+            if (remappedEntryPath === entry.path) return entry;
+            return {
+              ...entry,
+              name: entry.path === sourcePath ? nextName : entry.name,
+              path: remappedEntryPath,
+            };
+          });
+        });
+        Object.keys(directoryState).forEach((key) => {
+          delete directoryState[key];
+        });
+        Object.assign(directoryState, nextDirectoryState);
+
+        return {
+          path: renamedPath,
+          name: nextName,
+          requestedName: nextName,
+          adjusted: false,
+        };
+      }
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(usersButton);
+    usersButton.focus();
+    fireEvent.keyDown(usersButton, { key: "F2" });
+    const renameInput = await screen.findByRole("textbox");
+    fireEvent.change(renameInput, { target: { value: "People" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /People/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+
+    const peopleWatchStartCall = [...invoke.mock.calls]
+      .reverse()
+      .find(([command, args]) => (
+        command === "filesystem_watch_start" && args?.path === "C:\\People"
+      ));
+    const peopleWatchId = peopleWatchStartCall?.[1]?.watchId;
+    expect(typeof peopleWatchId).toBe("string");
+
+    directoryState["C:\\People"].push({
+      name: "later.txt",
+      path: "C:\\People\\later.txt",
+      is_dir: false,
+    });
+
+    vi.useFakeTimers();
+    try {
+      await filesystemWatchCallback?.({
+        payload: {
+          watchId: peopleWatchId,
+          changedPath: "C:\\People\\later.txt",
+        },
+      });
+      await advanceTimersBy(160);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /later\.txt/i })).toBeInTheDocument();
+    });
+  });
+
+  it("starts rename from app command events", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.renameSelected",
+        context: {
+          targetPaneId: "pane-event",
+        },
+      },
+    }));
+
+    expect(await screen.findByRole("textbox")).toHaveValue("notes.txt");
+  });
+
+  it("selects the right-clicked entry when it is outside current selection", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+
+    fireEvent.click(usersButton);
+    fireEvent.contextMenu(notesButton);
+
+    await waitFor(() => {
+      expect(notesButton).toHaveAttribute("aria-selected", "true");
+      expect(usersButton).toHaveAttribute("aria-selected", "false");
+    });
+  });
+
+  it("clears selection when right-clicking empty panel space", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+    fireEvent.click(notesButton);
+
+    await waitFor(() => {
+      expect(notesButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.contextMenu(scrollContainer);
+
+    await waitFor(() => {
+      expect(notesButton).toHaveAttribute("aria-selected", "false");
+    });
+  });
+
+  it("clears selection on left-click empty space but keeps it on middle-click", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+    fireEvent.click(notesButton);
+    fireEvent.click(scrollContainer, { button: 1 });
+
+    await waitFor(() => {
+      expect(notesButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.click(scrollContainer);
+
+    await waitFor(() => {
+      expect(notesButton).toHaveAttribute("aria-selected", "false");
+    });
+  });
+
   it("cancels inline rename on Escape", async () => {
     renderFilesystemPanel();
 
@@ -1937,6 +2194,36 @@ describe("FilesystemPanel", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("deletes selected entries from app command events", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-delete",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.deleteSelected",
+        context: {
+          targetPaneId: "pane-event-delete",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(openConfirmMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("delete_paths", {
+        paths: ["C:\\notes.txt"],
+      });
     });
   });
 

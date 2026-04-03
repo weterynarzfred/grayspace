@@ -13,9 +13,9 @@ Usable scaffolding, but missing core file-manager features.
 * preview (media + text editing via CodeMirror)
 * file properties (read-only)
 * drag & drop in/out
-* command palette + settings panel command list
-* command palette + settings panel command list + custom context menu placeholders
+* custom context menu
 * external UI panel from workspace config
+* command palette + settings panel command list placeholders
 
 ## run locally (windows)
 
@@ -42,7 +42,7 @@ npm run tauri_dev
 * [x] multiple windows and tabs
 * [x] drag in/out of app
 * [ ] menu bar
-* [x] custom context menu (placeholder routing for file/folder/breadcrumb/tab)
+* [x] custom context menu
   * [ ] custom commands, global and per workspace
 * [x] command palette window (`Ctrl+Shift+P`, UI scaffold)
 * [x] settings panel with read-only command list

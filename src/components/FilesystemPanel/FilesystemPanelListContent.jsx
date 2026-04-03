@@ -62,6 +62,7 @@ export default function FilesystemPanelListContent({
     onEntryClick = undefined,
     onEntryDoubleClick = undefined,
     onEntryMiddleClick = undefined,
+    onEntryContextMenu = undefined,
     onEntryRenameSubmit = undefined,
     onEntryRenameCancel = undefined,
   } = entries;
@@ -87,6 +88,8 @@ export default function FilesystemPanelListContent({
           contextId={drive.path}
           contextLabel={drive.name}
           contextPath={drive.path}
+          contextScope="drive-entry"
+          contextPaneId={paneId}
           onClick={() => onDriveSelect?.(drive.path)}
           onDoubleClick={() => onDriveOpen?.(drive.path)}
         />)}
@@ -150,6 +153,7 @@ export default function FilesystemPanelListContent({
               onEntryClick,
               onEntryDoubleClick,
               onEntryMiddleClick,
+              onEntryContextMenu,
               onEntryRenameSubmit,
               onEntryRenameCancel,
             }}

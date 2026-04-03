@@ -1,12 +1,17 @@
-use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{EventKind, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, State};
+
+#[cfg(target_os = "windows")]
+type FilesystemWatcher = notify::PollWatcher;
+#[cfg(not(target_os = "windows"))]
+type FilesystemWatcher = notify::RecommendedWatcher;
 
 #[derive(Serialize)]
 pub struct DriveInfo {
@@ -52,7 +57,7 @@ const FILESYSTEM_WATCH_EVENT: &str = "filesystem-watch-event";
 
 #[derive(Default)]
 pub struct FilesystemWatchState {
-  watchers: Mutex<HashMap<String, RecommendedWatcher>>,
+  watchers: Mutex<HashMap<String, FilesystemWatcher>>,
 }
 
 #[derive(Default)]
@@ -81,6 +86,25 @@ fn is_watch_event_relevant(kind: &EventKind) -> bool {
     kind,
     EventKind::Any | EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
   )
+}
+
+fn create_filesystem_watcher<F>(event_handler: F) -> Result<FilesystemWatcher, String>
+where
+  F: FnMut(notify::Result<notify::Event>) + Send + 'static,
+{
+  #[cfg(target_os = "windows")]
+  {
+    notify::PollWatcher::new(
+      event_handler,
+      notify::Config::default().with_poll_interval(Duration::from_millis(250)),
+    )
+    .map_err(|error| error.to_string())
+  }
+
+  #[cfg(not(target_os = "windows"))]
+  {
+    notify::recommended_watcher(event_handler).map_err(|error| error.to_string())
+  }
 }
 
 fn sort_entries(entries: &mut [FsEntry]) {
@@ -648,8 +672,7 @@ pub fn filesystem_watch_start(
   let watcher_key = watch_state_key(&window_label, normalized_watch_id);
   let watched_id = normalized_watch_id.to_string();
 
-  let mut watcher =
-    notify::recommended_watcher(move |event_result: notify::Result<notify::Event>| {
+  let mut watcher = create_filesystem_watcher(move |event_result: notify::Result<notify::Event>| {
       let event = match event_result {
         Ok(event) => event,
         Err(_) => return,
@@ -672,8 +695,7 @@ pub fn filesystem_watch_start(
           changed_path,
         },
       );
-    })
-    .map_err(|error| error.to_string())?;
+    })?;
 
   watcher
     .watch(&canonical_watch_path, RecursiveMode::NonRecursive)

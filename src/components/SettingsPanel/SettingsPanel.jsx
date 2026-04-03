@@ -1,5 +1,5 @@
 import PanelHeader from "../PanelHeader";
-import { COMMANDS, formatCommandSurfaces } from "../../commands/commandRegistry";
+import { COMMANDS, formatCommandWhen } from "../../commands/commandRegistry";
 import shellStyles from "../PanelShell.module.scss";
 import styles from "./SettingsPanel.module.scss";
 
@@ -15,7 +15,7 @@ function SettingsPanel({ panelType = "Settings", onPanelTypeChange = undefined }
           <tr>
             <th scope="col">Name</th>
             <th scope="col">Shortcut</th>
-            <th scope="col">Surfaces</th>
+            <th scope="col">When</th>
           </tr>
         </thead>
         <tbody>
@@ -25,7 +25,7 @@ function SettingsPanel({ panelType = "Settings", onPanelTypeChange = undefined }
               <span className={styles.commandId}>{command.id}</span>
             </td>
             <td>{command.shortcut || "None"}</td>
-            <td>{formatCommandSurfaces(command) || "None"}</td>
+            <td>{formatCommandWhen(command)}</td>
           </tr>)}
         </tbody>
       </table>

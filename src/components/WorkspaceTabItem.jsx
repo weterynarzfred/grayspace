@@ -35,6 +35,7 @@ export default function WorkspaceTabItem({ tab, isActive, onActivate, onClose })
   return <div
     ref={setNodeRef}
     className={className}
+    data-contextmenu-boundary="tab"
     data-context-kind="tab"
     data-context-id={tab.tabId}
     data-context-label={tab.title}

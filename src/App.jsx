@@ -25,8 +25,37 @@ import { useNotificationCenter } from "./notifications/notificationCenter";
 import resolveContextMenuTarget from "./context/resolveContextMenuTarget";
 import CommandPalettePopover from "./components/popovers/CommandPalettePopover";
 import ContextMenuPopover from "./components/popovers/ContextMenuPopover";
+import {
+  COMMAND_IDS,
+  getCommandsForTrigger,
+  isCommandShortcutMatch,
+} from "./commands/commandRegistry";
+import { dispatchAppCommand } from "./commands/commandEvents";
+import { getSelectedPathsFromState } from "./utils/pathSelection";
 
 import styles from "./App.module.scss";
+
+function getActivePaneState(activeTab) {
+  const activePaneId = activeTab?.activePaneId ?? "";
+  return activeTab?.paneStates?.[activePaneId] ?? null;
+}
+
+function resolveContextMenuSelectedPaths(commandContext, target) {
+  const activeSelection = getSelectedPathsFromState({ selectedPaths: commandContext.selectedPaths });
+  if (!target) return activeSelection;
+
+  const isFilesystemPanelTarget = target.kind === "panel" && target.panelType === "Filesystem";
+  if (isFilesystemPanelTarget) return [];
+
+  const isFilesystemEntryTarget =
+    (target.kind === "file" || target.kind === "folder")
+    && target.scope === "tree-entry";
+  if (isFilesystemEntryTarget && target.path && !activeSelection.includes(target.path)) {
+    return [target.path];
+  }
+
+  return activeSelection;
+}
 
 function App() {
   const [viewState, dispatch] = useReducer(workspaceReducer, initialWorkspaceViewState);
@@ -39,6 +68,7 @@ function App() {
     isOpen: false,
     position: { x: 24, y: 24 },
     target: null,
+    context: null,
   });
   const currentWindowIdRef = useRef("");
   const lastPointerPositionRef = useRef({ x: 24, y: 24 });
@@ -69,6 +99,25 @@ function App() {
     title: tabTitlesByTabId[tab.tabId] ?? tab.title,
   })), [tabTitlesByTabId, tabs]);
   const activeTab = selectActiveTab(viewState.snapshot, currentWindow);
+  const activePaneState = getActivePaneState(activeTab);
+  const commandContextBase = useMemo(() => ({
+    activePaneId: activeTab?.activePaneId ?? "",
+    activePanelType: activePaneState?.panelType ?? "",
+    isFilesystemBrowsing: Boolean(activePaneState?.filesystemState?.currentPath),
+    selectedPaths: getSelectedPathsFromState(activePaneState?.filesystemState),
+  }), [
+    activePaneState?.filesystemState,
+    activePaneState?.panelType,
+    activeTab?.activePaneId,
+  ]);
+  const paletteCommands = useMemo(
+    () => getCommandsForTrigger("palette", { ...commandContextBase, source: "palette" }),
+    [commandContextBase],
+  );
+  const contextMenuCommands = useMemo(() => {
+    if (!contextMenuState.context) return [];
+    return getCommandsForTrigger("context-menu", contextMenuState.context);
+  }, [contextMenuState.context]);
 
   const workspaceActions = useWorkspaceActions({
     currentWindow,
@@ -96,7 +145,7 @@ function App() {
   }, []);
   const closeContextMenu = useCallback(() => {
     setContextMenuState((state) => state.isOpen
-      ? { ...state, isOpen: false, target: null }
+      ? { ...state, isOpen: false, target: null, context: null }
       : state);
   }, []);
   const openCommandPalette = useCallback(() => {
@@ -113,7 +162,7 @@ function App() {
       y: event.clientY,
     };
   }, []);
-  const handleContextMenuCapture = useCallback((event) => {
+  const handleContextMenu = useCallback((event) => {
     event.preventDefault();
     const target = resolveContextMenuTarget(event.target);
     if (!target) {
@@ -121,6 +170,19 @@ function App() {
       return;
     }
 
+    const contextMenuSelection = resolveContextMenuSelectedPaths(commandContextBase, target);
+    const context = {
+      ...commandContextBase,
+      source: "context-menu",
+      targetType: target.kind,
+      targetId: target.id,
+      targetLabel: target.label,
+      targetPath: target.path,
+      targetScope: target.scope,
+      targetPaneId: target.paneId,
+      targetPanelType: target.panelType,
+      selectedPaths: contextMenuSelection,
+    };
     setContextMenuState({
       isOpen: true,
       position: {
@@ -128,15 +190,54 @@ function App() {
         y: event.clientY,
       },
       target,
+      context,
     });
     closeCommandPalette();
-  }, [closeCommandPalette, closeContextMenu]);
+  }, [closeCommandPalette, closeContextMenu, commandContextBase]);
+  const executeCommand = useCallback((commandId, context = {}) => {
+    if (!commandId) return;
+
+    if (commandId === COMMAND_IDS.PANE_SPLIT_VERTICAL || commandId === COMMAND_IDS.PANE_SPLIT_HORIZONTAL) {
+      const tabId = activeTab?.tabId || "";
+      if (!tabId) return;
+      const paneId = context?.targetType === "panel"
+        ? context.targetId
+        : activeTab?.activePaneId || "";
+      if (!paneId) return;
+      workspaceActions.handleSplitPane(
+        tabId,
+        paneId,
+        commandId === COMMAND_IDS.PANE_SPLIT_VERTICAL ? "right" : "bottom",
+      );
+      return;
+    }
+
+    if (commandId === COMMAND_IDS.TAB_CLOSE) {
+      const tabId = context?.targetType === "tab"
+        ? context.targetId
+        : activeTab?.tabId || "";
+      if (!tabId) return;
+      workspaceActions.handleCloseTab(tabId);
+      return;
+    }
+
+    if (
+      commandId === COMMAND_IDS.FILESYSTEM_RENAME_SELECTED
+      || commandId === COMMAND_IDS.FILESYSTEM_DELETE_SELECTED
+    ) {
+      dispatchAppCommand(commandId, context);
+    }
+  }, [activeTab?.activePaneId, activeTab?.tabId, workspaceActions]);
+  const handleContextMenuCommand = useCallback((commandId) => {
+    const context = contextMenuState.context;
+    executeCommand(commandId, context ?? {});
+    closeContextMenu();
+  }, [closeContextMenu, contextMenuState.context, executeCommand]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.defaultPrevented) return;
-      if (!event.ctrlKey || !event.shiftKey || event.altKey || event.metaKey) return;
-      if (event.key.toLowerCase() !== "p") return;
+      if (!isCommandShortcutMatch(COMMAND_IDS.COMMAND_PALETTE_OPEN, event)) return;
       event.preventDefault();
       openCommandPalette();
     };
@@ -159,7 +260,7 @@ function App() {
   return <main
     className={styles.appShell}
     onPointerMoveCapture={handlePointerMoveCapture}
-    onContextMenuCapture={handleContextMenuCapture}
+    onContextMenu={handleContextMenu}
   >
     <section className={styles.workspaceShell}>
       <DndContext
@@ -208,12 +309,15 @@ function App() {
     <CommandPalettePopover
       open={commandPaletteState.isOpen}
       position={commandPaletteState.position}
+      commands={paletteCommands}
       onClose={closeCommandPalette}
     />
     <ContextMenuPopover
       open={contextMenuState.isOpen}
       position={contextMenuState.position}
       target={contextMenuState.target}
+      commands={contextMenuCommands}
+      onCommand={handleContextMenuCommand}
       onClose={closeContextMenu}
     />
   </main>;

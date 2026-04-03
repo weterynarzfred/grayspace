@@ -10,6 +10,11 @@ import {
   resolveExternalDropDestinationFromPoint,
 } from "../filesystemPanelUtils";
 
+function getContextMenuBoundaryType(target) {
+  if (!(target instanceof Element)) return "";
+  return target.closest("[data-contextmenu-boundary]")?.getAttribute("data-contextmenu-boundary") || "";
+}
+
 export default function useFilesystemPanelInteractions({
   tabId = "",
   paneId = "",
@@ -20,6 +25,7 @@ export default function useFilesystemPanelInteractions({
   isBrowsing = false,
   isEntryOperationInProgress = false,
   isExternalDragEnabled = false,
+  setSelectedPath,
   selectEntry,
   openEntry,
   moveEntries,
@@ -27,6 +33,7 @@ export default function useFilesystemPanelInteractions({
   importExternalPaths,
   deleteEntries,
   renameEntry,
+  onEntryPathRenamed = undefined,
   onTabSelectedFilesChange,
   workspaceFolderPathSet = new Set(),
   openConfirm,
@@ -127,6 +134,10 @@ export default function useFilesystemPanelInteractions({
       selectedPaths: uniqueNonEmptyPaths(nextSelectedPaths),
     });
   }, [onTabSelectedFilesChange, tabId]);
+  const clearSelectedEntries = useCallback(() => {
+    setSelectedPath("");
+    emitTabSelectedFiles([]);
+  }, [emitTabSelectedFiles, setSelectedPath]);
 
   const handleEntryClick = useCallback((entryPath, event) => {
     const nextSelectedEntryPaths = selectEntry(entryPath, {
@@ -152,13 +163,31 @@ export default function useFilesystemPanelInteractions({
       isWorkspaceFolder: workspaceFolderPathSet.has(entry.path),
     });
   }, [openEntry, workspaceFolderPathSet]);
+  const handleEntryContextMenu = useCallback((entryPath) => {
+    if (selectedEntryPathSet.has(entryPath)) return;
+    const nextSelectedEntryPaths = selectEntry(entryPath, {
+      entryPaths: treeData.entryPaths,
+    });
+    emitTabSelectedFiles(nextSelectedEntryPaths);
+  }, [emitTabSelectedFiles, selectEntry, selectedEntryPathSet, treeData.entryPaths]);
+  const handlePanelBackgroundClick = useCallback((event) => {
+    if (event.defaultPrevented || event.button !== 0) return;
+    const boundaryType = getContextMenuBoundaryType(event.target);
+    if (boundaryType && boundaryType !== "panel") return;
+    clearSelectedEntries();
+  }, [clearSelectedEntries]);
+  const handlePanelBackgroundContextMenu = useCallback((event) => {
+    const boundaryType = getContextMenuBoundaryType(event.target);
+    if (boundaryType && boundaryType !== "panel") return;
+    clearSelectedEntries();
+  }, [clearSelectedEntries]);
 
   const handleBeginRenameSelectedEntry = useCallback(() => {
     if (!isBrowsing || isEntryOperationInProgress) return false;
     if (selectedEntryPaths.length !== 1) return false;
     const selectedPath = selectedEntryPaths[0];
     const selectedEntry = treeData.entryByPath[selectedPath];
-    if (!selectedEntry || selectedEntry.is_dir) return false;
+    if (!selectedEntry) return false;
     setRenamingPath(selectedPath);
     return true;
   }, [
@@ -177,7 +206,7 @@ export default function useFilesystemPanelInteractions({
     if (entryPath !== renamingPath) return;
 
     const targetEntry = treeData.entryByPath[entryPath];
-    if (!targetEntry || targetEntry.is_dir) {
+    if (!targetEntry) {
       setRenamingPath("");
       return;
     }
@@ -195,6 +224,7 @@ export default function useFilesystemPanelInteractions({
           `[filesystem-rename] Requested "${normalizedName}", resolved to "${renameResult.name}".`,
         );
       }
+      onEntryPathRenamed?.(entryPath, renameResult.path);
       emitTabSelectedFiles([renameResult.path]);
     } catch (renameError) {
       console.error("[filesystem-rename] Failed to rename item.", renameError);
@@ -203,6 +233,7 @@ export default function useFilesystemPanelInteractions({
     }
   }, [
     emitTabSelectedFiles,
+    onEntryPathRenamed,
     renameEntry,
     renamingPath,
     treeData.entryByPath,
@@ -289,9 +320,13 @@ export default function useFilesystemPanelInteractions({
     handleEntryClick,
     handleEntryDoubleClick,
     handleEntryMiddleClick,
+    handleEntryContextMenu,
+    handlePanelBackgroundClick,
+    handlePanelBackgroundContextMenu,
     handleBeginRenameSelectedEntry,
     handleEntryRenameCancel,
     handleEntryRenameSubmit,
+    handleDeleteSelectedEntries,
     handlePanelKeyDown,
     isExternalDragOver,
   };

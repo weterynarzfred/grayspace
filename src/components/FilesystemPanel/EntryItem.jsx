@@ -21,6 +21,8 @@ function EntryItem({
   contextId = "",
   contextLabel = "",
   contextPath = "",
+  contextScope = "",
+  contextPaneId = "",
   isRenaming = false,
   renameInitialValue = "",
   buttonRef,
@@ -37,6 +39,7 @@ function EntryItem({
   onDragEnter,
   onDragLeave,
   onDrop,
+  onContextMenu,
   onRenameSubmit,
   onRenameCancel,
 }) {
@@ -169,10 +172,13 @@ function EntryItem({
       draggable={isDraggable && !hasDndListeners}
       style={buttonStyle}
       data-drop-destination-path={dropDestinationPath || undefined}
+      data-contextmenu-boundary={contextKind ? "filesystem-entry" : undefined}
       data-context-kind={contextKind || undefined}
       data-context-id={contextId || undefined}
       data-context-label={contextLabel || label}
       data-context-path={contextPath || undefined}
+      data-context-scope={contextScope || undefined}
+      data-context-pane-id={contextPaneId || undefined}
       {...dndAttributes}
       {...dndListeners}
       onClick={onClick}
@@ -185,6 +191,7 @@ function EntryItem({
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
+      onContextMenu={onContextMenu}
     >
       <span className={styles.entryMain}>
         {indent}

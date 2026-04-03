@@ -30,3 +30,43 @@
 .path {
   word-break: break-word;
 }
+
+.commandList {
+  list-style: none;
+  margin: 0.25rem 0 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.commandRow {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid $border-secondary;
+  padding: 0.28rem 0.4rem;
+  font-size: $font-size-small;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.commandName {
+  color: $text-primary;
+}
+
+.commandShortcut {
+  color: $text-secondary;
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+}
+
+.emptyRow {
+  border: 1px solid $border-secondary;
+  padding: 0.28rem 0.4rem;
+  font-size: $font-size-small;
+  color: $text-tertiary;
+}

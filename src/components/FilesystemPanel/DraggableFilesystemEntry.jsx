@@ -31,6 +31,7 @@ function DraggableFilesystemEntry({
     onEntryClick = undefined,
     onEntryDoubleClick = undefined,
     onEntryMiddleClick = undefined,
+    onEntryContextMenu = undefined,
     onEntryRenameSubmit = undefined,
     onEntryRenameCancel = undefined,
   } = actions;
@@ -96,6 +97,8 @@ function DraggableFilesystemEntry({
     contextId={entry.path}
     contextLabel={entry.name}
     contextPath={entry.path}
+    contextScope="tree-entry"
+    contextPaneId={paneId}
     nestingDepth={nestingDepth}
     showExpander={entry.is_dir}
     isExpanded={isExpanded}
@@ -108,6 +111,7 @@ function DraggableFilesystemEntry({
     onClick={(event) => onEntryClick?.(entry.path, event)}
     onDoubleClick={() => onEntryDoubleClick?.(entry)}
     onAuxClick={(event) => onEntryMiddleClick?.(entry, event)}
+    onContextMenu={(event) => onEntryContextMenu?.(entry.path, event)}
     onRenameSubmit={(nextName) => onEntryRenameSubmit?.(entry.path, nextName)}
     onRenameCancel={() => onEntryRenameCancel?.(entry.path)}
   />;
