@@ -96,7 +96,7 @@ export default function useWorkspaceActions({
     workspaceSetTabPanelType(tabId, paneId, panelType).catch(handleTabScopedCommandError);
   }, [handleTabScopedCommandError]);
 
-  const handleSetTabCwdHint = useCallback((tabId, paneId, path) => {
+  const handleSetTabCwdHint = useCallback((tabId, _paneId, path) => {
     if (!tabId) return;
     const nextPath = path ?? "";
     const previousPath = terminalCwdByTabRef.current.get(tabId);
@@ -108,13 +108,8 @@ export default function useWorkspaceActions({
       });
     }
 
-    const isActivePane = activeTab?.tabId === tabId
-      && (!paneId || !activeTab?.activePaneId || paneId === activeTab.activePaneId);
-    if (!isActivePane) return;
-
-    const workspaceRoot = typeof activeTab?.workspaceRoot === "string"
-      ? activeTab.workspaceRoot
-      : "";
+    if (activeTab?.tabId !== tabId) return;
+    const workspaceRoot = activeTab?.workspaceRoot ?? "";
     if (!workspaceRoot) return;
     if (isPathInsideRoot(nextPath, workspaceRoot)) return;
 
