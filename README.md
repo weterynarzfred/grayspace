@@ -13,6 +13,9 @@ Usable scaffolding, but missing core file-manager features.
 * preview (media + text editing via CodeMirror)
 * file properties (read-only)
 * drag & drop in/out
+* command palette + settings panel command list
+* command palette + settings panel command list + custom context menu placeholders
+* external UI panel from workspace config
 
 ## run locally (windows)
 
@@ -39,9 +42,11 @@ npm run tauri_dev
 * [x] multiple windows and tabs
 * [x] drag in/out of app
 * [ ] menu bar
-* [ ] custom context menu (scaffold ready)
+* [x] custom context menu (placeholder routing for file/folder/breadcrumb/tab)
   * [ ] custom commands, global and per workspace
-* [ ] global config system (scaffold ready)
+* [x] command palette window (`Ctrl+Shift+P`, UI scaffold)
+* [x] settings panel with read-only command list
+* [ ] global config system
 * [x] remove the native window bar at the top, add draggable region and minimize/maximize/close buttons
 * [ ] when closing a tab, first check if any panels don't require a confirmation
 * [ ] when closing a window, first check if tabs don't require a confirmation
@@ -57,6 +62,7 @@ npm run tauri_dev
 * [ ] folder preview and thumbnail
 * [x] add better scrollbars
 * [ ] persist scroll position on tab switch
+* [ ] refresh the panel when `folder.json` is edited
 
 ### QOL
 
@@ -144,7 +150,8 @@ npm run tauri_dev
 
 ### external UI
 
-* [ ] load localhost / HTML apps inside panel
+* [x] load URL from `.grayspace/folder.json` (`externalUI`) inside panel
+* [ ] load HTML files
 
 ### canvas (ctrl + shift + g)
 
