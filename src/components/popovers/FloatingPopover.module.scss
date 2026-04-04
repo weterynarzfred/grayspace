@@ -10,4 +10,8 @@
   border: 1px solid $border-secondary;
   background: $bg-panel;
   box-shadow: 0rem 0rem 0.3rem $bg-panel;
+
+  > div:focus {
+    outline: none;
+  }
 }

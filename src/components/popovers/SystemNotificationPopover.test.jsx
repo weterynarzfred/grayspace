@@ -81,4 +81,40 @@ describe("SystemNotificationPopover", () => {
     fireEvent.pointerDown(document.body);
     expect(onCloseWithDefault).not.toHaveBeenCalled();
   });
+
+  it("executes the default confirm action on Enter", () => {
+    const onResolveConfirm = vi.fn();
+    const notification = createNotification({
+      kind: "confirm",
+      defaultAction: true,
+    });
+
+    render(<SystemNotificationPopover
+      open
+      notification={notification}
+      onResolveConfirm={onResolveConfirm}
+    />);
+
+    fireEvent.keyDown(screen.getByTestId("system-notification-root"), { key: "Enter" });
+    expect(onResolveConfirm).toHaveBeenCalledWith("n-1", true);
+  });
+
+  it("changes selected confirm action with arrows and executes on Enter", () => {
+    const onResolveConfirm = vi.fn();
+    const notification = createNotification({
+      kind: "confirm",
+      defaultAction: false,
+    });
+
+    render(<SystemNotificationPopover
+      open
+      notification={notification}
+      onResolveConfirm={onResolveConfirm}
+    />);
+
+    const root = screen.getByTestId("system-notification-root");
+    fireEvent.keyDown(root, { key: "ArrowRight" });
+    fireEvent.keyDown(root, { key: "Enter" });
+    expect(onResolveConfirm).toHaveBeenCalledWith("n-1", true);
+  });
 });

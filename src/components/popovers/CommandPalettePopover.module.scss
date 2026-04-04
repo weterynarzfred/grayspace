@@ -1,4 +1,5 @@
 @use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
 
 .palette {
   width: min(34rem, calc(100vw - 1rem));
@@ -45,24 +46,12 @@
 }
 
 .commandRow {
-  width: 100%;
-  background: $bg-surface;
-  color: inherit;
-  text-align: left;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  border: 1px solid $border-secondary;
-  padding: 0.28rem 0.4rem;
-  font-size: $font-size-small;
-  cursor: pointer;
+  @include popover-action-button;
 }
 
 .commandRowSelected,
 .commandRow:hover {
-  border-color: $accent-active;
-  background: $bg-accent;
+  @include popover-action-button-active;
 }
 
 .commandName {

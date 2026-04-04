@@ -1,9 +1,8 @@
 @use "../../styles/variables" as *;
 @use "../../styles/mixins" as *;
 
-.popover {
+.popover > div {
   display: grid;
-  gap: 0.35rem;
   padding: 0.5rem;
 }
 
@@ -31,23 +30,18 @@
 .actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 0.35rem;
+  padding-top: 0.5rem;
 }
 
 .actionButton {
-  @include interactive-tile;
-  border: 1px solid $border-default;
+  @include popover-action-button($full-width: false);
   font-family: $font-mono;
   font-size: $font-size-mono;
   padding: 0 0.5rem;
-
-  &:hover {
-    color: $accent-active-light;
-    background: $bg-accent;
-  }
 }
 
+.actionButtonSelected,
 .actionButton:hover {
-  border-color: #3a4760;
-  background: #131d2c;
+  @include popover-action-button-active;
 }

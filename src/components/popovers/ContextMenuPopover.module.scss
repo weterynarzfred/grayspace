@@ -1,4 +1,5 @@
 @use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
 
 .menu {
   width: min(24rem, calc(100vw - 1rem));
@@ -41,17 +42,12 @@
 }
 
 .commandRow {
-  width: 100%;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  border: 1px solid $border-secondary;
-  padding: 0.28rem 0.4rem;
-  font-size: $font-size-small;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
+  @include popover-action-button;
+}
+
+.commandRowSelected,
+.commandRow:hover {
+  @include popover-action-button-active;
 }
 
 .commandName {
