@@ -14,6 +14,10 @@ function clampPosition(position, size) {
   };
 }
 
+function arePositionsEqual(a, b) {
+  return a?.x === b?.x && a?.y === b?.y;
+}
+
 function FloatingPopover({
   open = false,
   position = { x: VIEWPORT_PADDING, y: VIEWPORT_PADDING },
@@ -24,16 +28,43 @@ function FloatingPopover({
   const popoverRef = useRef(null);
   const [resolvedPosition, setResolvedPosition] = useState(position);
 
-  useEffect(() => {
-    if (!open) return;
-    setResolvedPosition(position);
-  }, [open, position]);
-
   useLayoutEffect(() => {
     if (!open || !popoverRef.current) return;
     const rect = popoverRef.current.getBoundingClientRect();
-    setResolvedPosition(clampPosition(position, rect));
+    setResolvedPosition((previousPosition) => {
+      const nextPosition = clampPosition(position, rect);
+      if (arePositionsEqual(previousPosition, nextPosition)) return previousPosition;
+      return nextPosition;
+    });
   }, [open, position]);
+
+  useEffect(() => {
+    if (!open || !popoverRef.current) return undefined;
+
+    const updateResolvedPosition = () => {
+      const popover = popoverRef.current;
+      if (!popover) return;
+      const rect = popover.getBoundingClientRect();
+      setResolvedPosition((previousPosition) => {
+        const nextPosition = clampPosition(previousPosition, rect);
+        if (arePositionsEqual(previousPosition, nextPosition)) return previousPosition;
+        return nextPosition;
+      });
+    };
+
+    window.addEventListener("resize", updateResolvedPosition);
+
+    const canObserveResize = typeof window.ResizeObserver === "function";
+    const resizeObserver = canObserveResize
+      ? new window.ResizeObserver(updateResolvedPosition)
+      : null;
+    resizeObserver?.observe(popoverRef.current);
+
+    return () => {
+      window.removeEventListener("resize", updateResolvedPosition);
+      resizeObserver?.disconnect();
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
