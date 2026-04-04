@@ -36,6 +36,7 @@ export default function useFilesystemPanelInteractions({
   renameEntry,
   onEntryPathRenamed = undefined,
   onTabSelectedFilesChange,
+  onDeleteShortcutCommand = undefined,
   workspaceFolderPathSet = new Set(),
   openConfirm,
   pushNotification = undefined,
@@ -304,11 +305,16 @@ export default function useFilesystemPanelInteractions({
     if (!isBrowsing || isEntryOperationInProgress || selectedEntryPaths.length === 0) return;
 
     event.preventDefault();
+    if (onDeleteShortcutCommand) {
+      onDeleteShortcutCommand();
+      return;
+    }
     void handleDeleteSelectedEntries();
   }, [
     handleDeleteSelectedEntries,
     isBrowsing,
     isEntryOperationInProgress,
+    onDeleteShortcutCommand,
     selectedEntryPaths.length,
   ]);
 

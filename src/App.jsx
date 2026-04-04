@@ -207,6 +207,14 @@ function App() {
     },
   ), [activeTab, openCommandPalette, workspaceActions]);
   usePaneSplitShortcuts(executeAppCommand);
+  const handleTabMiddleClick = useCallback((tabId) => {
+    if (!tabId) return;
+    executeAppCommand(COMMAND_IDS.TAB_CLOSE, {
+      source: "shortcut",
+      targetType: "tab",
+      targetId: tabId,
+    });
+  }, [executeAppCommand]);
   const handleContextMenuCommand = useCallback((commandId) => {
     const context = contextMenuState.context;
     executeAppCommand(commandId, context ?? {});
@@ -266,6 +274,7 @@ function App() {
           activeDragTabId={activeDragTabId}
           onActivateTab={workspaceActions.handleSetActiveTab}
           onCloseTab={workspaceActions.handleCloseTab}
+          onMiddleClickTab={handleTabMiddleClick}
           onCreateTab={workspaceActions.handleCreateTab}
         />
       </DndContext>

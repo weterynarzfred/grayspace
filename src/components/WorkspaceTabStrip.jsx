@@ -10,6 +10,7 @@ function WorkspaceTabStrip({
   activeDragTabId,
   onActivateTab,
   onCloseTab,
+  onMiddleClickTab = undefined,
   onCreateTab,
 }) {
   const handleMinimizeWindow = () => {
@@ -43,6 +44,7 @@ function WorkspaceTabStrip({
         isActive={tab.tabId === activeTabId}
         onActivate={onActivateTab}
         onClose={onCloseTab}
+        onMiddleClick={onMiddleClickTab || onCloseTab}
       />)}
     </div>
     <div className={styles.tabActions}>

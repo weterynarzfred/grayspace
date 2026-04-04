@@ -21,6 +21,7 @@ import { useNotificationCenter } from "../../notifications/notificationCenter";
 import isEditableKeyboardTarget from "../../utils/isEditableKeyboardTarget";
 import { COMMAND_IDS, isCommandShortcutMatch } from "../../commands/commandRegistry";
 import { APP_COMMAND_EVENT } from "../../commands/commandEvents";
+import executeCommand from "../../commands/executeCommand";
 import styles from "./FilesystemPanel.module.scss";
 import shellStyles from "../PanelShell.module.scss";
 
@@ -189,6 +190,7 @@ function FilesystemPanel({
     renameEntry,
     onEntryPathRenamed: remapRenamedPath,
     onTabSelectedFilesChange,
+    onDeleteShortcutCommand: () => executeFilesystemShortcutCommand(COMMAND_IDS.FILESYSTEM_DELETE_SELECTED),
     workspaceFolderPathSet,
     openConfirm,
     pushNotification,
@@ -215,6 +217,15 @@ function FilesystemPanel({
     if (!paneViewport) return panelRef.current?.contains(document.activeElement);
     return paneViewport.getAttribute("data-pane-active") === "true";
   }, []);
+  const executeFilesystemShortcutCommand = useCallback((commandId) => {
+    executeCommand(commandId, {
+      context: {
+        source: "shortcut",
+        activePaneId: paneId,
+        targetPaneId: paneId,
+      },
+    });
+  }, [paneId]);
   const canLeaveWorkspaceWithoutConfirm = useCallback((nextPath) => {
     if (!tabWorkspaceRoot) return true;
     return isPathInsideRoot(nextPath, tabWorkspaceRoot);
@@ -285,14 +296,14 @@ function FilesystemPanel({
       if (isEntryOperationInProgress) return;
 
       event.preventDefault();
-      handleBeginRenameSelectedEntry();
+      executeFilesystemShortcutCommand(COMMAND_IDS.FILESYSTEM_RENAME_SELECTED);
     };
 
     window.addEventListener("keydown", handleRenameShortcut);
     return () => {
       window.removeEventListener("keydown", handleRenameShortcut);
     };
-  }, [handleBeginRenameSelectedEntry, isEntryOperationInProgress, isPanelActive]);
+  }, [executeFilesystemShortcutCommand, isEntryOperationInProgress, isPanelActive]);
   useEffect(() => {
     const handleAppCommand = (event) => {
       const detail = event?.detail ?? {};

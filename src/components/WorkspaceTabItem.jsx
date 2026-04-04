@@ -3,7 +3,13 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { getTabDndId } from "../workspace/dragCoordinator";
 import styles from "./WorkspaceTabStrip.module.scss";
 
-export default function WorkspaceTabItem({ tab, isActive, onActivate, onClose }) {
+export default function WorkspaceTabItem({
+  tab,
+  isActive,
+  onActivate,
+  onClose,
+  onMiddleClick = undefined,
+}) {
   const dndId = getTabDndId(tab.tabId);
   const { setNodeRef: setDraggableRef, attributes, listeners, isDragging } = useDraggable({
     id: dndId,
@@ -19,6 +25,10 @@ export default function WorkspaceTabItem({ tab, isActive, onActivate, onClose })
     if (event.button !== 1) return;
     event.preventDefault();
     event.stopPropagation();
+    if (onMiddleClick) {
+      onMiddleClick(tab.tabId);
+      return;
+    }
     onClose(tab.tabId);
   };
   const handleClose = (event) => {
