@@ -185,7 +185,7 @@ describe("FilesystemPanel", () => {
         return path.win32.dirname(payload?.path ?? "");
       }
 
-      if (command === "open_path" && payload?.path === "C:\\notes.txt")
+      if (command === "open_path")
         return null;
 
       if (command === "workspace_open_workspace_folder_from_tab")
@@ -1838,6 +1838,201 @@ describe("FilesystemPanel", () => {
       });
     });
     expect(await screen.findByRole("button", { name: /renamed\.txt/i })).toBeInTheDocument();
+  });
+
+  it("navigates entries with ArrowUp/ArrowDown and supports Shift range selection", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const tempButton = await screen.findByRole("button", { name: /Temp/i });
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+
+    fireEvent.click(usersButton);
+    usersButton.focus();
+    fireEvent.keyDown(usersButton, { key: "ArrowDown" });
+
+    await waitFor(() => {
+      expect(tempButton).toHaveAttribute("aria-selected", "true");
+      expect(usersButton).toHaveAttribute("aria-selected", "false");
+    });
+
+    tempButton.focus();
+    fireEvent.keyDown(tempButton, { key: "ArrowDown", shiftKey: true });
+
+    await waitFor(() => {
+      expect(tempButton).toHaveAttribute("aria-selected", "true");
+      expect(notesButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "ArrowUp" });
+
+    await waitFor(() => {
+      expect(tempButton).toHaveAttribute("aria-selected", "true");
+      expect(notesButton).toHaveAttribute("aria-selected", "false");
+    });
+  });
+
+  it("selects up entry and last entry with arrows when nothing is selected", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const panel = screen.getByLabelText("Filesystem panel");
+    const upButton = await screen.findByRole("button", { name: /\.\./i });
+    const configButton = await screen.findByRole("button", { name: /\.grayspace/i });
+
+    fireEvent.keyDown(panel, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(upButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+    fireEvent.click(scrollContainer);
+    await waitFor(() => {
+      expect(upButton).toHaveAttribute("aria-selected", "false");
+    });
+
+    fireEvent.keyDown(panel, { key: "ArrowUp" });
+    await waitFor(() => {
+      expect(configButton).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
+  it("loops keyboard navigation from first to last and last to first", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const panel = screen.getByLabelText("Filesystem panel");
+    const upButton = await screen.findByRole("button", { name: /\.\./i });
+    const configButton = await screen.findByRole("button", { name: /\.grayspace/i });
+
+    fireEvent.keyDown(panel, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(upButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.keyDown(panel, { key: "ArrowUp" });
+    await waitFor(() => {
+      expect(configButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.keyDown(panel, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(upButton).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
+  it("supports arrow selection while browsing drives", async () => {
+    invoke.mockImplementation(async (command) => {
+      if (command === "list_drives") {
+        return [
+          { name: "C:", path: "C:\\" },
+          { name: "D:", path: "D:\\" },
+        ];
+      }
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+      if (command === "thumbnail_resolve_batch") return { results: [] };
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    renderFilesystemPanel();
+
+    const panel = screen.getByLabelText("Filesystem panel");
+    const cDriveButton = await screen.findByRole("button", { name: /C:\\/i });
+    const dDriveButton = await screen.findByRole("button", { name: /D:\\/i });
+
+    fireEvent.keyDown(panel, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(cDriveButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.keyDown(panel, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(dDriveButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.keyDown(panel, { key: "ArrowUp" });
+    await waitFor(() => {
+      expect(cDriveButton).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
+  it("expands and collapses the selected folder with ArrowRight and ArrowLeft", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.click(usersButton);
+    usersButton.focus();
+    fireEvent.keyDown(usersButton, { key: "ArrowRight" });
+
+    expect(await screen.findByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+
+    fireEvent.keyDown(usersButton, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("opens the selected file with Enter", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("open_path", { path: "C:\\notes.txt" });
+    });
+  });
+
+  it("opens the selected folder in place with Enter", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.click(usersButton);
+    usersButton.focus();
+    fireEvent.keyDown(usersButton, { key: "Enter" });
+
+    expect(await screen.findByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+  });
+
+  it("opens all selected files with Enter", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    const draftButton = await screen.findByRole("button", { name: /draft\.md/i });
+
+    fireEvent.click(notesButton);
+    fireEvent.click(draftButton, { ctrlKey: true });
+    fireEvent.keyDown(draftButton, { key: "Enter" });
+
+    await waitFor(() => {
+      const openPathCalls = invoke.mock.calls.filter(([command]) => command === "open_path");
+      const openedPaths = openPathCalls.map(([, payload]) => payload?.path);
+      expect(openedPaths).toContain("C:\\notes.txt");
+      expect(openedPaths).toContain("C:\\draft.md");
+    });
   });
 
   it("renames a selected folder on F2", async () => {

@@ -176,6 +176,7 @@ function FilesystemPanel({
     panelRef,
     currentPath,
     selectedPaths,
+    drivePaths: drives.map((drive) => drive.path),
     treeRows,
     isBrowsing,
     isEntryOperationInProgress,
@@ -191,6 +192,11 @@ function FilesystemPanel({
     onEntryPathRenamed: remapRenamedPath,
     onTabSelectedFilesChange,
     onDeleteShortcutCommand: () => executeFilesystemShortcutCommand(COMMAND_IDS.FILESYSTEM_DELETE_SELECTED),
+    onToggleDirectoryExpanded: toggleDirectoryExpanded,
+    onOpenDrivePath: selectDrive,
+    onOpenUpEntry: () => {
+      void handleGoUpDoubleClick();
+    },
     workspaceFolderPathSet,
     openConfirm,
     pushNotification,
@@ -304,6 +310,18 @@ function FilesystemPanel({
       window.removeEventListener("keydown", handleRenameShortcut);
     };
   }, [executeFilesystemShortcutCommand, isEntryOperationInProgress, isPanelActive]);
+  useEffect(() => {
+    const handlePanelNavigationKeys = (event) => {
+      if (event.defaultPrevented) return;
+      if (!isPanelActive()) return;
+      handlePanelKeyDown(event);
+    };
+
+    window.addEventListener("keydown", handlePanelNavigationKeys);
+    return () => {
+      window.removeEventListener("keydown", handlePanelNavigationKeys);
+    };
+  }, [handlePanelKeyDown, isPanelActive]);
   useEffect(() => {
     const handleAppCommand = (event) => {
       const detail = event?.detail ?? {};

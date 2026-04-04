@@ -53,6 +53,7 @@ npm run tauri_dev
 * [ ] when closing a tab, first check if any panels don't require a confirmation
 * [ ] when closing a window, first check if tabs don't require a confirmation
 * [ ] trigger thumbnail cache pruning
+* [ ] remember last windows size and position
 
 ### workspaces
 
@@ -94,7 +95,7 @@ npm run tauri_dev
 * [ ] cut / copy / paste
   * [ ] system integration
 * [ ] undo (ctrl+z)
-* [ ] keyboard navigation
+* [x] keyboard navigation
 * [ ] path input / navigation
 * [ ] back/forward history
 * [ ] search + filtering
