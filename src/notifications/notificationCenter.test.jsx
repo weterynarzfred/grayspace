@@ -9,29 +9,58 @@ function NotificationCenterWrapper({ children }) {
 }
 
 describe("notificationCenter", () => {
-  it("queues notifications and toggles flyout visibility", () => {
+  it("queues notifications in FIFO order", () => {
     const { result } = renderHook(() => useNotificationCenter(), {
       wrapper: NotificationCenterWrapper,
     });
 
-    expect(result.current.notifications).toEqual([]);
-    expect(result.current.isNotificationsOpen).toBe(false);
+    expect(result.current.activeNotification).toBeNull();
 
     act(() => {
       result.current.pushNotification({
+        title: "First",
+      });
+      result.current.pushNotification({ title: "Second" });
+    });
+
+    expect(result.current.activeNotification?.title).toBe("First");
+
+    act(() => {
+      const activeId = result.current.activeNotification?.id ?? "";
+      result.current.dismissNotification(activeId);
+    });
+    expect(result.current.activeNotification?.title).toBe("Second");
+
+    act(() => {
+      const activeId = result.current.activeNotification?.id ?? "";
+      result.current.dismissNotification(activeId);
+    });
+    expect(result.current.activeNotification).toBeNull();
+  });
+
+  it("applies default notification fields", () => {
+    const { result } = renderHook(() => useNotificationCenter(), {
+      wrapper: NotificationCenterWrapper,
+    });
+
+    let notificationId = "";
+    act(() => {
+      notificationId = result.current.pushNotification({
         title: "Build complete",
         message: "Done.",
         tone: "success",
       });
     });
 
-    expect(result.current.notifications).toHaveLength(1);
-    expect(result.current.isNotificationsOpen).toBe(false);
-
-    act(() => {
-      result.current.toggleNotifications();
+    expect(result.current.activeNotification).toMatchObject({
+      id: notificationId,
+      kind: "notification",
+      title: "Build complete",
+      message: "Done.",
+      tone: "success",
+      position: { x: 8, y: 8 },
+      dismissOnOutside: true,
     });
-    expect(result.current.isNotificationsOpen).toBe(true);
   });
 
   it("resolves confirm notifications on confirm and dismiss actions", async () => {
@@ -47,70 +76,73 @@ describe("notificationCenter", () => {
     });
 
     await waitFor(() => {
-      expect(result.current.notifications).toHaveLength(1);
-      expect(result.current.isNotificationsOpen).toBe(true);
+      expect(result.current.activeNotification?.kind).toBe("confirm");
     });
 
-    const [confirmItem] = result.current.notifications;
+    const confirmId = result.current.activeNotification?.id ?? "";
     let confirmResult = null;
     await act(async () => {
-      result.current.resolveConfirmNotification(confirmItem.id, true);
+      result.current.resolveConfirmNotification(confirmId, true);
       confirmResult = await confirmPromise;
     });
     expect(confirmResult).toBe(true);
-    expect(result.current.notifications).toHaveLength(0);
-    expect(result.current.isNotificationsOpen).toBe(false);
+    expect(result.current.activeNotification).toBeNull();
 
     let dismissPromise;
     act(() => {
       dismissPromise = result.current.openConfirm({
         title: "Close tab?",
-        autoOpen: false,
       });
     });
 
     await waitFor(() => {
-      expect(result.current.notifications).toHaveLength(1);
+      expect(result.current.activeNotification?.kind).toBe("confirm");
     });
 
-    const [dismissItem] = result.current.notifications;
+    const dismissId = result.current.activeNotification?.id ?? "";
     let dismissResult = null;
     await act(async () => {
-      result.current.dismissNotification(dismissItem.id);
+      result.current.dismissNotification(dismissId);
       dismissResult = await dismissPromise;
     });
     expect(dismissResult).toBe(false);
-    expect(result.current.notifications).toHaveLength(0);
-    expect(result.current.isNotificationsOpen).toBe(false);
+    expect(result.current.activeNotification).toBeNull();
   });
 
-  it("auto-closes the flyout when the last notification is dismissed", async () => {
+  it("resolves active confirm with default action when closed implicitly", async () => {
     const { result } = renderHook(() => useNotificationCenter(), {
       wrapper: NotificationCenterWrapper,
     });
 
-    let notificationId = "";
+    let defaultFalsePromise;
     act(() => {
-      notificationId = result.current.pushNotification({
-        title: "Action failed",
-        message: "Something went wrong.",
-        tone: "error",
-        autoOpen: true,
+      defaultFalsePromise = result.current.openConfirm({
+        title: "Close tab?",
       });
     });
 
-    await waitFor(() => {
-      expect(result.current.notifications).toHaveLength(1);
-      expect(result.current.isNotificationsOpen).toBe(true);
+    let defaultFalseResult = null;
+    await act(async () => {
+      const notificationId = result.current.activeNotification?.id ?? "";
+      result.current.closeNotificationWithDefault(notificationId);
+      defaultFalseResult = await defaultFalsePromise;
     });
+    expect(defaultFalseResult).toBe(false);
 
+    let defaultTruePromise;
     act(() => {
-      result.current.dismissNotification(notificationId);
+      defaultTruePromise = result.current.openConfirm({
+        title: "Apply defaults?",
+        defaultAction: true,
+      });
     });
 
-    await waitFor(() => {
-      expect(result.current.notifications).toHaveLength(0);
-      expect(result.current.isNotificationsOpen).toBe(false);
+    let defaultTrueResult = null;
+    await act(async () => {
+      const notificationId = result.current.activeNotification?.id ?? "";
+      result.current.closeNotificationWithDefault(notificationId);
+      defaultTrueResult = await defaultTruePromise;
     });
+    expect(defaultTrueResult).toBe(true);
   });
 });

@@ -5,6 +5,7 @@ import useExternalFilesystemDrag from "./useExternalFilesystemDrag";
 import useExternalPathDrop from "../../hooks/useExternalPathDrop";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 import isEditableKeyboardTarget from "../../../utils/isEditableKeyboardTarget";
+import { getNavigationErrorMessage } from "./filesystemNavigationUtils";
 import {
   buildTreeData,
   resolveExternalDropDestinationFromPoint,
@@ -37,6 +38,7 @@ export default function useFilesystemPanelInteractions({
   onTabSelectedFilesChange,
   workspaceFolderPathSet = new Set(),
   openConfirm,
+  pushNotification = undefined,
 }) {
   const [externalDropDestinationPath, setExternalDropDestinationPath] = useState("");
   const [renamingPath, setRenamingPath] = useState("");
@@ -220,20 +222,27 @@ export default function useFilesystemPanelInteractions({
     try {
       const renameResult = await renameEntry(entryPath, normalizedName);
       if (renameResult?.adjusted && renameResult?.name && renameResult.name !== normalizedName) {
-        console.log(
-          `[filesystem-rename] Requested "${normalizedName}", resolved to "${renameResult.name}".`,
-        );
+        pushNotification?.({
+          title: "Name adjusted",
+          message: `Saved as "${renameResult.name}" because "${normalizedName}" already exists.`,
+          tone: "warning",
+        });
       }
       onEntryPathRenamed?.(entryPath, renameResult.path);
       emitTabSelectedFiles([renameResult.path]);
     } catch (renameError) {
-      console.error("[filesystem-rename] Failed to rename item.", renameError);
+      pushNotification?.({
+        title: "Rename failed",
+        message: getNavigationErrorMessage(renameError, "Failed to rename item."),
+        tone: "error",
+      });
     } finally {
       setRenamingPath("");
     }
   }, [
     emitTabSelectedFiles,
     onEntryPathRenamed,
+    pushNotification,
     renameEntry,
     renamingPath,
     treeData.entryByPath,
@@ -268,7 +277,6 @@ export default function useFilesystemPanelInteractions({
       tone: "warning",
       confirmLabel: "Delete",
       cancelLabel: "Cancel",
-      autoOpen: true,
     });
     if (!shouldDelete) return;
 

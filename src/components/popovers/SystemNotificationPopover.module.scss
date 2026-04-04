@@ -1,0 +1,53 @@
+@use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
+
+.popover {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.5rem;
+}
+
+.toneInfo,
+.toneSuccess,
+.toneWarning {
+  border-bottom: 4px solid $accent-active;
+}
+
+.toneError {
+  border-bottom: 4px solid $text-warning;
+}
+
+.title {
+  font-size: $font-size-small;
+  font-weight: 700;
+}
+
+.message {
+  margin: 0;
+  color: $text-secondary;
+  font-size: $font-size-small;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.actionButton {
+  @include interactive-tile;
+  border: 1px solid $border-default;
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+  padding: 0 0.5rem;
+
+  &:hover {
+    color: $accent-active-light;
+    background: $bg-accent;
+  }
+}
+
+.actionButton:hover {
+  border-color: #3a4760;
+  background: #131d2c;
+}

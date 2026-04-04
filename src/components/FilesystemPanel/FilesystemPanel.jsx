@@ -49,11 +49,12 @@ function FilesystemPanel({
     initialFilesystemStateRef.current.thumbnailSizePx,
   );
   const entryRowHeightPx = thumbnailSizePx;
+  const { openConfirm, pushNotification } = useNotificationCenter();
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current, {
     tabId,
     tabWorkspaceRoot,
+    pushNotification,
   });
-  const { openConfirm } = useNotificationCenter();
   const {
     currentDrive,
     currentPath,
@@ -190,6 +191,7 @@ function FilesystemPanel({
     onTabSelectedFilesChange,
     workspaceFolderPathSet,
     openConfirm,
+    pushNotification,
   });
   const upDestinationPath = breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
   const {
@@ -225,7 +227,6 @@ function FilesystemPanel({
       tone: "warning",
       confirmLabel: "Leave workspace",
       cancelLabel: "Stay",
-      autoOpen: true,
     });
     return shouldLeaveWorkspace;
   }, [canLeaveWorkspaceWithoutConfirm, openConfirm]);

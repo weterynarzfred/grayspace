@@ -7,8 +7,7 @@
   max-width: min(34rem, calc(100vw - 1rem));
   max-height: min(32rem, calc(100vh - 1rem));
   overflow: auto;
-  border: 1px solid $border-default;
+  border: 1px solid $border-secondary;
   background: $bg-panel;
-  box-shadow: 0 8px 22px rgb(0 0 0 / 0.45);
-  color: $text-primary;
+  box-shadow: 0rem 0rem 0.3rem $bg-panel;
 }

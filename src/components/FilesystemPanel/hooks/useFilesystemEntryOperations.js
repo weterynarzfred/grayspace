@@ -18,6 +18,7 @@ const MAX_FILESYSTEM_HISTORY_ITEMS = 100;
 export default function useFilesystemEntryOperations({
   tabId = "",
   tabWorkspaceRoot = "",
+  pushNotification = undefined,
   currentPath = "",
   currentPathRef,
   clearSelection,
@@ -31,6 +32,18 @@ export default function useFilesystemEntryOperations({
 }) {
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
+
+  const notifyUser = useCallback(({
+    title = "Notice",
+    message = "",
+    tone = "info",
+  } = {}) => {
+    pushNotification?.({
+      title,
+      message,
+      tone,
+    });
+  }, [pushNotification]);
 
   const trimUndoStack = useCallback(() => {
     if (undoStackRef.current.length <= MAX_FILESYSTEM_HISTORY_ITEMS) return;
@@ -469,7 +482,11 @@ export default function useFilesystemEntryOperations({
         redoStackRef.current.push(lastEntry);
         return true;
       } catch (undoError) {
-        console.error("[filesystem-undo] Failed to undo move operation.", undoError);
+        notifyUser({
+          title: "Undo failed",
+          message: getNavigationErrorMessage(undoError, "Failed to undo move."),
+          tone: "error",
+        });
         return false;
       }
     }
@@ -485,13 +502,17 @@ export default function useFilesystemEntryOperations({
         redoStackRef.current.push(lastEntry);
         return true;
       } catch (undoError) {
-        console.error("[filesystem-undo] Failed to undo rename operation.", undoError);
+        notifyUser({
+          title: "Undo failed",
+          message: getNavigationErrorMessage(undoError, "Failed to undo rename."),
+          tone: "error",
+        });
         return false;
       }
     }
 
     return false;
-  }, [currentPath, currentPathRef, runMovePairs, runRenameHistoryItems]);
+  }, [currentPath, currentPathRef, notifyUser, runMovePairs, runRenameHistoryItems]);
 
   const redoEntries = useCallback(async () => {
     const lastEntry = redoStackRef.current.at(-1);
@@ -518,7 +539,11 @@ export default function useFilesystemEntryOperations({
         undoStackRef.current.push(lastEntry);
         return true;
       } catch (redoError) {
-        console.error("[filesystem-redo] Failed to redo move operation.", redoError);
+        notifyUser({
+          title: "Redo failed",
+          message: getNavigationErrorMessage(redoError, "Failed to redo move."),
+          tone: "error",
+        });
         return false;
       }
     }
@@ -534,13 +559,17 @@ export default function useFilesystemEntryOperations({
         undoStackRef.current.push(lastEntry);
         return true;
       } catch (redoError) {
-        console.error("[filesystem-redo] Failed to redo rename operation.", redoError);
+        notifyUser({
+          title: "Redo failed",
+          message: getNavigationErrorMessage(redoError, "Failed to redo rename."),
+          tone: "error",
+        });
         return false;
       }
     }
 
     return false;
-  }, [currentPath, currentPathRef, runMovePairs, runRenameHistoryItems]);
+  }, [currentPath, currentPathRef, notifyUser, runMovePairs, runRenameHistoryItems]);
 
   return {
     openEntry,

@@ -34,12 +34,6 @@ function renderStrip(overrides = {}) {
     onActivateTab: vi.fn(),
     onCloseTab: vi.fn(),
     onCreateTab: vi.fn(),
-    onCreateWindow: vi.fn(),
-    notifications: [],
-    isNotificationsOpen: false,
-    onToggleNotifications: vi.fn(),
-    onDismissNotification: vi.fn(),
-    onResolveNotificationConfirm: vi.fn(),
     ...overrides,
   };
 
@@ -47,72 +41,26 @@ function renderStrip(overrides = {}) {
   return props;
 }
 
-describe("WorkspaceTabStrip notifications", () => {
+describe("WorkspaceTabStrip", () => {
   beforeEach(() => {
     minimizeMock.mockReset();
     toggleMaximizeMock.mockReset();
     closeMock.mockReset();
   });
 
-  it("toggles notifications flyout and marks the button as active when notifications exist", () => {
-    const props = renderStrip({
-      notifications: [
-        {
-          id: "n-1",
-          kind: "notification",
-          title: "Action failed",
-          message: "Could not open file.",
-          tone: "error",
-        },
-      ],
-    });
+  it("renders tabs and create-tab button", () => {
+    const props = renderStrip();
+    expect(screen.getByText("Tab 1")).toBeInTheDocument();
+    expect(screen.getByText("Tab 2")).toBeInTheDocument();
 
-    const notificationsButton = screen.getByRole("button", { name: "Notifications (1)" });
-    expect(notificationsButton).toHaveAttribute("data-has-notifications", "true");
-
-    fireEvent.click(notificationsButton);
-    expect(props.onToggleNotifications).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "+" }));
+    expect(props.onCreateTab).toHaveBeenCalledTimes(1);
   });
 
-  it("renders multiple cards and routes notification actions", () => {
-    const props = renderStrip({
-      isNotificationsOpen: true,
-      notifications: [
-        {
-          id: "n-1",
-          kind: "confirm",
-          title: "Delete file?",
-          message: "Delete notes.txt permanently?",
-          tone: "warning",
-          confirmLabel: "Delete",
-          cancelLabel: "Cancel",
-        },
-        {
-          id: "n-2",
-          kind: "notification",
-          title: "Background task",
-          message: "Build completed successfully.",
-          tone: "success",
-        },
-      ],
-    });
-
-    expect(screen.getByText("Delete file?")).toBeInTheDocument();
-    expect(screen.getByText("Background task")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    expect(props.onResolveNotificationConfirm).toHaveBeenCalledWith("n-1", true);
-
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(props.onResolveNotificationConfirm).toHaveBeenCalledWith("n-1", false);
-
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-    expect(props.onDismissNotification).toHaveBeenCalledWith("n-2");
-  });
-
-  it("shows an empty-state message when flyout is open without notifications", () => {
-    renderStrip({ isNotificationsOpen: true, notifications: [] });
-    expect(screen.getByText("No notifications.")).toBeInTheDocument();
+  it("does not render notifications controls", () => {
+    renderStrip();
+    expect(screen.queryByRole("button", { name: /Notifications/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("No notifications.")).not.toBeInTheDocument();
   });
 
   it("renders custom window control buttons", () => {

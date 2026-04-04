@@ -61,7 +61,6 @@ export default function useWorkspaceActions({
       title: "Action failed",
       message,
       tone: "error",
-      autoOpen: true,
     });
   }, [pushNotification]);
 
@@ -150,7 +149,6 @@ export default function useWorkspaceActions({
         tone: "warning",
         confirmLabel: "Close pane",
         cancelLabel: "Cancel",
-        autoOpen: true,
       }) : true;
       if (!shouldClose) return;
     }

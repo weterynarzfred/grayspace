@@ -9,6 +9,7 @@ import {
 } from "react";
 
 const NotificationCenterContext = createContext(null);
+const DEFAULT_POPOVER_POSITION = { x: 8, y: 8 };
 
 let notificationCounter = 0;
 
@@ -22,44 +23,84 @@ function resolveNotificationTone(tone) {
   return "info";
 }
 
+function resolvePopoverPosition(position, fallbackPosition) {
+  const fallbackX = Number.isFinite(fallbackPosition?.x)
+    ? fallbackPosition.x
+    : DEFAULT_POPOVER_POSITION.x;
+  const fallbackY = Number.isFinite(fallbackPosition?.y)
+    ? fallbackPosition.y
+    : DEFAULT_POPOVER_POSITION.y;
+  const x = Number.isFinite(position?.x) ? position.x : fallbackX;
+  const y = Number.isFinite(position?.y) ? position.y : fallbackY;
+  return { x, y };
+}
+
+function resolveConfirmDefaultAction(defaultAction) {
+  if (typeof defaultAction === "boolean") return defaultAction;
+  return false;
+}
+
 export function NotificationCenterProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const notificationResolversRef = useRef(new Map());
-  const previousNotificationCountRef = useRef(0);
+  const confirmResolversRef = useRef(new Map());
+  const lastPointerPositionRef = useRef(DEFAULT_POPOVER_POSITION);
+
+  useEffect(() => {
+    const updatePointerPosition = (event) => {
+      const nextX = Number.isFinite(event?.clientX)
+        ? event.clientX
+        : DEFAULT_POPOVER_POSITION.x;
+      const nextY = Number.isFinite(event?.clientY)
+        ? event.clientY
+        : DEFAULT_POPOVER_POSITION.y;
+      lastPointerPositionRef.current = { x: nextX, y: nextY };
+    };
+
+    window.addEventListener("pointermove", updatePointerPosition, true);
+    window.addEventListener("pointerdown", updatePointerPosition, true);
+    return () => {
+      window.removeEventListener("pointermove", updatePointerPosition, true);
+      window.removeEventListener("pointerdown", updatePointerPosition, true);
+    };
+  }, []);
+
   const removeNotification = useCallback((notificationId) => {
     setNotifications(previousNotifications =>
       previousNotifications.filter(entry => entry.id !== notificationId));
   }, []);
 
-  useEffect(() => {
-    const previousCount = previousNotificationCountRef.current;
-    if (previousCount > 0 && notifications.length === 0) {
-      setIsNotificationsOpen(false);
-    }
-    previousNotificationCountRef.current = notifications.length;
-  }, [notifications.length]);
-
   useEffect(() => () => {
-    notificationResolversRef.current.forEach(resolveNotification => resolveNotification(false));
-    notificationResolversRef.current.clear();
+    confirmResolversRef.current.forEach(({ resolve, defaultAction }) => {
+      resolve(defaultAction);
+    });
+    confirmResolversRef.current.clear();
   }, []);
 
   const dismissNotification = useCallback((notificationId) => {
     removeNotification(notificationId);
 
-    const resolver = notificationResolversRef.current.get(notificationId);
+    const resolver = confirmResolversRef.current.get(notificationId);
     if (resolver) {
-      resolver(false);
-      notificationResolversRef.current.delete(notificationId);
+      resolver.resolve(false);
+      confirmResolversRef.current.delete(notificationId);
     }
   }, [removeNotification]);
 
-  const resolveConfirmNotification = useCallback((notificationId, confirmed) => {
-    const resolver = notificationResolversRef.current.get(notificationId);
+  const closeNotificationWithDefault = useCallback((notificationId) => {
+    const resolver = confirmResolversRef.current.get(notificationId);
     if (resolver) {
-      resolver(Boolean(confirmed));
-      notificationResolversRef.current.delete(notificationId);
+      resolver.resolve(resolver.defaultAction);
+      confirmResolversRef.current.delete(notificationId);
+    }
+
+    removeNotification(notificationId);
+  }, [removeNotification]);
+
+  const resolveConfirmNotification = useCallback((notificationId, confirmed) => {
+    const resolver = confirmResolversRef.current.get(notificationId);
+    if (resolver) {
+      resolver.resolve(Boolean(confirmed));
+      confirmResolversRef.current.delete(notificationId);
     }
 
     removeNotification(notificationId);
@@ -73,16 +114,17 @@ export function NotificationCenterProvider({ children }) {
       title: typeof options.title === "string" ? options.title : "Notification",
       message: typeof options.message === "string" ? options.message : "",
       tone: resolveNotificationTone(options.tone),
-      autoOpen: Boolean(options.autoOpen),
+      position: resolvePopoverPosition(options.position, lastPointerPositionRef.current),
+      dismissOnOutside: options.dismissOnOutside !== false,
     };
 
-    setNotifications(previousNotifications => [notification, ...previousNotifications]);
-    if (notification.autoOpen) setIsNotificationsOpen(true);
+    setNotifications(previousNotifications => [...previousNotifications, notification]);
     return notificationId;
   }, []);
 
   const openConfirm = useCallback((options = {}) => new Promise((resolve) => {
     const notificationId = createNotificationId();
+    const defaultAction = resolveConfirmDefaultAction(options.defaultAction);
     const confirmNotification = {
       id: notificationId,
       kind: "confirm",
@@ -91,40 +133,37 @@ export function NotificationCenterProvider({ children }) {
         : "Please confirm",
       message: typeof options.message === "string" ? options.message : "",
       tone: resolveNotificationTone(options.tone),
-      autoOpen: options.autoOpen !== false,
       confirmLabel: typeof options.confirmLabel === "string" && options.confirmLabel
         ? options.confirmLabel
         : "Confirm",
       cancelLabel: typeof options.cancelLabel === "string" && options.cancelLabel
         ? options.cancelLabel
         : "Cancel",
+      position: resolvePopoverPosition(options.position, lastPointerPositionRef.current),
+      dismissOnOutside: options.dismissOnOutside !== false,
+      defaultAction,
     };
 
-    notificationResolversRef.current.set(notificationId, resolve);
-    setNotifications(previousNotifications => [confirmNotification, ...previousNotifications]);
-    if (confirmNotification.autoOpen) setIsNotificationsOpen(true);
+    confirmResolversRef.current.set(notificationId, { resolve, defaultAction });
+    setNotifications(previousNotifications => [...previousNotifications, confirmNotification]);
   }), []);
 
-  const toggleNotifications = useCallback(() => {
-    setIsNotificationsOpen((open) => !open);
-  }, []);
+  const activeNotification = notifications[0] ?? null;
 
   const value = useMemo(() => ({
-    notifications,
-    isNotificationsOpen,
+    activeNotification,
     pushNotification,
     openConfirm,
-    toggleNotifications,
     dismissNotification,
+    closeNotificationWithDefault,
     resolveConfirmNotification,
   }), [
+    activeNotification,
+    closeNotificationWithDefault,
     dismissNotification,
-    isNotificationsOpen,
-    notifications,
     openConfirm,
     pushNotification,
     resolveConfirmNotification,
-    toggleNotifications,
   ]);
 
   return <NotificationCenterContext.Provider value={value}>

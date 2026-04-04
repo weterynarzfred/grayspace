@@ -15,6 +15,7 @@ Usable scaffolding, but missing core file-manager features.
 * drag & drop in/out
 * custom context menu
 * external UI panel from workspace config
+* popover notifications and confirmation dialogs
 * command palette + settings panel command list placeholders
 
 ## run locally (windows)

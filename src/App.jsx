@@ -25,6 +25,7 @@ import { useNotificationCenter } from "./notifications/notificationCenter";
 import resolveContextMenuTarget from "./context/resolveContextMenuTarget";
 import CommandPalettePopover from "./components/popovers/CommandPalettePopover";
 import ContextMenuPopover from "./components/popovers/ContextMenuPopover";
+import SystemNotificationPopover from "./components/popovers/SystemNotificationPopover";
 import {
   COMMAND_IDS,
   getCommandsForTrigger,
@@ -73,12 +74,11 @@ function App() {
   const currentWindowIdRef = useRef("");
   const lastPointerPositionRef = useRef({ x: 24, y: 24 });
   const {
-    notifications,
-    isNotificationsOpen,
+    activeNotification,
     pushNotification,
     openConfirm,
-    toggleNotifications,
     dismissNotification,
+    closeNotificationWithDefault,
     resolveConfirmNotification,
   } = useNotificationCenter();
   const sensors = useSensors(
@@ -233,7 +233,6 @@ function App() {
     executeCommand(commandId, context ?? {});
     closeContextMenu();
   }, [closeContextMenu, contextMenuState.context, executeCommand]);
-
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.defaultPrevented) return;
@@ -247,6 +246,12 @@ function App() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [openCommandPalette]);
+
+  useEffect(() => {
+    if (!activeNotification) return;
+    closeContextMenu();
+    closeCommandPalette();
+  }, [activeNotification, closeCommandPalette, closeContextMenu]);
 
   if (!currentWindow || !activeTab) {
     return <main className={styles.appShell}>
@@ -279,11 +284,6 @@ function App() {
           onActivateTab={workspaceActions.handleSetActiveTab}
           onCloseTab={workspaceActions.handleCloseTab}
           onCreateTab={workspaceActions.handleCreateTab}
-          notifications={notifications}
-          isNotificationsOpen={isNotificationsOpen}
-          onToggleNotifications={toggleNotifications}
-          onDismissNotification={dismissNotification}
-          onResolveNotificationConfirm={resolveConfirmNotification}
         />
       </DndContext>
 
@@ -319,6 +319,13 @@ function App() {
       commands={contextMenuCommands}
       onCommand={handleContextMenuCommand}
       onClose={closeContextMenu}
+    />
+    <SystemNotificationPopover
+      open={Boolean(activeNotification)}
+      notification={activeNotification}
+      onDismiss={dismissNotification}
+      onResolveConfirm={resolveConfirmNotification}
+      onCloseWithDefault={closeNotificationWithDefault}
     />
   </main>;
 }
