@@ -3,4 +3,7 @@
 /src-tauri/target/
 /src-tauri/gen/schemas
 
+/src-tauri/coverage
+/coverage
+
 *.local
