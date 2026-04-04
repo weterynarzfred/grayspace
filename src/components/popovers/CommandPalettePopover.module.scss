@@ -40,7 +40,15 @@
   gap: 0.15rem;
 }
 
+.commandItem {
+  list-style: none;
+}
+
 .commandRow {
+  width: 100%;
+  background: $bg-surface;
+  color: inherit;
+  text-align: left;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -48,6 +56,13 @@
   border: 1px solid $border-secondary;
   padding: 0.28rem 0.4rem;
   font-size: $font-size-small;
+  cursor: pointer;
+}
+
+.commandRowSelected,
+.commandRow:hover {
+  border-color: $accent-active;
+  background: $bg-accent;
 }
 
 .commandName {
@@ -58,4 +73,11 @@
   color: $text-secondary;
   font-family: $font-mono;
   font-size: $font-size-mono;
+}
+
+.emptyRow {
+  border: 1px solid $border-secondary;
+  padding: 0.28rem 0.4rem;
+  font-size: $font-size-small;
+  color: $text-secondary;
 }

@@ -16,7 +16,8 @@ Usable scaffolding, but missing core file-manager features.
 * custom context menu
 * external UI panel from workspace config
 * popover notifications and confirmation dialogs
-* command palette + settings panel command list placeholders
+* command palette
+* settings panel command list placeholders
 
 ## run locally (windows)
 
@@ -45,7 +46,7 @@ npm run tauri_dev
 * [ ] menu bar
 * [x] custom context menu
   * [ ] custom commands, global and per workspace
-* [x] command palette window (`Ctrl+Shift+P`, UI scaffold)
+* [x] command palette window (`Ctrl+Shift+P`)
 * [x] settings panel with read-only command list
 * [ ] global config system
 * [x] remove the native window bar at the top, add draggable region and minimize/maximize/close buttons
@@ -88,7 +89,7 @@ npm run tauri_dev
   * [ ] epub thumbnails
   * [ ] font thumbnails
   * [ ] maybe try integrating providers through the Windows shell?
-* [ ] rename (F2)
+* [x] rename (F2)
   * [ ] bulk rename
 * [ ] cut / copy / paste
   * [ ] system integration

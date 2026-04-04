@@ -31,7 +31,7 @@ import {
   getCommandsForTrigger,
   isCommandShortcutMatch,
 } from "./commands/commandRegistry";
-import { dispatchAppCommand } from "./commands/commandEvents";
+import executeCommand from "./commands/executeCommand";
 import { getSelectedPathsFromState } from "./utils/pathSelection";
 
 import styles from "./App.module.scss";
@@ -110,9 +110,13 @@ function App() {
     activePaneState?.panelType,
     activeTab?.activePaneId,
   ]);
-  const paletteCommands = useMemo(
-    () => getCommandsForTrigger("palette", { ...commandContextBase, source: "palette" }),
+  const paletteContext = useMemo(
+    () => ({ ...commandContextBase, source: "palette" }),
     [commandContextBase],
+  );
+  const paletteCommands = useMemo(
+    () => getCommandsForTrigger("palette", paletteContext),
+    [paletteContext],
   );
   const contextMenuCommands = useMemo(() => {
     if (!contextMenuState.context) return [];
@@ -139,7 +143,6 @@ function App() {
     onError: workspaceActions.handleWorkspaceCommandError,
   });
 
-  usePaneSplitShortcuts(workspaceActions.handleSplitActivePane);
   const closeCommandPalette = useCallback(() => {
     setCommandPaletteState((state) => state.isOpen ? { ...state, isOpen: false } : state);
   }, []);
@@ -194,58 +197,38 @@ function App() {
     });
     closeCommandPalette();
   }, [closeCommandPalette, closeContextMenu, commandContextBase]);
-  const executeCommand = useCallback((commandId, context = {}) => {
-    if (!commandId) return;
-
-    if (commandId === COMMAND_IDS.PANE_SPLIT_VERTICAL || commandId === COMMAND_IDS.PANE_SPLIT_HORIZONTAL) {
-      const tabId = activeTab?.tabId || "";
-      if (!tabId) return;
-      const paneId = context?.targetType === "panel"
-        ? context.targetId
-        : activeTab?.activePaneId || "";
-      if (!paneId) return;
-      workspaceActions.handleSplitPane(
-        tabId,
-        paneId,
-        commandId === COMMAND_IDS.PANE_SPLIT_VERTICAL ? "right" : "bottom",
-      );
-      return;
-    }
-
-    if (commandId === COMMAND_IDS.TAB_CLOSE) {
-      const tabId = context?.targetType === "tab"
-        ? context.targetId
-        : activeTab?.tabId || "";
-      if (!tabId) return;
-      workspaceActions.handleCloseTab(tabId);
-      return;
-    }
-
-    if (
-      commandId === COMMAND_IDS.FILESYSTEM_RENAME_SELECTED
-      || commandId === COMMAND_IDS.FILESYSTEM_DELETE_SELECTED
-    ) {
-      dispatchAppCommand(commandId, context);
-    }
-  }, [activeTab?.activePaneId, activeTab?.tabId, workspaceActions]);
+  const executeAppCommand = useCallback((commandId, context = {}) => executeCommand(
+    commandId,
+    {
+      context,
+      activeTab,
+      workspaceActions,
+      openCommandPalette,
+    },
+  ), [activeTab, openCommandPalette, workspaceActions]);
+  usePaneSplitShortcuts(executeAppCommand);
   const handleContextMenuCommand = useCallback((commandId) => {
     const context = contextMenuState.context;
-    executeCommand(commandId, context ?? {});
+    executeAppCommand(commandId, context ?? {});
     closeContextMenu();
-  }, [closeContextMenu, contextMenuState.context, executeCommand]);
+  }, [closeContextMenu, contextMenuState.context, executeAppCommand]);
+  const handlePaletteCommand = useCallback((commandId) => {
+    closeCommandPalette();
+    executeAppCommand(commandId, paletteContext);
+  }, [closeCommandPalette, executeAppCommand, paletteContext]);
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.defaultPrevented) return;
       if (!isCommandShortcutMatch(COMMAND_IDS.COMMAND_PALETTE_OPEN, event)) return;
       event.preventDefault();
-      openCommandPalette();
+      executeAppCommand(COMMAND_IDS.COMMAND_PALETTE_OPEN, { source: "shortcut" });
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [openCommandPalette]);
+  }, [executeAppCommand]);
 
   useEffect(() => {
     if (!activeNotification) return;
@@ -310,6 +293,7 @@ function App() {
       open={commandPaletteState.isOpen}
       position={commandPaletteState.position}
       commands={paletteCommands}
+      onCommand={handlePaletteCommand}
       onClose={closeCommandPalette}
     />
     <ContextMenuPopover
