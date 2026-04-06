@@ -23,3 +23,25 @@
     @include focus-ring;
   }
 }
+
+@mixin popover-action-button($full-width: true) {
+  @include interactive-tile;
+  @if $full-width {
+    width: 100%;
+  }
+
+  color: inherit;
+  text-align: left;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid $border-secondary;
+  padding: 0.28rem 0.4rem;
+  font-size: $font-size-small;
+}
+
+@mixin popover-action-button-active {
+  border-color: $accent-active;
+  background: $bg-accent;
+}

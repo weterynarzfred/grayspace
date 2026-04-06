@@ -1,0 +1,59 @@
+@use "../../styles/variables" as *;
+
+.panelContent {
+  background: $bg-panel;
+}
+
+.panelBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.headerLabel {
+  margin: 0;
+  color: $text-secondary;
+  font-size: $font-size-small;
+  padding: 0 0.25rem;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 1rem;
+  color: $text-strong;
+}
+
+.commandTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: $font-size-small;
+
+  th,
+  td {
+    border: 1px solid $border-default;
+    padding: 0.35rem 0.5rem;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th {
+    background: $bg-surface;
+    color: $text-strong;
+  }
+
+  td {
+    color: $text-secondary;
+  }
+}
+
+.commandTitle {
+  display: block;
+  color: $text-primary;
+}
+
+.commandId {
+  display: block;
+  color: $text-tertiary;
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+}

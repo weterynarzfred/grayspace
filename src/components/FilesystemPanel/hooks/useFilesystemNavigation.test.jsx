@@ -415,6 +415,192 @@ describe("useFilesystemNavigation", () => {
     ]);
   });
 
+  it("supports undo and redo for move operations", async () => {
+    const directoryState = {
+      "C:\\Users": [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }],
+      "C:\\Archive": [],
+    };
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives")
+        return [{ name: "C:", path: "C:\\" }];
+
+      if (command === "list_directory_page") {
+        const path = payload?.path ?? "";
+        const entries = (directoryState[path] ?? []).map((entry) => ({ ...entry }));
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? entries.length;
+        const pageEntries = entries.slice(offset, offset + limit);
+        return {
+          entries: pageEntries,
+          hasMore: offset + pageEntries.length < entries.length,
+          totalCount: entries.length,
+        };
+      }
+
+      if (command === "move_path") {
+        const sourcePath = payload?.source ?? "";
+        const destinationDir = payload?.destinationDir ?? "";
+        const sourceDir = sourcePath.slice(0, Math.max(sourcePath.lastIndexOf("\\"), sourcePath.lastIndexOf("/")));
+        const sourceName = sourcePath.slice(Math.max(sourcePath.lastIndexOf("\\"), sourcePath.lastIndexOf("/")) + 1);
+        const destinationPath = `${destinationDir}\\${sourceName}`;
+
+        const sourceEntries = directoryState[sourceDir] ?? [];
+        const sourceEntry = sourceEntries.find(entry => entry.path === sourcePath);
+        if (!sourceEntry) throw new Error("Source entry not found.");
+
+        directoryState[sourceDir] = sourceEntries.filter(entry => entry.path !== sourcePath);
+        directoryState[destinationDir] = [
+          ...(directoryState[destinationDir] ?? []),
+          {
+            ...sourceEntry,
+            path: destinationPath,
+          },
+        ];
+
+        return destinationPath;
+      }
+
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
+        return null;
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useFilesystemNavigation({
+      currentDrive: "C:\\",
+      currentPath: "C:\\Users",
+    }));
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
+    });
+
+    await act(async () => {
+      await result.current.moveEntries(["C:\\Users\\todo.txt"], "C:\\Archive");
+    });
+
+    await waitFor(() => {
+      expect(result.current.entries).toEqual([]);
+    });
+
+    await act(async () => {
+      await result.current.undoEntries();
+    });
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
+    });
+
+    await act(async () => {
+      await result.current.redoEntries();
+    });
+
+    await waitFor(() => {
+      expect(result.current.entries).toEqual([]);
+    });
+  });
+
+  it("supports undo and redo for rename operations", async () => {
+    const directoryState = {
+      "C:\\Users": [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }],
+    };
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives")
+        return [{ name: "C:", path: "C:\\" }];
+
+      if (command === "list_directory_page") {
+        const path = payload?.path ?? "";
+        const entries = (directoryState[path] ?? []).map((entry) => ({ ...entry }));
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? entries.length;
+        const pageEntries = entries.slice(offset, offset + limit);
+        return {
+          entries: pageEntries,
+          hasMore: offset + pageEntries.length < entries.length,
+          totalCount: entries.length,
+        };
+      }
+
+      if (command === "rename_path") {
+        const sourcePath = payload?.path ?? "";
+        const newName = payload?.newName ?? "";
+        const parentPath = sourcePath.slice(0, sourcePath.lastIndexOf("\\"));
+        const sourceEntries = directoryState[parentPath] ?? [];
+        const sourceEntry = sourceEntries.find(entry => entry.path === sourcePath);
+        if (!sourceEntry) throw new Error("Source entry not found.");
+
+        const conflictEntry = sourceEntries.find((entry) => (
+          entry.path !== sourcePath && entry.name === newName
+        ));
+        if (conflictEntry && payload?.allowAdjustment === false) throw new Error("Target already exists.");
+        if (conflictEntry) throw new Error("Target already exists.");
+
+        const destinationPath = `${parentPath}\\${newName}`;
+        directoryState[parentPath] = sourceEntries.map((entry) => (
+          entry.path === sourcePath
+            ? { ...entry, name: newName, path: destinationPath }
+            : entry
+        ));
+        return {
+          path: destinationPath,
+          name: newName,
+          requestedName: newName,
+          adjusted: false,
+        };
+      }
+
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
+        return null;
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useFilesystemNavigation({
+      currentDrive: "C:\\",
+      currentPath: "C:\\Users",
+    }));
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
+    });
+
+    await act(async () => {
+      await result.current.renameEntry("C:\\Users\\todo.txt", "renamed.txt");
+    });
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\renamed.txt"]);
+    });
+
+    await act(async () => {
+      await result.current.undoEntries();
+    });
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
+    });
+    expect(invoke).toHaveBeenCalledWith("rename_path", {
+      path: "C:\\Users\\renamed.txt",
+      newName: "todo.txt",
+      allowAdjustment: false,
+    });
+
+    await act(async () => {
+      await result.current.redoEntries();
+    });
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\renamed.txt"]);
+    });
+    expect(invoke).toHaveBeenCalledWith("rename_path", {
+      path: "C:\\Users\\todo.txt",
+      newName: "renamed.txt",
+      allowAdjustment: false,
+    });
+  });
+
   it("ignores stale import refresh results after navigating to a different folder", async () => {
     const staleRefresh = createDeferred();
     const listDirectoryCallCount = new Map();

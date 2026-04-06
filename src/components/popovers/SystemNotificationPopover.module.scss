@@ -1,0 +1,47 @@
+@use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
+
+.popover > div {
+  display: grid;
+  padding: 0.5rem;
+}
+
+.toneInfo,
+.toneSuccess,
+.toneWarning {
+  border-bottom: 4px solid $accent-active;
+}
+
+.toneError {
+  border-bottom: 4px solid $text-warning;
+}
+
+.title {
+  font-size: $font-size-small;
+  font-weight: 700;
+}
+
+.message {
+  margin: 0;
+  color: $text-secondary;
+  font-size: $font-size-small;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  padding-top: 0.5rem;
+}
+
+.actionButton {
+  @include popover-action-button($full-width: false);
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+  padding: 0 0.5rem;
+}
+
+.actionButtonSelected,
+.actionButton:hover {
+  @include popover-action-button-active;
+}

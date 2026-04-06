@@ -1,16 +1,24 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import {
   workspaceOpenFolderFromTab,
   workspaceOpenWorkspaceFolderFromTab,
 } from "../../../workspace/workspaceApi";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
-import { isSamePath } from "../../../utils/pathWatch";
+import { getParentDirectoryPath, isSamePath } from "../../../utils/pathWatch";
 import { getNavigationErrorMessage } from "./filesystemNavigationUtils";
+import {
+  getPathName,
+  normalizeMoveHistoryItems,
+  resolveDestinationPath,
+} from "./filesystemEntryOperationUtils";
+
+const MAX_FILESYSTEM_HISTORY_ITEMS = 100;
 
 export default function useFilesystemEntryOperations({
   tabId = "",
   tabWorkspaceRoot = "",
+  pushNotification = undefined,
   currentPath = "",
   currentPathRef,
   clearSelection,
@@ -22,6 +30,191 @@ export default function useFilesystemEntryOperations({
   setIsDeletingEntries,
   setIsImportingExternal,
 }) {
+  const undoStackRef = useRef([]);
+  const redoStackRef = useRef([]);
+
+  const notifyUser = useCallback(({
+    title = "Notice",
+    message = "",
+    tone = "info",
+  } = {}) => {
+    pushNotification?.({
+      title,
+      message,
+      tone,
+    });
+  }, [pushNotification]);
+
+  const trimUndoStack = useCallback(() => {
+    if (undoStackRef.current.length <= MAX_FILESYSTEM_HISTORY_ITEMS) return;
+    undoStackRef.current.splice(
+      0,
+      undoStackRef.current.length - MAX_FILESYSTEM_HISTORY_ITEMS,
+    );
+  }, []);
+
+  const pushHistoryEntry = useCallback((entry) => {
+    undoStackRef.current.push(entry);
+    trimUndoStack();
+    redoStackRef.current = [];
+  }, [trimUndoStack]);
+
+  const pushMoveHistoryEntry = useCallback((items = []) => {
+    const normalizedItems = normalizeMoveHistoryItems(items);
+    if (normalizedItems.length === 0) return;
+    pushHistoryEntry({
+      kind: "move",
+      items: normalizedItems,
+    });
+  }, [pushHistoryEntry]);
+
+  const pushRenameHistoryEntry = useCallback((sourcePath = "", destinationPath = "") => {
+    if (!sourcePath || !destinationPath || isSamePath(sourcePath, destinationPath)) return;
+    pushHistoryEntry({
+      kind: "rename",
+      items: [{
+        sourcePath,
+        destinationPath,
+      }],
+    });
+  }, [pushHistoryEntry]);
+
+  const runMovePairs = useCallback(async (
+    movePairs,
+    {
+      activePath = "",
+      removeSelection = true,
+      errorMessage = "Failed to move item.",
+    } = {},
+  ) => {
+    const actionablePairs = movePairs.filter((pair) =>
+      typeof pair?.sourcePath === "string"
+      && pair.sourcePath
+      && typeof pair?.destinationDir === "string"
+      && pair.destinationDir
+      && pair.sourcePath !== pair.destinationDir,
+    );
+    if (actionablePairs.length === 0) return [];
+
+    const movedItems = [];
+    let moveErrorToThrow = null;
+
+    setIsMovingEntry(true);
+    setError("");
+
+    try {
+      for (const pair of actionablePairs) {
+        const movedResult = await invoke("move_path", {
+          source: pair.sourcePath,
+          destinationDir: pair.destinationDir,
+        });
+        movedItems.push({
+          sourcePath: pair.sourcePath,
+          destinationPath: resolveDestinationPath(
+            pair.sourcePath,
+            pair.destinationDir,
+            movedResult,
+          ),
+        });
+      }
+    } catch (moveError) {
+      setError(getNavigationErrorMessage(moveError, errorMessage));
+      moveErrorToThrow = moveError;
+    } finally {
+      if (activePath && movedItems.length > 0) {
+        try {
+          await refreshEntriesForPath(activePath);
+        } catch (refreshError) {
+          if (!moveErrorToThrow) {
+            setError(getNavigationErrorMessage(refreshError, "Failed to refresh folder."));
+            moveErrorToThrow = refreshError;
+          }
+        }
+      }
+
+      if (removeSelection && movedItems.length > 0) {
+        removeSelectionPaths(new Set(movedItems.map(item => item.sourcePath)));
+      }
+
+      setIsMovingEntry(false);
+    }
+
+    if (moveErrorToThrow) throw moveErrorToThrow;
+    return movedItems;
+  }, [
+    refreshEntriesForPath,
+    removeSelectionPaths,
+    setError,
+    setIsMovingEntry,
+  ]);
+
+  const runRenameHistoryItems = useCallback(async (
+    items = [],
+    {
+      reverse = false,
+      activePath = "",
+      errorMessage = "Failed to rename item.",
+    } = {},
+  ) => {
+    const normalizedItems = normalizeMoveHistoryItems(items);
+    if (normalizedItems.length === 0) return false;
+
+    const operationItems = reverse
+      ? normalizedItems.slice().reverse()
+      : normalizedItems;
+    const refreshPathSet = new Set();
+    let renameErrorToThrow = null;
+
+    setIsMovingEntry(true);
+    setError("");
+
+    try {
+      for (const item of operationItems) {
+        const sourcePath = reverse ? item.destinationPath : item.sourcePath;
+        const destinationPath = reverse ? item.sourcePath : item.destinationPath;
+        const destinationName = getPathName(destinationPath);
+        if (!destinationName) continue;
+
+        await invoke("rename_path", {
+          path: sourcePath,
+          newName: destinationName,
+          allowAdjustment: false,
+        });
+
+        const sourceParentPath = getParentDirectoryPath(sourcePath);
+        if (sourceParentPath) refreshPathSet.add(sourceParentPath);
+        const destinationParentPath = getParentDirectoryPath(destinationPath);
+        if (destinationParentPath) refreshPathSet.add(destinationParentPath);
+      }
+    } catch (renameError) {
+      setError(getNavigationErrorMessage(renameError, errorMessage));
+      renameErrorToThrow = renameError;
+    } finally {
+      if (activePath) refreshPathSet.add(activePath);
+
+      for (const refreshPath of refreshPathSet) {
+        if (!refreshPath) continue;
+        try {
+          await refreshEntriesForPath(refreshPath);
+        } catch (refreshError) {
+          if (!renameErrorToThrow) {
+            setError(getNavigationErrorMessage(refreshError, "Failed to refresh folder."));
+            renameErrorToThrow = refreshError;
+          }
+        }
+      }
+
+      setIsMovingEntry(false);
+    }
+
+    if (renameErrorToThrow) throw renameErrorToThrow;
+    return true;
+  }, [
+    refreshEntriesForPath,
+    setError,
+    setIsMovingEntry,
+  ]);
+
   const resolveWorkspaceRootForPath = useCallback(async (
     entryPath,
     isWorkspaceFolderHint = false,
@@ -106,47 +299,23 @@ export default function useFilesystemEntryOperations({
     if (!destinationDir || normalizedSourcePaths.length === 0) return;
 
     const activePath = currentPath || destinationDir;
-    const movedPaths = [];
-    let moveErrorToThrow = null;
-
-    setIsMovingEntry(true);
-    setError("");
-
-    try {
-      for (const sourcePath of normalizedSourcePaths) {
-        if (!sourcePath || sourcePath === destinationDir) continue;
-        await invoke("move_path", { source: sourcePath, destinationDir });
-        movedPaths.push(sourcePath);
-      }
-    } catch (moveError) {
-      setError(getNavigationErrorMessage(moveError, "Failed to move item."));
-      moveErrorToThrow = moveError;
-    } finally {
-      if (activePath && movedPaths.length > 0) {
-        try {
-          await refreshEntriesForPath(activePath);
-        } catch (refreshError) {
-          if (!moveErrorToThrow) {
-            setError(getNavigationErrorMessage(refreshError, "Failed to refresh folder."));
-            moveErrorToThrow = refreshError;
-          }
-        }
-      }
-
-      if (movedPaths.length > 0) {
-        removeSelectionPaths(new Set(movedPaths));
-      }
-
-      setIsMovingEntry(false);
-    }
-
-    if (moveErrorToThrow) throw moveErrorToThrow;
+    const movedItems = await runMovePairs(
+      normalizedSourcePaths.map(sourcePath => ({
+        sourcePath,
+        destinationDir,
+      })),
+      {
+        activePath,
+        removeSelection: true,
+        errorMessage: "Failed to move item.",
+      },
+    );
+    pushMoveHistoryEntry(movedItems);
+    return movedItems;
   }, [
     currentPath,
-    refreshEntriesForPath,
-    removeSelectionPaths,
-    setError,
-    setIsMovingEntry,
+    pushMoveHistoryEntry,
+    runMovePairs,
   ]);
 
   const copyEntries = useCallback(async (sourcePaths, destinationDir) => {
@@ -250,11 +419,166 @@ export default function useFilesystemEntryOperations({
     setIsImportingExternal,
   ]);
 
+  const renameEntry = useCallback(async (sourcePath, nextName) => {
+    const normalizedSourcePath = typeof sourcePath === "string" ? sourcePath.trim() : "";
+    const normalizedNextName = typeof nextName === "string" ? nextName.trim() : "";
+    if (!normalizedSourcePath || !normalizedNextName) return null;
+
+    const parentPath = getParentDirectoryPath(normalizedSourcePath);
+    if (!parentPath) return null;
+
+    setIsMovingEntry(true);
+    setError("");
+
+    try {
+      const renameResult = await invoke("rename_path", {
+        path: normalizedSourcePath,
+        newName: normalizedNextName,
+      });
+
+      if (!isSamePath(renameResult.path, normalizedSourcePath)) {
+        pushRenameHistoryEntry(normalizedSourcePath, renameResult.path);
+      }
+
+      await refreshEntriesForPath(parentPath);
+      return renameResult;
+    } catch (renameError) {
+      setError(getNavigationErrorMessage(renameError, "Failed to rename item."));
+      throw renameError;
+    } finally {
+      setIsMovingEntry(false);
+    }
+  }, [
+    pushRenameHistoryEntry,
+    refreshEntriesForPath,
+    setError,
+    setIsMovingEntry,
+  ]);
+
+  const undoEntries = useCallback(async () => {
+    const lastEntry = undoStackRef.current.at(-1);
+    if (!lastEntry) return false;
+
+    const activePath = currentPathRef.current || currentPath;
+
+    if (lastEntry.kind === "move") {
+      const undoPairs = lastEntry.items
+        .slice()
+        .reverse()
+        .map((item) => ({
+          sourcePath: item.destinationPath,
+          destinationDir: getParentDirectoryPath(item.sourcePath),
+        }))
+        .filter(pair => pair.destinationDir);
+      if (undoPairs.length === 0) return false;
+
+      try {
+        await runMovePairs(undoPairs, {
+          activePath,
+          removeSelection: false,
+          errorMessage: "Failed to undo move.",
+        });
+        undoStackRef.current.pop();
+        redoStackRef.current.push(lastEntry);
+        return true;
+      } catch (undoError) {
+        notifyUser({
+          title: "Undo failed",
+          message: getNavigationErrorMessage(undoError, "Failed to undo move."),
+          tone: "error",
+        });
+        return false;
+      }
+    }
+
+    if (lastEntry.kind === "rename") {
+      try {
+        await runRenameHistoryItems(lastEntry.items, {
+          reverse: true,
+          activePath,
+          errorMessage: "Failed to undo rename.",
+        });
+        undoStackRef.current.pop();
+        redoStackRef.current.push(lastEntry);
+        return true;
+      } catch (undoError) {
+        notifyUser({
+          title: "Undo failed",
+          message: getNavigationErrorMessage(undoError, "Failed to undo rename."),
+          tone: "error",
+        });
+        return false;
+      }
+    }
+
+    return false;
+  }, [currentPath, currentPathRef, notifyUser, runMovePairs, runRenameHistoryItems]);
+
+  const redoEntries = useCallback(async () => {
+    const lastEntry = redoStackRef.current.at(-1);
+    if (!lastEntry) return false;
+
+    const activePath = currentPathRef.current || currentPath;
+
+    if (lastEntry.kind === "move") {
+      const redoPairs = lastEntry.items
+        .map(item => ({
+          sourcePath: item.sourcePath,
+          destinationDir: getParentDirectoryPath(item.destinationPath),
+        }))
+        .filter(pair => pair.destinationDir);
+      if (redoPairs.length === 0) return false;
+
+      try {
+        await runMovePairs(redoPairs, {
+          activePath,
+          removeSelection: false,
+          errorMessage: "Failed to redo move.",
+        });
+        redoStackRef.current.pop();
+        undoStackRef.current.push(lastEntry);
+        return true;
+      } catch (redoError) {
+        notifyUser({
+          title: "Redo failed",
+          message: getNavigationErrorMessage(redoError, "Failed to redo move."),
+          tone: "error",
+        });
+        return false;
+      }
+    }
+
+    if (lastEntry.kind === "rename") {
+      try {
+        await runRenameHistoryItems(lastEntry.items, {
+          reverse: false,
+          activePath,
+          errorMessage: "Failed to redo rename.",
+        });
+        redoStackRef.current.pop();
+        undoStackRef.current.push(lastEntry);
+        return true;
+      } catch (redoError) {
+        notifyUser({
+          title: "Redo failed",
+          message: getNavigationErrorMessage(redoError, "Failed to redo rename."),
+          tone: "error",
+        });
+        return false;
+      }
+    }
+
+    return false;
+  }, [currentPath, currentPathRef, notifyUser, runMovePairs, runRenameHistoryItems]);
+
   return {
     openEntry,
     moveEntries,
     copyEntries,
     deleteEntries,
     importExternalPaths,
+    renameEntry,
+    undoEntries,
+    redoEntries,
   };
 }

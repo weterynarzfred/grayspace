@@ -192,6 +192,46 @@ fn set_tab_filesystem_root(tab: &mut WorkspaceTab, root_path: &str) {
   }
 }
 
+fn filesystem_state_has_path(filesystem_state: &FilesystemPaneState) -> bool {
+  !filesystem_state.current_path.trim().is_empty()
+}
+
+fn resolve_first_filesystem_state(tab: &WorkspaceTab) -> Option<FilesystemPaneState> {
+  tab
+    .pane_states
+    .values()
+    .find(|pane_state| {
+      pane_state.panel_type == "Filesystem"
+        && filesystem_state_has_path(&pane_state.filesystem_state)
+    })
+    .or_else(|| tab.pane_states.values().find(|pane_state| pane_state.panel_type == "Filesystem"))
+    .map(|pane_state| pane_state.filesystem_state.clone())
+}
+
+fn resolve_preserved_filesystem_state(tab: &WorkspaceTab) -> FilesystemPaneState {
+  let active_pane_state = tab
+    .pane_states
+    .get(&tab.active_pane_id)
+    .map(|pane_state| pane_state.filesystem_state.clone())
+    .unwrap_or_default();
+  if filesystem_state_has_path(&active_pane_state) {
+    return active_pane_state;
+  }
+
+  if let Some(filesystem_state) = resolve_first_filesystem_state(tab) {
+    return filesystem_state;
+  }
+
+  if tab.terminal_cwd_hint.trim().is_empty() {
+    return active_pane_state;
+  }
+
+  let mut preserved_filesystem_state = active_pane_state;
+  preserved_filesystem_state.current_path = tab.terminal_cwd_hint.clone();
+  preserved_filesystem_state.current_drive = infer_drive_from_path(&tab.terminal_cwd_hint);
+  preserved_filesystem_state
+}
+
 fn reset_tab_layout_to_default(
   tab: &mut WorkspaceTab,
   left_terminal_session_id: String,
@@ -202,11 +242,7 @@ fn reset_tab_layout_to_default(
     .values()
     .map(|pane_state| pane_state.terminal_session_id.clone())
     .collect::<Vec<_>>();
-  let preserved_filesystem_state = tab
-    .pane_states
-    .get(&tab.active_pane_id)
-    .map(|pane_state| pane_state.filesystem_state.clone())
-    .unwrap_or_default();
+  let preserved_filesystem_state = resolve_preserved_filesystem_state(tab);
 
   let left_pane_id = format!("{}-left", tab.tab_id);
   let right_pane_id = format!("{}-right", tab.tab_id);
@@ -1180,6 +1216,51 @@ mod tests {
     assert_eq!(left_pane.panel_type, "Filesystem");
     assert_eq!(left_pane.filesystem_state.current_path, "C:\\Outside");
     assert_eq!(right_pane.panel_type, "Preview");
+  }
+
+  #[test]
+  fn apply_tab_workspace_root_change_preserves_non_active_filesystem_path() {
+    let mut model = WorkspaceModel::default();
+    let mut tab = model.create_default_tab();
+    tab.workspace_root = Some("H:\\gstest".to_string());
+    tab.terminal_cwd_hint = "H:\\".to_string();
+
+    let left_pane_id = tab.active_pane_id.clone();
+    let right_pane_id = tab
+      .pane_states
+      .keys()
+      .find(|pane_id| *pane_id != &left_pane_id)
+      .expect("right pane should exist")
+      .clone();
+
+    if let Some(left_pane) = tab.pane_states.get_mut(&left_pane_id) {
+      left_pane.panel_type = "Preview".to_string();
+      left_pane.filesystem_state.current_path.clear();
+      left_pane.filesystem_state.current_drive.clear();
+    }
+    if let Some(right_pane) = tab.pane_states.get_mut(&right_pane_id) {
+      right_pane.panel_type = "Filesystem".to_string();
+      right_pane.filesystem_state.current_drive = "H:\\".to_string();
+      right_pane.filesystem_state.current_path = "H:\\".to_string();
+    }
+
+    let tab_id = tab.tab_id.clone();
+    model.tabs.insert(tab_id.clone(), tab);
+    let (changed, _) =
+      apply_tab_workspace_root_change(&mut model, &tab_id, None).expect("update should succeed");
+    assert!(changed);
+
+    let updated_tab = model.tabs.get(&tab_id).expect("tab should exist");
+    assert_eq!(updated_tab.workspace_root, None);
+
+    let expected_left_pane_id = format!("{}-left", tab_id);
+    let left_pane = updated_tab
+      .pane_states
+      .get(&expected_left_pane_id)
+      .expect("left pane should exist");
+    assert_eq!(left_pane.panel_type, "Filesystem");
+    assert_eq!(left_pane.filesystem_state.current_drive, "H:\\");
+    assert_eq!(left_pane.filesystem_state.current_path, "H:\\");
   }
 
   #[test]

@@ -150,6 +150,7 @@ describe("WorkspacePanelLayout", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "FilesystemMock" }));
+    fireEvent.pointerEnter(document.querySelector(`[data-pane-id="${paneId}"]`));
 
     expect(onCurrentPathChange).toHaveBeenCalledWith("tab-1", paneId, "C:\\Mock");
     expect(onFilesystemStateChange).toHaveBeenCalledWith("tab-1", paneId, {
@@ -161,6 +162,7 @@ describe("WorkspacePanelLayout", () => {
       selectedPaths: ["C:\\Mock\\test.txt"],
     });
     expect(onPanelTypeChange).toHaveBeenCalledWith("tab-1", paneId, "Terminal");
+    expect(onPaneActivate).toHaveBeenCalledWith("tab-1", paneId);
   });
 
   it("renders pane controls and forwards split/close actions", () => {

@@ -8,9 +8,7 @@ import {
   FILESYSTEM_THUMBNAIL_SIZE_STEPS,
   normalizeFilesystemPaneState,
 } from "./filesystemPaneState";
-import {
-  isPathInsideRoot,
-} from "./filesystemPanelUtils";
+import { isPathInsideRoot } from "./filesystemPanelUtils";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import useFilesystemPanelInteractions from "./hooks/useFilesystemPanelInteractions";
 import useFilesystemStatePersistence from "./hooks/useFilesystemStatePersistence";
@@ -20,6 +18,10 @@ import useFilesystemWorkspaceFolders from "./hooks/useFilesystemWorkspaceFolders
 import useVirtualizedEntryWindow from "./hooks/useVirtualizedEntryWindow";
 import useFilesystemPanelLoadMore from "./hooks/useFilesystemPanelLoadMore";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
+import isEditableKeyboardTarget from "../../utils/isEditableKeyboardTarget";
+import { COMMAND_IDS, isCommandShortcutMatch } from "../../commands/commandRegistry";
+import { APP_COMMAND_EVENT } from "../../commands/commandEvents";
+import executeCommand from "../../commands/executeCommand";
 import styles from "./FilesystemPanel.module.scss";
 import shellStyles from "../PanelShell.module.scss";
 
@@ -48,11 +50,12 @@ function FilesystemPanel({
     initialFilesystemStateRef.current.thumbnailSizePx,
   );
   const entryRowHeightPx = thumbnailSizePx;
+  const { openConfirm, pushNotification } = useNotificationCenter();
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current, {
     tabId,
     tabWorkspaceRoot,
+    pushNotification,
   });
-  const { openConfirm } = useNotificationCenter();
   const {
     currentDrive,
     currentPath,
@@ -78,6 +81,9 @@ function FilesystemPanel({
     copyEntries,
     deleteEntries,
     importExternalPaths,
+    renameEntry,
+    undoEntries,
+    redoEntries,
   } = nav;
   const { handlePanelListScroll } = useFilesystemStatePersistence({
     tabId,
@@ -97,6 +103,7 @@ function FilesystemPanel({
   const {
     treeRows,
     toggleDirectoryExpanded,
+    remapRenamedPath,
   } = useFilesystemTree({
     currentPath,
     rootEntries: entries,
@@ -150,10 +157,19 @@ function FilesystemPanel({
     isInternalDragActive,
     activeDragEntries,
     activeDragEntry,
+    renamingPath,
     handleEntryClick,
     handleEntryDoubleClick,
     handleEntryMiddleClick,
+    handleEntryContextMenu,
+    handlePanelBackgroundClick,
+    handlePanelBackgroundContextMenu,
+    handleBeginRenameSelectedEntry,
+    handleEntryRenameCancel,
+    handleEntryRenameSubmit,
+    handleDeleteSelectedEntries,
     handlePanelKeyDown,
+    handleOpenSelectedEntryInNewTab,
     isExternalDragOver,
   } = useFilesystemPanelInteractions({
     tabId,
@@ -161,19 +177,30 @@ function FilesystemPanel({
     panelRef,
     currentPath,
     selectedPaths,
+    drivePaths: drives.map((drive) => drive.path),
     treeRows,
     isBrowsing,
     isEntryOperationInProgress,
     isExternalDragEnabled,
+    setSelectedPath,
     selectEntry,
     openEntry,
     moveEntries,
     copyEntries,
     importExternalPaths,
     deleteEntries,
+    renameEntry,
+    onEntryPathRenamed: remapRenamedPath,
     onTabSelectedFilesChange,
+    onDeleteShortcutCommand: () => executeFilesystemShortcutCommand(COMMAND_IDS.FILESYSTEM_DELETE_SELECTED),
+    onToggleDirectoryExpanded: toggleDirectoryExpanded,
+    onOpenDrivePath: selectDrive,
+    onOpenUpEntry: () => {
+      void handleGoUpDoubleClick();
+    },
     workspaceFolderPathSet,
     openConfirm,
+    pushNotification,
   });
   const upDestinationPath = breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
   const {
@@ -192,6 +219,20 @@ function FilesystemPanel({
     panelRef.current = node;
     setPanelDropNodeRef(node);
   }, [setPanelDropNodeRef]);
+  const isPanelActive = useCallback(() => {
+    const paneViewport = panelRef.current?.closest("[data-pane-active]");
+    if (!paneViewport) return panelRef.current?.contains(document.activeElement);
+    return paneViewport.getAttribute("data-pane-active") === "true";
+  }, []);
+  const executeFilesystemShortcutCommand = useCallback((commandId) => {
+    executeCommand(commandId, {
+      context: {
+        source: "shortcut",
+        activePaneId: paneId,
+        targetPaneId: paneId,
+      },
+    });
+  }, [paneId]);
   const canLeaveWorkspaceWithoutConfirm = useCallback((nextPath) => {
     if (!tabWorkspaceRoot) return true;
     return isPathInsideRoot(nextPath, tabWorkspaceRoot);
@@ -204,7 +245,6 @@ function FilesystemPanel({
       tone: "warning",
       confirmLabel: "Leave workspace",
       cancelLabel: "Stay",
-      autoOpen: true,
     });
     return shouldLeaveWorkspace;
   }, [canLeaveWorkspaceWithoutConfirm, openConfirm]);
@@ -224,6 +264,112 @@ function FilesystemPanel({
   useEffect(() => {
     onCurrentPathChangeRef.current?.(currentPath);
   }, [currentPath]);
+
+  useEffect(() => {
+    const handleUndoRedoShortcut = (event) => {
+      if (event.defaultPrevented) return;
+      if (event.metaKey || event.altKey || !event.ctrlKey) return;
+      if (isEditableKeyboardTarget(event.target)) return;
+
+      const pressedKey = event.key.toLowerCase();
+      const wantsUndo = pressedKey === "z" && !event.shiftKey;
+      const wantsRedo = pressedKey === "y" || (pressedKey === "z" && event.shiftKey);
+      if (!wantsUndo && !wantsRedo) return;
+
+      if (!isPanelActive()) return;
+      if (isEntryOperationInProgress) return;
+
+      event.preventDefault();
+      if (wantsUndo) {
+        void undoEntries();
+      } else {
+        void redoEntries();
+      }
+    };
+
+    window.addEventListener("keydown", handleUndoRedoShortcut);
+    return () => {
+      window.removeEventListener("keydown", handleUndoRedoShortcut);
+    };
+  }, [isEntryOperationInProgress, isPanelActive, redoEntries, undoEntries]);
+
+  useEffect(() => {
+    const handleRenameShortcut = event => {
+      if (event.defaultPrevented || event.repeat) return;
+      if (!isCommandShortcutMatch(COMMAND_IDS.FILESYSTEM_RENAME_SELECTED, event)) return;
+      if (isEditableKeyboardTarget(event.target)) return;
+
+      if (!isPanelActive()) return;
+      if (isEntryOperationInProgress) return;
+
+      event.preventDefault();
+      executeFilesystemShortcutCommand(COMMAND_IDS.FILESYSTEM_RENAME_SELECTED);
+    };
+
+    window.addEventListener("keydown", handleRenameShortcut);
+    return () => {
+      window.removeEventListener("keydown", handleRenameShortcut);
+    };
+  }, [executeFilesystemShortcutCommand, isEntryOperationInProgress, isPanelActive]);
+  useEffect(() => {
+    const handlePanelNavigationKeys = (event) => {
+      if (event.defaultPrevented) return;
+      if (!isPanelActive()) return;
+      handlePanelKeyDown(event);
+    };
+
+    window.addEventListener("keydown", handlePanelNavigationKeys);
+    return () => {
+      window.removeEventListener("keydown", handlePanelNavigationKeys);
+    };
+  }, [handlePanelKeyDown, isPanelActive]);
+  useEffect(() => {
+    const handleAppCommand = (event) => {
+      const detail = event?.detail ?? {};
+      const { commandId = "", context = {} } = detail;
+      if (!commandId) return;
+
+      const targetPaneId = context?.targetPaneId || context?.activePaneId || "";
+      if (targetPaneId && targetPaneId !== paneId) return;
+
+      if (commandId === COMMAND_IDS.FILESYSTEM_RENAME_SELECTED) {
+        handleBeginRenameSelectedEntry();
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_DELETE_SELECTED) {
+        void handleDeleteSelectedEntries();
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_UNDO) {
+        void undoEntries();
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_REDO) {
+        void redoEntries();
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_OPEN_SELECTED_FOLDER_IN_NEW_TAB) {
+        handleOpenSelectedEntryInNewTab();
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_GO_UP) {
+        void handleGoUpDoubleClick();
+      }
+    };
+
+    window.addEventListener(APP_COMMAND_EVENT, handleAppCommand);
+    return () => {
+      window.removeEventListener(APP_COMMAND_EVENT, handleAppCommand);
+    };
+  }, [
+    handleBeginRenameSelectedEntry,
+    handleDeleteSelectedEntries,
+    handleGoUpDoubleClick,
+    handleOpenSelectedEntryInNewTab,
+    paneId,
+    redoEntries,
+    undoEntries,
+  ]);
   const { handlePanelScroll } = useFilesystemPanelLoadMore({
     panelRef: panelScrollRef,
     handlePanelListScroll,
@@ -285,6 +431,8 @@ function FilesystemPanel({
       className={shellStyles.panelBody}
       data-testid="filesystem-panel-scroll-container"
       data-panel-scroll="true"
+      onClick={handlePanelBackgroundClick}
+      onContextMenuCapture={handlePanelBackgroundContextMenu}
       onScroll={handlePanelScroll}
     >
       <FilesystemPanelListContent
@@ -329,11 +477,15 @@ function FilesystemPanel({
           selectedEntryPathSet,
           activeDragPathSet: effectiveActiveDragPathSet,
           activeDropDestinationPath: effectiveActiveDropDestinationPath,
+          renamingPath,
           thumbnailSrcByPath,
           onToggleDirectoryExpanded: toggleDirectoryExpanded,
           onEntryClick: handleEntryClick,
           onEntryDoubleClick: handleEntryDoubleClick,
           onEntryMiddleClick: handleEntryMiddleClick,
+          onEntryContextMenu: handleEntryContextMenu,
+          onEntryRenameSubmit: handleEntryRenameSubmit,
+          onEntryRenameCancel: handleEntryRenameCancel,
         }}
         drag={{
           activeEntry: activeDragEntry,

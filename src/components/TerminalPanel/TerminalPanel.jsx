@@ -89,6 +89,7 @@ function TerminalPanel({
     ref={setPanelNodeRef}
     className={`${shellStyles.panelContent} ${styles.panelContent} ${(isDropOver && isPanelsDragActive) || isExternalDragOver ? styles.panelDropTarget : ""}`}
     aria-label="Terminal panel"
+    data-terminal-shortcuts="true"
   >
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
       <span className={styles.cwdLabel} title={cwdHint || "No folder selected"}>

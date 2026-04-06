@@ -122,24 +122,6 @@
   }
 }
 
-.notificationsButton {
-  @include interactive-tile;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 0 0.5rem 0.15rem 0.5rem;
-  border-left: 1px solid $border-default;
-  color: $text-tertiary;
-  font-size: 1rem;
-  line-height: 0;
-
-  &:hover {
-    color: $accent-active;
-    background: $bg-accent;
-  }
-}
-
 .tabSpacer {
   flex: 1 1 auto;
   min-width: 0;
@@ -173,91 +155,5 @@
   &:hover {
     color: #fff;
     background: #a22;
-  }
-}
-
-.notificationsButtonAlert {
-  color: #f88;
-  background: #300;
-}
-
-.notificationsFlyout {
-  position: fixed;
-  top: 24px;
-  right: 0;
-  z-index: 90;
-  width: min(26rem, calc(100vw - 1rem));
-  max-height: min(28rem, 70vh);
-  overflow: auto;
-  border: solid $border-default;
-  border-width: 0 0 1px 1px;
-  background: $bg-panel;
-  padding: 0.3rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-}
-
-.notificationsEmpty {
-  margin: 0;
-  color: $text-secondary;
-  font-size: $font-size-small;
-  padding: 0.35rem;
-}
-
-.notificationCard {
-  border: 1px solid $border-secondary;
-  background: $bg-surface;
-  padding: 0.45rem;
-}
-
-.notificationToneInfo {
-  border-color: $border-secondary;
-}
-
-.notificationToneSuccess {
-  border-color: $accent-active;
-}
-
-.notificationToneWarning {
-  border-color: #a86;
-}
-
-.notificationToneError {
-  border-color: #b66;
-}
-
-.notificationTitle {
-  margin: 0;
-  font-size: $font-size-small;
-  color: $text-strong;
-}
-
-.notificationMessage {
-  margin: 0.3rem 0 0 0;
-  color: $text-secondary;
-  font-size: $font-size-small;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.notificationActions {
-  margin-top: 0.45rem;
-  display: flex;
-  gap: 0.35rem;
-  justify-content: flex-end;
-}
-
-.notificationActionButton {
-  @include interactive-tile;
-  border: 1px solid $border-default;
-  background: $bg-panel;
-  color: $text-primary;
-  padding: 0.2rem 0.45rem;
-  font-size: $font-size-small;
-
-  &:hover {
-    border-color: $border-hover;
-    background: $bg-surface-hover;
   }
 }

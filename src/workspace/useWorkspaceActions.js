@@ -3,6 +3,7 @@ import { getErrorMessage } from "./appRuntime";
 import {
   workspaceCloseTab,
   workspaceCloseTabPane,
+  workspaceNewWindow,
   workspaceNewTab,
   workspaceSetActiveTab,
   workspaceSetTabActivePane,
@@ -61,7 +62,6 @@ export default function useWorkspaceActions({
       title: "Action failed",
       message,
       tone: "error",
-      autoOpen: true,
     });
   }, [pushNotification]);
 
@@ -86,6 +86,10 @@ export default function useWorkspaceActions({
     workspaceNewTab(currentWindow.windowId).catch(handleWorkspaceCommandError);
   }, [currentWindow, handleWorkspaceCommandError]);
 
+  const handleCreateWindow = useCallback(() => {
+    workspaceNewWindow().catch(handleWorkspaceCommandError);
+  }, [handleWorkspaceCommandError]);
+
   const handleCloseTab = useCallback(tabId => {
     if (!currentWindow) return;
     workspaceCloseTab(currentWindow.windowId, tabId).catch(handleWorkspaceCommandError);
@@ -96,7 +100,7 @@ export default function useWorkspaceActions({
     workspaceSetTabPanelType(tabId, paneId, panelType).catch(handleTabScopedCommandError);
   }, [handleTabScopedCommandError]);
 
-  const handleSetTabCwdHint = useCallback((tabId, paneId, path) => {
+  const handleSetTabCwdHint = useCallback((tabId, _paneId, path) => {
     if (!tabId) return;
     const nextPath = path ?? "";
     const previousPath = terminalCwdByTabRef.current.get(tabId);
@@ -108,13 +112,8 @@ export default function useWorkspaceActions({
       });
     }
 
-    const isActivePane = activeTab?.tabId === tabId
-      && (!paneId || !activeTab?.activePaneId || paneId === activeTab.activePaneId);
-    if (!isActivePane) return;
-
-    const workspaceRoot = typeof activeTab?.workspaceRoot === "string"
-      ? activeTab.workspaceRoot
-      : "";
+    if (activeTab?.tabId !== tabId) return;
+    const workspaceRoot = activeTab?.workspaceRoot ?? "";
     if (!workspaceRoot) return;
     if (isPathInsideRoot(nextPath, workspaceRoot)) return;
 
@@ -155,7 +154,6 @@ export default function useWorkspaceActions({
         tone: "warning",
         confirmLabel: "Close pane",
         cancelLabel: "Cancel",
-        autoOpen: true,
       }) : true;
       if (!shouldClose) return;
     }
@@ -206,6 +204,7 @@ export default function useWorkspaceActions({
     handleWorkspaceCommandError,
     handleSetActiveTab,
     handleCreateTab,
+    handleCreateWindow,
     handleCloseTab,
     handleChangePanelType,
     handleSetTabCwdHint,

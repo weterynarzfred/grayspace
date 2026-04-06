@@ -3,6 +3,7 @@ import useWorkspaceActions from "./useWorkspaceActions";
 import {
   workspaceCloseTab,
   workspaceCloseTabPane,
+  workspaceNewWindow,
   workspaceNewTab,
   workspaceSetActiveTab,
   workspaceSetTabActivePane,
@@ -18,6 +19,7 @@ import {
 vi.mock("./workspaceApi", () => ({
   workspaceCloseTab: vi.fn(),
   workspaceCloseTabPane: vi.fn(),
+  workspaceNewWindow: vi.fn(),
   workspaceNewTab: vi.fn(),
   workspaceSetActiveTab: vi.fn(),
   workspaceSetTabActivePane: vi.fn(),
@@ -33,6 +35,7 @@ vi.mock("./workspaceApi", () => ({
 const resolvedCommands = [
   workspaceCloseTab,
   workspaceCloseTabPane,
+  workspaceNewWindow,
   workspaceNewTab,
   workspaceSetActiveTab,
   workspaceSetTabActivePane,
@@ -45,6 +48,16 @@ const resolvedCommands = [
   workspaceSplitTabPane,
 ];
 
+function createActiveTab(overrides = {}) {
+  return {
+    tabId: "tab-1",
+    activePaneId: "pane-1",
+    workspaceRoot: "C:\\workspace",
+    paneStates: {},
+    ...overrides,
+  };
+}
+
 describe("useWorkspaceActions handleSetTabCwdHint", () => {
   beforeEach(() => {
     resolvedCommands.forEach((commandMock) => {
@@ -54,12 +67,7 @@ describe("useWorkspaceActions handleSetTabCwdHint", () => {
   });
 
   it("clears workspace root when active pane path leaves the workspace", async () => {
-    const activeTab = {
-      tabId: "tab-1",
-      activePaneId: "pane-1",
-      workspaceRoot: "C:\\workspace",
-      paneStates: {},
-    };
+    const activeTab = createActiveTab();
     const { result } = renderHook(() => useWorkspaceActions({
       currentWindow: { windowId: "window-1" },
       activeTab,
@@ -75,12 +83,7 @@ describe("useWorkspaceActions handleSetTabCwdHint", () => {
   });
 
   it("keeps workspace root when active pane path stays inside the workspace", async () => {
-    const activeTab = {
-      tabId: "tab-1",
-      activePaneId: "pane-1",
-      workspaceRoot: "C:\\workspace",
-      paneStates: {},
-    };
+    const activeTab = createActiveTab();
     const { result } = renderHook(() => useWorkspaceActions({
       currentWindow: { windowId: "window-1" },
       activeTab,
@@ -95,14 +98,29 @@ describe("useWorkspaceActions handleSetTabCwdHint", () => {
     expect(workspaceSetTabWorkspaceRoot).not.toHaveBeenCalled();
   });
 
+  it("clears workspace root even when the changing pane is not the active pane", async () => {
+    const activeTab = createActiveTab({
+      activePaneId: "pane-preview",
+    });
+    const { result } = renderHook(() => useWorkspaceActions({
+      currentWindow: { windowId: "window-1" },
+      activeTab,
+    }));
+
+    await act(async () => {
+      result.current.handleSetTabCwdHint("tab-1", "pane-filesystem", "C:\\");
+      await Promise.resolve();
+    });
+
+    expect(workspaceSetTabTerminalCwd).toHaveBeenCalledWith("tab-1", "C:\\");
+    expect(workspaceSetTabWorkspaceRoot).toHaveBeenCalledWith("tab-1", null);
+  });
+
   it("does not resend terminal cwd when path is unchanged", async () => {
-    const activeTab = {
-      tabId: "tab-1",
+    const activeTab = createActiveTab({
       activePaneId: "pane-1",
       terminalCwdHint: "C:\\workspace\\src",
-      workspaceRoot: "C:\\workspace",
-      paneStates: {},
-    };
+    });
     const { result } = renderHook(() => useWorkspaceActions({
       currentWindow: { windowId: "window-1" },
       activeTab,
@@ -117,14 +135,26 @@ describe("useWorkspaceActions handleSetTabCwdHint", () => {
     expect(workspaceSetTabWorkspaceRoot).not.toHaveBeenCalled();
   });
 
+  it("does not clear workspace root for updates from a non-active tab", async () => {
+    const activeTab = createActiveTab();
+    const { result } = renderHook(() => useWorkspaceActions({
+      currentWindow: { windowId: "window-1" },
+      activeTab,
+    }));
+
+    await act(async () => {
+      result.current.handleSetTabCwdHint("tab-2", "pane-1", "D:\\");
+      await Promise.resolve();
+    });
+
+    expect(workspaceSetTabTerminalCwd).toHaveBeenCalledWith("tab-2", "D:\\");
+    expect(workspaceSetTabWorkspaceRoot).not.toHaveBeenCalled();
+  });
+
   it("dedupes repeated path updates before tab snapshot catches up", async () => {
-    const activeTab = {
-      tabId: "tab-1",
-      activePaneId: "pane-1",
+    const activeTab = createActiveTab({
       terminalCwdHint: "",
-      workspaceRoot: "C:\\workspace",
-      paneStates: {},
-    };
+    });
     const { result } = renderHook(() => useWorkspaceActions({
       currentWindow: { windowId: "window-1" },
       activeTab,
@@ -138,5 +168,28 @@ describe("useWorkspaceActions handleSetTabCwdHint", () => {
 
     expect(workspaceSetTabTerminalCwd).toHaveBeenCalledTimes(1);
     expect(workspaceSetTabTerminalCwd).toHaveBeenCalledWith("tab-1", "C:\\workspace\\src");
+  });
+});
+
+describe("useWorkspaceActions basic commands", () => {
+  beforeEach(() => {
+    resolvedCommands.forEach((commandMock) => {
+      commandMock.mockReset();
+      commandMock.mockResolvedValue(null);
+    });
+  });
+
+  it("creates a new window", async () => {
+    const { result } = renderHook(() => useWorkspaceActions({
+      currentWindow: { windowId: "window-1" },
+      activeTab: createActiveTab(),
+    }));
+
+    await act(async () => {
+      result.current.handleCreateWindow();
+      await Promise.resolve();
+    });
+
+    expect(workspaceNewWindow).toHaveBeenCalledTimes(1);
   });
 });

@@ -8,7 +8,7 @@ export default function useFilesystemNavigation(
   initialFilesystemState = undefined,
   options = {},
 ) {
-  const { tabId = "", tabWorkspaceRoot = "" } = options;
+  const { tabId = "", tabWorkspaceRoot = "", pushNotification = undefined } = options;
   const initialStateRef = useRef(
     normalizeInitialFilesystemState(initialFilesystemState),
   );
@@ -73,9 +73,13 @@ export default function useFilesystemNavigation(
     copyEntries,
     deleteEntries,
     importExternalPaths,
+    renameEntry,
+    undoEntries,
+    redoEntries,
   } = useFilesystemEntryOperations({
     tabId,
     tabWorkspaceRoot,
+    pushNotification,
     currentPath,
     currentPathRef,
     clearSelection,
@@ -114,5 +118,8 @@ export default function useFilesystemNavigation(
     copyEntries,
     deleteEntries,
     importExternalPaths,
+    renameEntry,
+    undoEntries,
+    redoEntries,
   };
 }

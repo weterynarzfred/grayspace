@@ -1,0 +1,17 @@
+@use "../../styles/variables" as *;
+
+.popover {
+  position: fixed;
+  z-index: 140;
+  min-width: 14rem;
+  max-width: min(34rem, calc(100vw - 1rem));
+  max-height: min(32rem, calc(100vh - 1rem));
+  overflow: auto;
+  border: 1px solid $border-secondary;
+  background: $bg-panel;
+  box-shadow: 0rem 0rem 0.3rem $bg-panel;
+
+  > div:focus {
+    outline: none;
+  }
+}

@@ -1,0 +1,72 @@
+@use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
+
+.palette {
+  width: min(34rem, calc(100vw - 1rem));
+}
+
+.searchLabel {
+  display: block;
+  border-bottom: 1px solid $border-default;
+  padding: 0.45rem;
+}
+
+.searchTitle {
+  display: block;
+  font-size: $font-size-small;
+  color: $text-secondary;
+  margin-bottom: 0.3rem;
+}
+
+.searchInput {
+  width: 100%;
+  border: 1px solid $border-default;
+  background: $bg-surface;
+  color: $text-primary;
+  padding: 0.4rem 0.45rem;
+  font-size: $font-size-small;
+  outline: none;
+
+  &:focus {
+    border-color: $accent-active;
+  }
+}
+
+.commandList {
+  list-style: none;
+  margin: 0;
+  padding: 0.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.commandItem {
+  list-style: none;
+}
+
+.commandRow {
+  @include popover-action-button;
+}
+
+.commandRowSelected,
+.commandRow:hover {
+  @include popover-action-button-active;
+}
+
+.commandName {
+  color: $text-primary;
+}
+
+.commandShortcut {
+  color: $text-secondary;
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+}
+
+.emptyRow {
+  border: 1px solid $border-secondary;
+  padding: 0.28rem 0.4rem;
+  font-size: $font-size-small;
+  color: $text-secondary;
+}

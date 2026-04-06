@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isSamePath, normalizePathForComparison } from "../../../utils/pathWatch";
 import useFilesystemDirectoryWatcher from "./useFilesystemDirectoryWatcher";
 
 function flattenEntries({
@@ -37,15 +38,6 @@ function flattenEntries({
   return rows;
 }
 
-function normalizePathForComparison(path) {
-  if (typeof path !== "string" || !path.trim()) return "";
-  return path
-    .trim()
-    .replace(/[\\/]+$/, "")
-    .replace(/\\/g, "/")
-    .toLowerCase();
-}
-
 function isPathInsideRoot(path, rootPath) {
   const normalizedPath = normalizePathForComparison(path);
   const normalizedRootPath = normalizePathForComparison(rootPath);
@@ -75,6 +67,77 @@ function prunePathMapByRoot(pathMap, rootPath) {
     nextPathMap[path] = value;
   });
   return hasPruned ? nextPathMap : pathMap;
+}
+
+function getPathName(path) {
+  if (typeof path !== "string" || !path) return "";
+
+  const trimmedPath = path.replace(/[\\/]+$/, "");
+  const separatorIndex = Math.max(trimmedPath.lastIndexOf("\\"), trimmedPath.lastIndexOf("/"));
+  if (separatorIndex < 0) return trimmedPath;
+  return trimmedPath.slice(separatorIndex + 1);
+}
+
+function replacePathPrefix(path, sourcePath, destinationPath) {
+  if (typeof path !== "string" || !path) return path;
+
+  const normalizedPath = normalizePathForComparison(path);
+  const normalizedSourcePath = normalizePathForComparison(sourcePath);
+  if (!normalizedPath || !normalizedSourcePath) return path;
+
+  if (normalizedPath === normalizedSourcePath) return destinationPath;
+  if (!normalizedPath.startsWith(`${normalizedSourcePath}/`)) return path;
+
+  const normalizedSuffix = normalizedPath.slice(normalizedSourcePath.length + 1);
+  const normalizedDestinationPath = destinationPath.replace(/[\\/]+$/, "");
+  const separator = normalizedDestinationPath.includes("\\") ? "\\" : "/";
+  return `${normalizedDestinationPath}${separator}${normalizedSuffix.replace(/\//g, separator)}`;
+}
+
+function remapPathMap(pathMap, sourcePath, destinationPath) {
+  let hasChanges = false;
+  const nextPathMap = {};
+
+  Object.entries(pathMap).forEach(([path, value]) => {
+    const remappedPath = replacePathPrefix(path, sourcePath, destinationPath);
+    if (remappedPath !== path) hasChanges = true;
+    nextPathMap[remappedPath] = value;
+  });
+
+  return hasChanges ? nextPathMap : pathMap;
+}
+
+function remapDirectoryEntries(directoryEntriesByPath, sourcePath, destinationPath) {
+  let hasAnyChanges = false;
+  const nextDirectoryEntriesByPath = {};
+
+  Object.entries(directoryEntriesByPath).forEach(([directoryPath, entries]) => {
+    const remappedDirectoryPath = replacePathPrefix(directoryPath, sourcePath, destinationPath);
+    if (remappedDirectoryPath !== directoryPath) hasAnyChanges = true;
+
+    let hasEntryChanges = false;
+    const remappedEntries = entries.map((entry) => {
+      const remappedEntryPath = replacePathPrefix(entry.path, sourcePath, destinationPath);
+      if (remappedEntryPath === entry.path) return entry;
+      hasEntryChanges = true;
+
+      const remappedName = isSamePath(entry.path, sourcePath)
+        ? getPathName(remappedEntryPath) || entry.name
+        : entry.name;
+      return {
+        ...entry,
+        name: remappedName,
+        path: remappedEntryPath,
+      };
+    });
+
+    if (hasEntryChanges) hasAnyChanges = true;
+    nextDirectoryEntriesByPath[remappedDirectoryPath] = hasEntryChanges
+      ? remappedEntries
+      : entries;
+  });
+
+  return hasAnyChanges ? nextDirectoryEntriesByPath : directoryEntriesByPath;
 }
 
 export default function useFilesystemTree({
@@ -146,6 +209,14 @@ export default function useFilesystemTree({
       };
     });
   }, [ensureDirectoryEntriesLoaded]);
+  const remapRenamedPath = useCallback((sourcePath, destinationPath) => {
+    if (!sourcePath || !destinationPath) return;
+    if (isSamePath(sourcePath, destinationPath)) return;
+
+    setExpandedByPath(prev => remapPathMap(prev, sourcePath, destinationPath));
+    setDirectoryEntriesByPath(prev => remapDirectoryEntries(prev, sourcePath, destinationPath));
+    setLoadingByPath(prev => remapPathMap(prev, sourcePath, destinationPath));
+  }, []);
 
   const expandedDirectoryPaths = useMemo(() => (
     Object.keys(expandedByPath).filter((path) => expandedByPath[path] === true)
@@ -194,5 +265,6 @@ export default function useFilesystemTree({
     treeRows,
     expandedDirectoryPaths,
     toggleDirectoryExpanded,
+    remapRenamedPath,
   };
 }

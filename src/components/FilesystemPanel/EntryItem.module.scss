@@ -26,6 +26,12 @@
   }
 }
 
+.entryButtonEditing {
+  cursor: text;
+  background: $bg-selected;
+  border-color: $border-hover;
+}
+
 .entryItem {
   &:nth-of-type(2n) {
     background-color: #fff1;
@@ -126,6 +132,17 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   padding-left: 0.2em;
+}
+
+.entryRenameInput {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 1.7rem;
+  padding: 0 0.35rem;
+  color: inherit;
+  background: $bg-panel;
+  border: 1px solid $border-hover;
+  font: inherit;
 }
 
 .configEntry {

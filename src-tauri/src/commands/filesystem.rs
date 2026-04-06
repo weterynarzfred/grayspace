@@ -1,4 +1,4 @@
-use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use notify::{EventKind, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::fs;
@@ -7,6 +7,15 @@ use std::process::Command;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, State};
+
+type FilesystemWatcher = notify::RecommendedWatcher;
+
+struct ManagedFilesystemWatcher {
+  _watcher: FilesystemWatcher,
+  canonical_path: PathBuf,
+  window_label: String,
+  watch_id: String,
+}
 
 #[derive(Serialize)]
 pub struct DriveInfo {
@@ -39,11 +48,20 @@ pub struct FsPathProperties {
   date_created_ms: Option<u64>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenamePathResult {
+  path: String,
+  name: String,
+  requested_name: String,
+  adjusted: bool,
+}
+
 const FILESYSTEM_WATCH_EVENT: &str = "filesystem-watch-event";
 
 #[derive(Default)]
 pub struct FilesystemWatchState {
-  watchers: Mutex<HashMap<String, RecommendedWatcher>>,
+  watchers: Mutex<HashMap<String, ManagedFilesystemWatcher>>,
 }
 
 #[derive(Default)]
@@ -72,6 +90,43 @@ fn is_watch_event_relevant(kind: &EventKind) -> bool {
     kind,
     EventKind::Any | EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
   )
+}
+
+fn create_filesystem_watcher<F>(event_handler: F) -> Result<FilesystemWatcher, String>
+where
+  F: FnMut(notify::Result<notify::Event>) + Send + 'static,
+{
+  notify::recommended_watcher(event_handler).map_err(|error| error.to_string())
+}
+
+fn create_emitting_filesystem_watcher(
+  app_handle: tauri::AppHandle,
+  watch_id: String,
+) -> Result<FilesystemWatcher, String> {
+  create_filesystem_watcher(move |event_result: notify::Result<notify::Event>| {
+    let event = match event_result {
+      Ok(event) => event,
+      Err(_) => return,
+    };
+
+    if !is_watch_event_relevant(&event.kind) {
+      return;
+    }
+
+    let changed_path = event
+      .paths
+      .first()
+      .map(|entry_path| entry_path.to_string_lossy().to_string())
+      .unwrap_or_default();
+
+    let _ = app_handle.emit(
+      FILESYSTEM_WATCH_EVENT,
+      FilesystemWatchEventPayload {
+        watch_id: watch_id.clone(),
+        changed_path,
+      },
+    );
+  })
 }
 
 fn sort_entries(entries: &mut [FsEntry]) {
@@ -148,6 +203,202 @@ fn remove_source_path(source_path: &Path) -> Result<(), String> {
   }
 
   Ok(())
+}
+
+fn has_valid_extension_suffix(suffix: &str) -> bool {
+  if suffix.is_empty() {
+    return true;
+  }
+  if !suffix.starts_with('.') {
+    return false;
+  }
+  suffix[1..].split('.').all(|segment| !segment.is_empty())
+}
+
+fn parse_incrementable_suffix(name: &str) -> Option<(String, u64, usize, String)> {
+  let mut last_match: Option<(String, u64, usize, String)> = None;
+
+  for (dot_index, character) in name.char_indices() {
+    if character != '.' {
+      continue;
+    }
+
+    let prefix = &name[..dot_index];
+    if prefix.is_empty() {
+      continue;
+    }
+
+    let remainder = &name[(dot_index + 1)..];
+    let digits_len = remainder
+      .chars()
+      .take_while(|character| character.is_ascii_digit())
+      .count();
+    if digits_len < 3 {
+      continue;
+    }
+
+    let digits = &remainder[..digits_len];
+    let suffix = &remainder[digits_len..];
+    if !has_valid_extension_suffix(suffix) {
+      continue;
+    }
+
+    let number = digits.parse::<u64>().ok()?;
+    last_match = Some((prefix.to_string(), number, digits.len(), suffix.to_string()));
+  }
+
+  last_match
+}
+
+fn split_name_for_fallback_suffix(name: &str) -> (String, String) {
+  match name.rfind('.') {
+    Some(dot_index) if dot_index > 0 => (
+      name[..dot_index].to_string(),
+      name[dot_index..].to_string(),
+    ),
+    _ => (name.to_string(), String::new()),
+  }
+}
+
+fn build_next_collision_name(name: &str) -> String {
+  if let Some((prefix, number, width, suffix)) = parse_incrementable_suffix(name) {
+    let incremented = number.saturating_add(1);
+    return format!("{prefix}.{incremented:0width$}{suffix}");
+  }
+
+  let (base_name, extension_suffix) = split_name_for_fallback_suffix(name);
+  format!("{base_name}.001{extension_suffix}")
+}
+
+fn path_conflicts_with_existing(candidate_path: &Path, source_canonical_path: &Path) -> bool {
+  if !candidate_path.exists() {
+    return false;
+  }
+
+  match fs::canonicalize(candidate_path) {
+    Ok(candidate_canonical_path) => candidate_canonical_path != source_canonical_path,
+    Err(_) => true,
+  }
+}
+
+fn is_same_or_descendant_path(path: &Path, root: &Path) -> bool {
+  path == root || path.starts_with(root)
+}
+
+fn remap_path_prefix(path: &Path, source: &Path, destination: &Path) -> PathBuf {
+  if path == source {
+    return destination.to_path_buf();
+  }
+
+  match path.strip_prefix(source) {
+    Ok(suffix) => destination.join(suffix),
+    Err(_) => path.to_path_buf(),
+  }
+}
+
+fn drain_watchers_in_path_tree(
+  watchers: &mut HashMap<String, ManagedFilesystemWatcher>,
+  source_canonical_path: &Path,
+) -> Vec<ManagedFilesystemWatcher> {
+  let keys_to_remove: Vec<String> = watchers
+    .iter()
+    .filter_map(|(key, watcher)| {
+      is_same_or_descendant_path(&watcher.canonical_path, source_canonical_path)
+        .then_some(key.clone())
+    })
+    .collect();
+
+  let mut suspended = Vec::with_capacity(keys_to_remove.len());
+  for key in keys_to_remove {
+    if let Some(watcher) = watchers.remove(&key) {
+      suspended.push(watcher);
+    }
+  }
+
+  suspended
+}
+
+fn suspend_watchers_for_path(
+  state: &State<FilesystemWatchState>,
+  source_canonical_path: &Path,
+) -> Result<Vec<ManagedFilesystemWatcher>, String> {
+  let mut watchers = state
+    .watchers
+    .lock()
+    .map_err(|_| "Failed to access filesystem watcher state.".to_string())?;
+  Ok(drain_watchers_in_path_tree(&mut watchers, source_canonical_path))
+}
+
+fn restore_suspended_watchers(
+  state: &State<FilesystemWatchState>,
+  app_handle: &tauri::AppHandle,
+  source_canonical_path: &Path,
+  destination_canonical_path: &Path,
+  suspended_watchers: Vec<ManagedFilesystemWatcher>,
+) {
+  let mut restored = Vec::new();
+  for suspended in suspended_watchers {
+    let remapped_path = remap_path_prefix(
+      &suspended.canonical_path,
+      source_canonical_path,
+      destination_canonical_path,
+    );
+
+    let mut watcher = match create_emitting_filesystem_watcher(
+      app_handle.clone(),
+      suspended.watch_id.clone(),
+    ) {
+      Ok(watcher) => watcher,
+      Err(error) => {
+        eprintln!("[filesystem-watch] Failed to recreate watcher: {error}");
+        continue;
+      }
+    };
+
+    if let Err(error) = watcher.watch(&remapped_path, RecursiveMode::NonRecursive) {
+      eprintln!(
+        "[filesystem-watch] Failed to restore watcher for '{}': {}",
+        remapped_path.to_string_lossy(),
+        error
+      );
+      continue;
+    }
+
+    restored.push(ManagedFilesystemWatcher {
+      _watcher: watcher,
+      canonical_path: remapped_path,
+      window_label: suspended.window_label,
+      watch_id: suspended.watch_id,
+    });
+  }
+
+  let mut watchers = match state.watchers.lock() {
+    Ok(guard) => guard,
+    Err(_) => {
+      eprintln!("[filesystem-watch] Failed to reinsert restored watchers.");
+      return;
+    }
+  };
+
+  for watcher in restored {
+    let watcher_key = watch_state_key(&watcher.window_label, &watcher.watch_id);
+    watchers.insert(watcher_key, watcher);
+  }
+}
+
+fn resolve_non_conflicting_name(
+  parent_path: &Path,
+  requested_name: &str,
+  source_canonical_path: &Path,
+) -> String {
+  let mut candidate_name = requested_name.to_string();
+  loop {
+    let candidate_path = parent_path.join(&candidate_name);
+    if !path_conflicts_with_existing(&candidate_path, source_canonical_path) {
+      return candidate_name;
+    }
+    candidate_name = build_next_collision_name(&candidate_name);
+  }
 }
 
 fn handle_move_rename_error(
@@ -355,6 +606,116 @@ pub fn move_path(source: &str, destination_dir: &str) -> Result<(), String> {
   }
 }
 
+fn rename_path_core(
+  path: &str,
+  new_name: &str,
+  allow_adjustment: Option<bool>,
+) -> Result<RenamePathResult, String> {
+  let normalized_path = path.trim();
+  let normalized_name = new_name.trim();
+  let should_allow_adjustment = allow_adjustment.unwrap_or(true);
+
+  if normalized_path.is_empty() {
+    return Err("A path is required.".to_string());
+  }
+  if normalized_name.is_empty() {
+    return Err("A new name is required.".to_string());
+  }
+  if normalized_name.contains('\\') || normalized_name.contains('/') {
+    return Err("The new name cannot contain path separators.".to_string());
+  }
+  if normalized_name == "." || normalized_name == ".." {
+    return Err("The new name cannot be '.' or '..'.".to_string());
+  }
+
+  let source_path = PathBuf::from(normalized_path);
+  if !source_path.exists() {
+    return Err("The source path does not exist.".to_string());
+  }
+
+  let parent_path = source_path
+    .parent()
+    .ok_or_else(|| "Failed to resolve parent folder for this path.".to_string())?;
+  let source_canonical_path = fs::canonicalize(&source_path).map_err(|error| error.to_string())?;
+
+  let source_name = source_path
+    .file_name()
+    .and_then(|file_name| file_name.to_str())
+    .ok_or_else(|| "Failed to resolve source name.".to_string())?;
+  if source_name == normalized_name {
+    return Ok(RenamePathResult {
+      path: source_path.to_string_lossy().to_string(),
+      name: source_name.to_string(),
+      requested_name: normalized_name.to_string(),
+      adjusted: false,
+    });
+  }
+
+  let resolved_name = if should_allow_adjustment {
+    resolve_non_conflicting_name(parent_path, normalized_name, &source_canonical_path)
+  } else {
+    let candidate_path = parent_path.join(normalized_name);
+    if path_conflicts_with_existing(&candidate_path, &source_canonical_path) {
+      return Err(format!(
+        "An item named '{}' already exists in this folder.",
+        normalized_name
+      ));
+    }
+    normalized_name.to_string()
+  };
+  let destination_path = parent_path.join(&resolved_name);
+
+  if destination_path != source_path {
+    fs::rename(&source_path, &destination_path).map_err(|error| error.to_string())?;
+  }
+
+  Ok(RenamePathResult {
+    path: destination_path.to_string_lossy().to_string(),
+    name: resolved_name.clone(),
+    requested_name: normalized_name.to_string(),
+    adjusted: resolved_name != normalized_name,
+  })
+}
+
+#[tauri::command]
+pub fn rename_path(
+  window: tauri::Window,
+  watch_state: State<FilesystemWatchState>,
+  path: &str,
+  new_name: &str,
+  allow_adjustment: Option<bool>,
+) -> Result<RenamePathResult, String> {
+  let normalized_path = path.trim();
+  if normalized_path.is_empty() {
+    return Err("A path is required.".to_string());
+  }
+
+  let source_path = PathBuf::from(normalized_path);
+  if !source_path.exists() || !source_path.is_dir() {
+    return rename_path_core(path, new_name, allow_adjustment);
+  }
+
+  let source_canonical_path = fs::canonicalize(&source_path).map_err(|error| error.to_string())?;
+  let suspended_watchers = suspend_watchers_for_path(&watch_state, &source_canonical_path)?;
+  let rename_result = rename_path_core(path, new_name, allow_adjustment);
+
+  let destination_canonical_path = rename_result
+    .as_ref()
+    .ok()
+    .and_then(|result| fs::canonicalize(&result.path).ok())
+    .unwrap_or_else(|| source_canonical_path.clone());
+
+  restore_suspended_watchers(
+    &watch_state,
+    &window.app_handle(),
+    &source_canonical_path,
+    &destination_canonical_path,
+    suspended_watchers,
+  );
+
+  rename_result
+}
+
 #[tauri::command]
 pub fn delete_paths(paths: Vec<String>) -> Result<(), String> {
   let normalized_paths: Vec<PathBuf> = paths
@@ -373,12 +734,7 @@ pub fn delete_paths(paths: Vec<String>) -> Result<(), String> {
         path.to_string_lossy()
       ));
     }
-
-    if path.is_dir() {
-      fs::remove_dir_all(&path).map_err(|error| error.to_string())?;
-    } else {
-      fs::remove_file(&path).map_err(|error| error.to_string())?;
-    }
+    trash::delete(&path).map_err(|error| error.to_string())?;
   }
 
   Ok(())
@@ -481,32 +837,7 @@ pub fn filesystem_watch_start(
   let watcher_key = watch_state_key(&window_label, normalized_watch_id);
   let watched_id = normalized_watch_id.to_string();
 
-  let mut watcher =
-    notify::recommended_watcher(move |event_result: notify::Result<notify::Event>| {
-      let event = match event_result {
-        Ok(event) => event,
-        Err(_) => return,
-      };
-
-      if !is_watch_event_relevant(&event.kind) {
-        return;
-      }
-
-      let changed_path = event
-        .paths
-        .first()
-        .map(|entry_path| entry_path.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-      let _ = app_handle.emit(
-        FILESYSTEM_WATCH_EVENT,
-        FilesystemWatchEventPayload {
-          watch_id: watched_id.clone(),
-          changed_path,
-        },
-      );
-    })
-    .map_err(|error| error.to_string())?;
+  let mut watcher = create_emitting_filesystem_watcher(app_handle, watched_id.clone())?;
 
   watcher
     .watch(&canonical_watch_path, RecursiveMode::NonRecursive)
@@ -516,7 +847,15 @@ pub fn filesystem_watch_start(
     .watchers
     .lock()
     .map_err(|_| "Failed to access filesystem watcher state.".to_string())?;
-  watchers.insert(watcher_key, watcher);
+  watchers.insert(
+    watcher_key,
+    ManagedFilesystemWatcher {
+      _watcher: watcher,
+      canonical_path: canonical_watch_path,
+      window_label,
+      watch_id: watched_id,
+    },
+  );
   Ok(())
 }
 

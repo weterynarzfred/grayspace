@@ -56,11 +56,15 @@ export default function FilesystemPanelListContent({
     selectedEntryPathSet = new Set(),
     activeDragPathSet = new Set(),
     activeDropDestinationPath = "",
+    renamingPath = "",
     thumbnailSrcByPath = {},
     onToggleDirectoryExpanded = undefined,
     onEntryClick = undefined,
     onEntryDoubleClick = undefined,
     onEntryMiddleClick = undefined,
+    onEntryContextMenu = undefined,
+    onEntryRenameSubmit = undefined,
+    onEntryRenameCancel = undefined,
   } = entries;
   const {
     activeEntry: activeDragEntry = null,
@@ -74,114 +78,112 @@ export default function FilesystemPanelListContent({
 
     {!isBrowsing && !isLoadingDrives && !error && (
       <ul className={styles.entryList}>
-        {driveItems.map((drive) => <EntryItem
+        {driveItems.map(drive => <EntryItem
           key={drive.path}
           label={drive.name}
           meta={drive.path}
           isSelected={selectedPathSet.has(drive.path)}
           isDirectory
+          contextKind="folder"
+          contextId={drive.path}
+          contextLabel={drive.name}
+          contextPath={drive.path}
+          contextScope="drive-entry"
+          contextPaneId={paneId}
           onClick={() => onDriveSelect?.(drive.path)}
           onDoubleClick={() => onDriveOpen?.(drive.path)}
         />)}
       </ul>
     )}
 
-    {isBrowsing && (
-      <>
-        <Breadcrumbs
-          currentPath={currentPath}
-          currentDrive={currentDrive}
-          onSelect={onBreadcrumbSelect}
-          activeDragPaths={activeDragPaths}
-          isMovingEntry={isMovingEntry}
-          getDropIdForPath={getBreadcrumbDropId}
-          workspaceFolderPathSet={workspaceFolderPathSet}
-        />
+    {isBrowsing && <>
+      <Breadcrumbs
+        currentPath={currentPath}
+        currentDrive={currentDrive}
+        onSelect={onBreadcrumbSelect}
+        activeDragPaths={activeDragPaths}
+        isMovingEntry={isMovingEntry}
+        getDropIdForPath={getBreadcrumbDropId}
+        workspaceFolderPathSet={workspaceFolderPathSet}
+      />
 
-        {!isLoadingEntries && !error && (
-          <ul className={styles.entryList}>
-            <UpEntryDropTarget
-              destinationPath={upDestinationPath}
-              isSelected={isUpSelected}
-              isMovingEntry={isEntryOperationInProgress}
-              activeDragPaths={activeDragPaths}
-              onClick={onUpSelect}
-              onDoubleClick={onUpOpen}
-            />
-            <li
-              ref={entryWindowAnchorRef}
-              className={styles.windowingAnchor}
-              aria-hidden
-            />
-            {isEntryWindowingEnabled && topSpacerHeight > 0 && (
-              <li
-                className={styles.windowingSpacer}
-                style={{ height: `${topSpacerHeight}px` }}
-                aria-hidden
-              />
-            )}
-            {renderedRows.map((row) => <Fragment key={row.entry.path}>
-              <DraggableFilesystemEntry
-                paneId={paneId}
-                entry={row.entry}
-                drag={{
-                  dropDestinationPath: row.entry.is_dir ? row.entry.path : row.parentPath,
-                  selectedEntryPaths,
-                  isSelectedForDrag: selectedEntryPathSet.has(row.entry.path),
-                  isMovingEntry: isEntryOperationInProgress,
-                  activeDragPathSet,
-                  activeDropDestinationPath,
-                }}
-                view={{
-                  isSelected: selectedPathSet.has(row.entry.path),
-                  isWorkspaceFolder: workspaceFolderPathSet.has(row.entry.path),
-                  thumbnailSrc: thumbnailSrcByPath[row.entry.path] ?? "",
-                  nestingDepth: row.depth,
-                  isExpanded: row.isExpanded,
-                }}
-                actions={{
-                  onToggleExpand: row.entry.is_dir
-                    ? () => onToggleDirectoryExpanded?.(row.entry.path)
-                    : undefined,
-                  onEntryClick,
-                  onEntryDoubleClick,
-                  onEntryMiddleClick,
-                }}
-              />
-              {row.isLoadingChildren && (
-                <EntryItem
-                  label="Loading..."
-                  meta=""
-                  nestingDepth={row.depth + 1}
-                />
-              )}
-            </Fragment>)}
-            {isEntryWindowingEnabled && bottomSpacerHeight > 0 && (
-              <li
-                className={styles.windowingSpacer}
-                style={{ height: `${bottomSpacerHeight}px` }}
-                aria-hidden
-              />
-            )}
-          </ul>
-        )}
-        <DragOverlay dropAnimation={null}>
-          {activeDragEntry && (
-            <div className={styles.dragOverlay}>
-              <span className={styles.dragOverlayName}>
-                {activeDragEntries.length > 1
-                  ? `${activeDragEntries.length} items`
-                  : activeDragEntry.name}
-              </span>
-              <span className={styles.dragOverlayMeta}>
-                {activeDragEntries.length > 1
-                  ? "Move selection"
-                  : (activeDragEntry.is_dir ? "Folder" : "File")}
-              </span>
-            </div>
-          )}
-        </DragOverlay>
-      </>
-    )}
+      {!isLoadingEntries && !error && <ul className={styles.entryList}>
+        <UpEntryDropTarget
+          destinationPath={upDestinationPath}
+          isSelected={isUpSelected}
+          isMovingEntry={isEntryOperationInProgress}
+          activeDragPaths={activeDragPaths}
+          onClick={onUpSelect}
+          onDoubleClick={onUpOpen}
+        />
+        <li
+          ref={entryWindowAnchorRef}
+          className={styles.windowingAnchor}
+          aria-hidden
+        />
+        {isEntryWindowingEnabled && topSpacerHeight > 0 && <li
+          className={styles.windowingSpacer}
+          style={{ height: `${topSpacerHeight}px` }}
+          aria-hidden
+        />}
+        {renderedRows.map(row => <Fragment key={row.entry.path}>
+          <DraggableFilesystemEntry
+            paneId={paneId}
+            entry={row.entry}
+            drag={{
+              dropDestinationPath: row.entry.is_dir ? row.entry.path : row.parentPath,
+              selectedEntryPaths,
+              isSelectedForDrag: selectedEntryPathSet.has(row.entry.path),
+              isMovingEntry: isEntryOperationInProgress,
+              activeDragPathSet,
+              activeDropDestinationPath,
+            }}
+            view={{
+              isSelected: selectedPathSet.has(row.entry.path),
+              isWorkspaceFolder: workspaceFolderPathSet.has(row.entry.path),
+              thumbnailSrc: thumbnailSrcByPath[row.entry.path] ?? "",
+              nestingDepth: row.depth,
+              isExpanded: row.isExpanded,
+              isRenaming: row.entry.path === renamingPath,
+            }}
+            actions={{
+              onToggleExpand: row.entry.is_dir
+                ? () => onToggleDirectoryExpanded?.(row.entry.path)
+                : undefined,
+              onEntryClick,
+              onEntryDoubleClick,
+              onEntryMiddleClick,
+              onEntryContextMenu,
+              onEntryRenameSubmit,
+              onEntryRenameCancel,
+            }}
+          />
+          {row.isLoadingChildren && <EntryItem
+            label="Loading..."
+            meta=""
+            nestingDepth={row.depth + 1}
+          />}
+        </Fragment>)}
+        {isEntryWindowingEnabled && bottomSpacerHeight > 0 && <li
+          className={styles.windowingSpacer}
+          style={{ height: `${bottomSpacerHeight}px` }}
+          aria-hidden
+        />}
+      </ul>}
+      <DragOverlay dropAnimation={null}>
+        {activeDragEntry && <div className={styles.dragOverlay}>
+          <span className={styles.dragOverlayName}>
+            {activeDragEntries.length > 1
+              ? `${activeDragEntries.length} items`
+              : activeDragEntry.name}
+          </span>
+          <span className={styles.dragOverlayMeta}>
+            {activeDragEntries.length > 1
+              ? "Move selection"
+              : (activeDragEntry.is_dir ? "Folder" : "File")}
+          </span>
+        </div>}
+      </DragOverlay>
+    </>}
   </div>;
 }

@@ -4,6 +4,7 @@ import FilesystemPanel from "./FilesystemPanel/FilesystemPanel";
 import PreviewPanel from "./PreviewPanel/PreviewPanel";
 import PropertiesPanel from "./PropertiesPanel/PropertiesPanel";
 import ScriptsPanel from "./ScriptsPanel/ScriptsPanel";
+import SettingsPanel from "./SettingsPanel/SettingsPanel";
 import TerminalPanel from "./TerminalPanel/TerminalPanel";
 
 export const PANELS = [
@@ -13,6 +14,7 @@ export const PANELS = [
   { id: "Canvas", label: "Canvas", component: CanvasPanel },
   { id: "Properties", label: "Properties", component: PropertiesPanel },
   { id: "Preview", label: "Preview", component: PreviewPanel },
+  { id: "Settings", label: "Settings", component: SettingsPanel },
   { id: "External UI", label: "External UI", component: ExternalUiPanel },
 ];
 

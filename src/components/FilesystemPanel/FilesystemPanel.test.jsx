@@ -5,6 +5,7 @@ import { cursorPosition } from "@tauri-apps/api/window";
 import { useDroppable } from "@dnd-kit/core";
 import FilesystemPanel from "./FilesystemPanel";
 import PanelsDndLayer from "../PanelsDndLayer";
+import { APP_COMMAND_EVENT } from "../../commands/commandEvents";
 import { runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
 import { advanceTimersBy } from "../../test/utils/timers";
 
@@ -184,7 +185,7 @@ describe("FilesystemPanel", () => {
         return path.win32.dirname(payload?.path ?? "");
       }
 
-      if (command === "open_path" && payload?.path === "C:\\notes.txt")
+      if (command === "open_path")
         return null;
 
       if (command === "workspace_open_workspace_folder_from_tab")
@@ -214,6 +215,67 @@ describe("FilesystemPanel", () => {
           },
         ];
         return null;
+      }
+
+      if (command === "rename_path") {
+        const sourcePath = payload?.path ?? "";
+        const requestedName = String(payload?.newName ?? "").trim();
+        const allowAdjustment = payload?.allowAdjustment !== false;
+        const parentPath = path.win32.dirname(sourcePath);
+        const sourceEntries = directoryState[parentPath] ?? [];
+        const sourceEntry = sourceEntries.find((entry) => entry.path === sourcePath);
+
+        if (!sourceEntry)
+          throw new Error(`Missing source entry for ${sourcePath}`);
+
+        let resolvedName = requestedName;
+        const extensionIndex = requestedName.lastIndexOf(".");
+        const baseName = extensionIndex > 0 ? requestedName.slice(0, extensionIndex) : requestedName;
+        const extension = extensionIndex > 0 ? requestedName.slice(extensionIndex) : "";
+        let suffixCounter = 1;
+
+        const hasNameConflict = (candidateName) => sourceEntries.some((entry) => (
+          entry.path !== sourcePath && entry.name === candidateName
+        ));
+        while (hasNameConflict(resolvedName)) {
+          if (!allowAdjustment) {
+            throw new Error(`An item named '${requestedName}' already exists in this folder.`);
+          }
+          resolvedName = `${baseName}.${String(suffixCounter).padStart(3, "0")}${extension}`;
+          suffixCounter += 1;
+        }
+
+        const renamedPath = path.win32.join(parentPath, resolvedName);
+        const remapPath = (candidatePath) => {
+          if (candidatePath === sourcePath) return renamedPath;
+          if (sourceEntry.is_dir && candidatePath.startsWith(`${sourcePath}\\`))
+            return `${renamedPath}${candidatePath.slice(sourcePath.length)}`;
+          return candidatePath;
+        };
+        const nextDirectoryState = {};
+        Object.entries(directoryState).forEach(([directoryPath, directoryEntries]) => {
+          const remappedDirectoryPath = remapPath(directoryPath);
+          nextDirectoryState[remappedDirectoryPath] = directoryEntries.map((entry) => {
+            const remappedEntryPath = remapPath(entry.path);
+            if (remappedEntryPath === entry.path) return entry;
+            return {
+              ...entry,
+              name: entry.path === sourcePath ? resolvedName : entry.name,
+              path: remappedEntryPath,
+            };
+          });
+        });
+        Object.keys(directoryState).forEach((key) => {
+          delete directoryState[key];
+        });
+        Object.assign(directoryState, nextDirectoryState);
+
+        return {
+          path: renamedPath,
+          name: resolvedName,
+          requestedName,
+          adjusted: resolvedName !== requestedName,
+        };
       }
 
       if (command === "import_paths") {
@@ -520,11 +582,15 @@ describe("FilesystemPanel", () => {
     fireEvent.click(fileButton);
     expect(onTabSelectedFilesChange).toHaveBeenCalledWith({
       selectedPaths: ["C:\\notes.txt"],
+      selectedEntryKinds: {
+        "C:\\notes.txt": "file",
+      },
     });
 
     fireEvent.click(fileButton, { ctrlKey: true });
     expect(onTabSelectedFilesChange).toHaveBeenLastCalledWith({
       selectedPaths: [],
+      selectedEntryKinds: {},
     });
   });
 
@@ -713,6 +779,25 @@ describe("FilesystemPanel", () => {
       });
     });
     expect(screen.getByRole("button", { name: /Temp/i })).toBeInTheDocument();
+  });
+
+  it("opens non-workspace folders in a new tab on ctrl+double click", async () => {
+    renderFilesystemPanel({ tabId: "tab-1" });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const tempFolderButton = await screen.findByRole("button", { name: /Temp/i });
+    fireEvent.doubleClick(tempFolderButton, { ctrlKey: true });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("workspace_open_folder_from_tab", {
+        payload: {
+          tabId: "tab-1",
+          path: "C:\\Temp",
+        },
+      });
+    });
   });
 
   it("opens a folder in a new tab when it is inside a workspace and current tab is outside", async () => {
@@ -1753,6 +1838,586 @@ describe("FilesystemPanel", () => {
     }
   });
 
+  it("starts inline rename on F2 and commits on Enter", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "F2" });
+
+    const renameInput = await screen.findByRole("textbox");
+    expect(renameInput).toHaveValue("notes.txt");
+    fireEvent.change(renameInput, { target: { value: "renamed.txt" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("rename_path", {
+        path: "C:\\notes.txt",
+        newName: "renamed.txt",
+      });
+    });
+    expect(await screen.findByRole("button", { name: /renamed\.txt/i })).toBeInTheDocument();
+  });
+
+  it("navigates entries with ArrowUp/ArrowDown and supports Shift range selection", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const tempButton = await screen.findByRole("button", { name: /Temp/i });
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+
+    fireEvent.click(usersButton);
+    usersButton.focus();
+    fireEvent.keyDown(usersButton, { key: "ArrowDown" });
+
+    await waitFor(() => {
+      expect(tempButton).toHaveAttribute("aria-selected", "true");
+      expect(usersButton).toHaveAttribute("aria-selected", "false");
+    });
+
+    tempButton.focus();
+    fireEvent.keyDown(tempButton, { key: "ArrowDown", shiftKey: true });
+
+    await waitFor(() => {
+      expect(tempButton).toHaveAttribute("aria-selected", "true");
+      expect(notesButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "ArrowUp" });
+
+    await waitFor(() => {
+      expect(tempButton).toHaveAttribute("aria-selected", "true");
+      expect(notesButton).toHaveAttribute("aria-selected", "false");
+    });
+  });
+
+  it("selects up entry and last entry with arrows when nothing is selected", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const panel = screen.getByLabelText("Filesystem panel");
+    const upButton = await screen.findByRole("button", { name: /\.\./i });
+    const configButton = await screen.findByRole("button", { name: /\.grayspace/i });
+
+    fireEvent.keyDown(panel, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(upButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+    fireEvent.click(scrollContainer);
+    await waitFor(() => {
+      expect(upButton).toHaveAttribute("aria-selected", "false");
+    });
+
+    fireEvent.keyDown(panel, { key: "ArrowUp" });
+    await waitFor(() => {
+      expect(configButton).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
+  it("loops keyboard navigation from first to last and last to first", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const panel = screen.getByLabelText("Filesystem panel");
+    const upButton = await screen.findByRole("button", { name: /\.\./i });
+    const configButton = await screen.findByRole("button", { name: /\.grayspace/i });
+
+    fireEvent.keyDown(panel, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(upButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.keyDown(panel, { key: "ArrowUp" });
+    await waitFor(() => {
+      expect(configButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.keyDown(panel, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(upButton).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
+  it("supports arrow selection while browsing drives", async () => {
+    invoke.mockImplementation(async (command) => {
+      if (command === "list_drives") {
+        return [
+          { name: "C:", path: "C:\\" },
+          { name: "D:", path: "D:\\" },
+        ];
+      }
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+      if (command === "thumbnail_resolve_batch") return { results: [] };
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    renderFilesystemPanel();
+
+    const panel = screen.getByLabelText("Filesystem panel");
+    const cDriveButton = await screen.findByRole("button", { name: /C:\\/i });
+    const dDriveButton = await screen.findByRole("button", { name: /D:\\/i });
+
+    fireEvent.keyDown(panel, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(cDriveButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.keyDown(panel, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(dDriveButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.keyDown(panel, { key: "ArrowUp" });
+    await waitFor(() => {
+      expect(cDriveButton).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
+  it("expands and collapses the selected folder with ArrowRight and ArrowLeft", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.click(usersButton);
+    usersButton.focus();
+    fireEvent.keyDown(usersButton, { key: "ArrowRight" });
+
+    expect(await screen.findByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+
+    fireEvent.keyDown(usersButton, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("opens the selected file with Enter", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("open_path", { path: "C:\\notes.txt" });
+    });
+  });
+
+  it("opens the selected folder in place with Enter", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.click(usersButton);
+    usersButton.focus();
+    fireEvent.keyDown(usersButton, { key: "Enter" });
+
+    expect(await screen.findByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+  });
+
+  it("opens all selected files with Enter", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    const draftButton = await screen.findByRole("button", { name: /draft\.md/i });
+
+    fireEvent.click(notesButton);
+    fireEvent.click(draftButton, { ctrlKey: true });
+    fireEvent.keyDown(draftButton, { key: "Enter" });
+
+    await waitFor(() => {
+      const openPathCalls = invoke.mock.calls.filter(([command]) => command === "open_path");
+      const openedPaths = openPathCalls.map(([, payload]) => payload?.path);
+      expect(openedPaths).toContain("C:\\notes.txt");
+      expect(openedPaths).toContain("C:\\draft.md");
+    });
+  });
+
+  it("renames a selected folder on F2", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.click(usersButton);
+    usersButton.focus();
+    fireEvent.keyDown(usersButton, { key: "F2" });
+
+    const renameInput = await screen.findByRole("textbox");
+    expect(renameInput).toHaveValue("Users");
+    fireEvent.change(renameInput, { target: { value: "People" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("rename_path", {
+        path: "C:\\Users",
+        newName: "People",
+      });
+    });
+    expect(await screen.findByRole("button", { name: /People/i })).toBeInTheDocument();
+  });
+
+  it("keeps renamed folders expanded and refreshes them via watcher", async () => {
+    const directoryState = {
+      "C:\\": [
+        { name: "Users", path: "C:\\Users", is_dir: true },
+      ],
+      "C:\\Users": [
+        { name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false },
+      ],
+    };
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
+      if (command === "list_directory_page") {
+        const entries = (directoryState[payload?.path] ?? []).map(entry => ({ ...entry }));
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? entries.length;
+        const pageEntries = entries.slice(offset, offset + limit);
+        return {
+          entries: pageEntries,
+          hasMore: offset + pageEntries.length < entries.length,
+          totalCount: entries.length,
+        };
+      }
+      if (command === "list_directory") return (directoryState[payload?.path] ?? []).map(entry => ({ ...entry }));
+      if (command === "filesystem_resolve_workspace_folders") return {};
+      if (command === "parent_path") {
+        if (payload?.path === "C:\\") return null;
+        return path.win32.dirname(payload?.path ?? "");
+      }
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+      if (command === "thumbnail_resolve_batch") return { results: [] };
+      if (command === "rename_path") {
+        const sourcePath = payload?.path ?? "";
+        const nextName = payload?.newName ?? "";
+        const parentPath = path.win32.dirname(sourcePath);
+        const sourceEntries = directoryState[parentPath] ?? [];
+        const sourceEntry = sourceEntries.find(entry => entry.path === sourcePath);
+        if (!sourceEntry) throw new Error("Missing source entry");
+
+        const renamedPath = path.win32.join(parentPath, nextName);
+        const remapPath = (candidatePath) => {
+          if (candidatePath === sourcePath) return renamedPath;
+          if (sourceEntry.is_dir && candidatePath.startsWith(`${sourcePath}\\`))
+            return `${renamedPath}${candidatePath.slice(sourcePath.length)}`;
+          return candidatePath;
+        };
+        const nextDirectoryState = {};
+        Object.entries(directoryState).forEach(([directoryPath, directoryEntries]) => {
+          const remappedDirectoryPath = remapPath(directoryPath);
+          nextDirectoryState[remappedDirectoryPath] = directoryEntries.map((entry) => {
+            const remappedEntryPath = remapPath(entry.path);
+            if (remappedEntryPath === entry.path) return entry;
+            return {
+              ...entry,
+              name: entry.path === sourcePath ? nextName : entry.name,
+              path: remappedEntryPath,
+            };
+          });
+        });
+        Object.keys(directoryState).forEach((key) => {
+          delete directoryState[key];
+        });
+        Object.assign(directoryState, nextDirectoryState);
+
+        return {
+          path: renamedPath,
+          name: nextName,
+          requestedName: nextName,
+          adjusted: false,
+        };
+      }
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(usersButton);
+    usersButton.focus();
+    fireEvent.keyDown(usersButton, { key: "F2" });
+    const renameInput = await screen.findByRole("textbox");
+    fireEvent.change(renameInput, { target: { value: "People" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /People/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+
+    const peopleWatchStartCall = [...invoke.mock.calls]
+      .reverse()
+      .find(([command, args]) => (
+        command === "filesystem_watch_start" && args?.path === "C:\\People"
+      ));
+    const peopleWatchId = peopleWatchStartCall?.[1]?.watchId;
+    expect(typeof peopleWatchId).toBe("string");
+
+    directoryState["C:\\People"].push({
+      name: "later.txt",
+      path: "C:\\People\\later.txt",
+      is_dir: false,
+    });
+
+    vi.useFakeTimers();
+    try {
+      await filesystemWatchCallback?.({
+        payload: {
+          watchId: peopleWatchId,
+          changedPath: "C:\\People\\later.txt",
+        },
+      });
+      await advanceTimersBy(160);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /later\.txt/i })).toBeInTheDocument();
+    });
+  });
+
+  it("starts rename from app command events", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.renameSelected",
+        context: {
+          targetPaneId: "pane-event",
+        },
+      },
+    }));
+
+    expect(await screen.findByRole("textbox")).toHaveValue("notes.txt");
+  });
+
+  it("opens a selected folder in a new tab from app command events", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-open-folder",
+      tabId: "tab-1",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const tempFolderButton = await screen.findByRole("button", { name: /Temp/i });
+    fireEvent.click(tempFolderButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.openSelectedFolderInNewTab",
+        context: {
+          targetPaneId: "pane-event-open-folder",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("workspace_open_folder_from_tab", {
+        payload: {
+          tabId: "tab-1",
+          path: "C:\\Temp",
+        },
+      });
+    });
+  });
+
+  it("selects the right-clicked entry when it is outside current selection", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+
+    fireEvent.click(usersButton);
+    fireEvent.contextMenu(notesButton);
+
+    await waitFor(() => {
+      expect(notesButton).toHaveAttribute("aria-selected", "true");
+      expect(usersButton).toHaveAttribute("aria-selected", "false");
+    });
+  });
+
+  it("clears selection when right-clicking empty panel space", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+    fireEvent.click(notesButton);
+
+    await waitFor(() => {
+      expect(notesButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.contextMenu(scrollContainer);
+
+    await waitFor(() => {
+      expect(notesButton).toHaveAttribute("aria-selected", "false");
+    });
+  });
+
+  it("clears selection on left-click empty space but keeps it on middle-click", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+    fireEvent.click(notesButton);
+    fireEvent.click(scrollContainer, { button: 1 });
+
+    await waitFor(() => {
+      expect(notesButton).toHaveAttribute("aria-selected", "true");
+    });
+
+    fireEvent.click(scrollContainer);
+
+    await waitFor(() => {
+      expect(notesButton).toHaveAttribute("aria-selected", "false");
+    });
+  });
+
+  it("cancels inline rename on Escape", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "F2" });
+
+    const renameInput = await screen.findByRole("textbox");
+    fireEvent.change(renameInput, { target: { value: "renamed.txt" } });
+    fireEvent.keyDown(renameInput, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    });
+    expect(invoke).not.toHaveBeenCalledWith("rename_path", expect.objectContaining({
+      path: "C:\\notes.txt",
+      newName: "renamed.txt",
+    }));
+    expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+  });
+
+  it("treats empty blur rename as a no-op", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "F2" });
+
+    const renameInput = await screen.findByRole("textbox");
+    fireEvent.change(renameInput, { target: { value: "   " } });
+    fireEvent.blur(renameInput);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    });
+    expect(invoke).not.toHaveBeenCalledWith("rename_path", expect.objectContaining({
+      path: "C:\\notes.txt",
+    }));
+    expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+  });
+
+  it("undos and redos a rename with ctrl+z and ctrl+y", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "F2" });
+
+    const renameInput = await screen.findByRole("textbox");
+    fireEvent.change(renameInput, { target: { value: "renamed.txt" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    const renamedButton = await screen.findByRole("button", { name: /renamed\.txt/i });
+    fireEvent.click(renamedButton);
+    renamedButton.focus();
+    fireEvent.keyDown(renamedButton, { key: "z", ctrlKey: true });
+
+    const restoredButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    expect(restoredButton).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("rename_path", {
+      path: "C:\\renamed.txt",
+      newName: "notes.txt",
+      allowAdjustment: false,
+    });
+
+    fireEvent.click(restoredButton);
+    restoredButton.focus();
+    fireEvent.keyDown(restoredButton, { key: "y", ctrlKey: true });
+    expect(await screen.findByRole("button", { name: /renamed\.txt/i })).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("rename_path", {
+      path: "C:\\notes.txt",
+      newName: "renamed.txt",
+      allowAdjustment: false,
+    });
+  });
+
   it("opens confirmation and deletes selected entries on Delete key", async () => {
     renderFilesystemPanel();
 
@@ -1778,6 +2443,36 @@ describe("FilesystemPanel", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("deletes selected entries from app command events", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-delete",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.deleteSelected",
+        context: {
+          targetPaneId: "pane-event-delete",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(openConfirmMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("delete_paths", {
+        paths: ["C:\\notes.txt"],
+      });
     });
   });
 
