@@ -249,11 +249,12 @@ function App() {
     commandId,
     {
       context,
+      currentWindow,
       activeTab,
       workspaceActions,
       openCommandPalette,
     },
-  ), [activeTab, openCommandPalette, workspaceActions]);
+  ), [activeTab, currentWindow, openCommandPalette, workspaceActions]);
   const handleTabSelectedFilesChange = useCallback((tabId, selectedFiles) => {
     workspaceActions.handleSetTabSelectedFiles(tabId, selectedFiles);
     if (!tabId) return;

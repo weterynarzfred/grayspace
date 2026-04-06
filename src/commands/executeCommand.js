@@ -23,6 +23,7 @@ export default function executeCommand(
   commandId,
   {
     context = {},
+    currentWindow = null,
     activeTab = null,
     workspaceActions = undefined,
     openCommandPalette = undefined,
@@ -42,6 +43,20 @@ export default function executeCommand(
 
   if (commandId === COMMAND_IDS.WINDOW_NEW) {
     workspaceActions?.handleCreateWindow?.();
+    return true;
+  }
+
+  if (commandId === COMMAND_IDS.TAB_SWITCH_NEXT) {
+    const tabOrder = Array.isArray(currentWindow?.tabOrder) ? currentWindow.tabOrder : [];
+    if (tabOrder.length === 0) return false;
+
+    const activeTabId = activeTab?.tabId || currentWindow?.activeTabId || "";
+    const activeTabIndex = tabOrder.indexOf(activeTabId);
+    const nextTabIndex = activeTabIndex < 0 ? 0 : (activeTabIndex + 1) % tabOrder.length;
+    const nextTabId = tabOrder[nextTabIndex];
+    if (!nextTabId) return false;
+
+    workspaceActions?.handleSetActiveTab?.(nextTabId);
     return true;
   }
 

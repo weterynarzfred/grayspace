@@ -378,11 +378,16 @@ export const COMMANDS = [
     id: COMMAND_IDS.TAB_SWITCH_NEXT,
     title: "Switch to Next Tab",
     shortcut: "Ctrl+Tab",
-    triggers: [],
+    triggers: ["shortcut", "palette"],
     scope: "tab",
-    state: "planned",
     whenText: "hasActiveTab()",
     when: hasActiveTab,
+    shortcutMatcher: event =>
+      event.ctrlKey
+      && !event.shiftKey
+      && !event.altKey
+      && !event.metaKey
+      && event.key === "Tab",
   },
   {
     id: COMMAND_IDS.FILESYSTEM_COPY,

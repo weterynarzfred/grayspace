@@ -43,6 +43,7 @@ npm run tauri_dev
 * `Ctrl+Shift+P` open command palette
 * `Ctrl+T` new tab
 * `Ctrl+N` new window
+* `Ctrl+Tab` switch to next tab
 * `Ctrl+F4` close tab
 * `Alt+V` split active pane vertically
 * `Alt+H` split active pane horizontally
@@ -66,7 +67,6 @@ npm run tauri_dev
 
 ### planned (inactive)
 
-* `Ctrl+Tab` switch to next tab
 * `Ctrl+C` copy selected entries
 * `Ctrl+X` cut selected entries
 * `Ctrl+V` paste entries
@@ -113,7 +113,7 @@ npm run tauri_dev
 ### QOL
 
 * [ ] new folder / new file shortcuts
-* [ ] tab switching shortcuts
+* [x] tab switching shortcuts
 * [x] panel switching shortcuts
 * [ ] folder history search (ctrl + r)
 

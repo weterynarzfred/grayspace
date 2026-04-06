@@ -120,7 +120,7 @@ describe("commandRegistry", () => {
     })).toBe(false);
   });
 
-  it("keeps planned commands out of trigger results", () => {
+  it("returns active tab switch command for shortcut trigger", () => {
     const shortcutCommands = getCommandsForTrigger("shortcut", {
       source: "shortcut",
       activeTabId: "tab-1",
@@ -130,14 +130,23 @@ describe("commandRegistry", () => {
       selectedPaths: ["C:\\notes.txt"],
     });
 
-    expect(getCommandIds(shortcutCommands)).not.toContain("tab.switch.next");
+    expect(getCommandIds(shortcutCommands)).toContain("tab.switch.next");
     expect(getCommandIds(shortcutCommands)).not.toContain("filesystem.copy");
   });
 
   it("keeps planned commands listed in the registry", () => {
     const commandIds = COMMANDS.map(command => command.id);
-    expect(commandIds).toContain("tab.switch.next");
     expect(commandIds).toContain("filesystem.copy");
     expect(commandIds).toContain("workspace.runScript");
+  });
+
+  it("maps next tab shortcut to ctrl+tab", () => {
+    expect(isCommandShortcutMatch("tab.switch.next", {
+      key: "Tab",
+      ctrlKey: true,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
   });
 });

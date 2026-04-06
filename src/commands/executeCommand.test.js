@@ -57,6 +57,37 @@ describe("executeCommand", () => {
     expect(handleCreateWindow).toHaveBeenCalledTimes(1);
   });
 
+  it("switches to the next tab in the current window order", () => {
+    const handleSetActiveTab = vi.fn();
+
+    const didExecute = executeCommand(COMMAND_IDS.TAB_SWITCH_NEXT, {
+      currentWindow: {
+        activeTabId: "tab-2",
+        tabOrder: ["tab-1", "tab-2", "tab-3"],
+      },
+      activeTab: { tabId: "tab-2" },
+      workspaceActions: { handleSetActiveTab },
+    });
+
+    expect(didExecute).toBe(true);
+    expect(handleSetActiveTab).toHaveBeenCalledWith("tab-3");
+  });
+
+  it("wraps when switching to the next tab from the last tab", () => {
+    const handleSetActiveTab = vi.fn();
+
+    executeCommand(COMMAND_IDS.TAB_SWITCH_NEXT, {
+      currentWindow: {
+        activeTabId: "tab-3",
+        tabOrder: ["tab-1", "tab-2", "tab-3"],
+      },
+      activeTab: { tabId: "tab-3" },
+      workspaceActions: { handleSetActiveTab },
+    });
+
+    expect(handleSetActiveTab).toHaveBeenCalledWith("tab-1");
+  });
+
   it("switches active pane panel type", () => {
     const handleChangePanelType = vi.fn();
 

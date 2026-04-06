@@ -1,6 +1,0 @@
-projectKey=grayspace
-serverUrl=http://localhost:9000
-serverVersion=26.3.0.120487
-dashboardUrl=http://localhost:9000/dashboard?id=grayspace
-ceTaskId=127ec2f9-a11d-4385-a342-1318e9f6f8ce
-ceTaskUrl=http://localhost:9000/api/ce/task?id=127ec2f9-a11d-4385-a342-1318e9f6f8ce
