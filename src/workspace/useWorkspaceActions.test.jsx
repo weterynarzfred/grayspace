@@ -3,6 +3,7 @@ import useWorkspaceActions from "./useWorkspaceActions";
 import {
   workspaceCloseTab,
   workspaceCloseTabPane,
+  workspaceNewWindow,
   workspaceNewTab,
   workspaceSetActiveTab,
   workspaceSetTabActivePane,
@@ -18,6 +19,7 @@ import {
 vi.mock("./workspaceApi", () => ({
   workspaceCloseTab: vi.fn(),
   workspaceCloseTabPane: vi.fn(),
+  workspaceNewWindow: vi.fn(),
   workspaceNewTab: vi.fn(),
   workspaceSetActiveTab: vi.fn(),
   workspaceSetTabActivePane: vi.fn(),
@@ -33,6 +35,7 @@ vi.mock("./workspaceApi", () => ({
 const resolvedCommands = [
   workspaceCloseTab,
   workspaceCloseTabPane,
+  workspaceNewWindow,
   workspaceNewTab,
   workspaceSetActiveTab,
   workspaceSetTabActivePane,
@@ -165,5 +168,28 @@ describe("useWorkspaceActions handleSetTabCwdHint", () => {
 
     expect(workspaceSetTabTerminalCwd).toHaveBeenCalledTimes(1);
     expect(workspaceSetTabTerminalCwd).toHaveBeenCalledWith("tab-1", "C:\\workspace\\src");
+  });
+});
+
+describe("useWorkspaceActions basic commands", () => {
+  beforeEach(() => {
+    resolvedCommands.forEach((commandMock) => {
+      commandMock.mockReset();
+      commandMock.mockResolvedValue(null);
+    });
+  });
+
+  it("creates a new window", async () => {
+    const { result } = renderHook(() => useWorkspaceActions({
+      currentWindow: { windowId: "window-1" },
+      activeTab: createActiveTab(),
+    }));
+
+    await act(async () => {
+      result.current.handleCreateWindow();
+      await Promise.resolve();
+    });
+
+    expect(workspaceNewWindow).toHaveBeenCalledTimes(1);
   });
 });

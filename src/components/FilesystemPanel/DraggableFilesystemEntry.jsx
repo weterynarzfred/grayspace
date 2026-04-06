@@ -109,7 +109,7 @@ function DraggableFilesystemEntry({
     dndAttributes={attributes}
     dndListeners={listeners}
     onClick={(event) => onEntryClick?.(entry.path, event)}
-    onDoubleClick={() => onEntryDoubleClick?.(entry)}
+    onDoubleClick={(event) => onEntryDoubleClick?.(entry, event)}
     onAuxClick={(event) => onEntryMiddleClick?.(entry, event)}
     onContextMenu={(event) => onEntryContextMenu?.(entry.path, event)}
     onRenameSubmit={(nextName) => onEntryRenameSubmit?.(entry.path, nextName)}

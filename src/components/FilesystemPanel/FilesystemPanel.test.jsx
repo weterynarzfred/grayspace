@@ -582,11 +582,15 @@ describe("FilesystemPanel", () => {
     fireEvent.click(fileButton);
     expect(onTabSelectedFilesChange).toHaveBeenCalledWith({
       selectedPaths: ["C:\\notes.txt"],
+      selectedEntryKinds: {
+        "C:\\notes.txt": "file",
+      },
     });
 
     fireEvent.click(fileButton, { ctrlKey: true });
     expect(onTabSelectedFilesChange).toHaveBeenLastCalledWith({
       selectedPaths: [],
+      selectedEntryKinds: {},
     });
   });
 
@@ -775,6 +779,25 @@ describe("FilesystemPanel", () => {
       });
     });
     expect(screen.getByRole("button", { name: /Temp/i })).toBeInTheDocument();
+  });
+
+  it("opens non-workspace folders in a new tab on ctrl+double click", async () => {
+    renderFilesystemPanel({ tabId: "tab-1" });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const tempFolderButton = await screen.findByRole("button", { name: /Temp/i });
+    fireEvent.doubleClick(tempFolderButton, { ctrlKey: true });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("workspace_open_folder_from_tab", {
+        payload: {
+          tabId: "tab-1",
+          path: "C:\\Temp",
+        },
+      });
+    });
   });
 
   it("opens a folder in a new tab when it is inside a workspace and current tab is outside", async () => {
@@ -2213,6 +2236,37 @@ describe("FilesystemPanel", () => {
     }));
 
     expect(await screen.findByRole("textbox")).toHaveValue("notes.txt");
+  });
+
+  it("opens a selected folder in a new tab from app command events", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-open-folder",
+      tabId: "tab-1",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const tempFolderButton = await screen.findByRole("button", { name: /Temp/i });
+    fireEvent.click(tempFolderButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.openSelectedFolderInNewTab",
+        context: {
+          targetPaneId: "pane-event-open-folder",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("workspace_open_folder_from_tab", {
+        payload: {
+          tabId: "tab-1",
+          path: "C:\\Temp",
+        },
+      });
+    });
   });
 
   it("selects the right-clicked entry when it is outside current selection", async () => {

@@ -1,4 +1,8 @@
-import { getCommandsForTrigger } from "./commandRegistry";
+import {
+  COMMANDS,
+  getCommandsForTrigger,
+  isCommandShortcutMatch,
+} from "./commandRegistry";
 
 function getCommandIds(commands) {
   return commands.map(command => command.id);
@@ -60,5 +64,80 @@ describe("commandRegistry", () => {
     expect(getCommandIds(fileTargetCommands)).not.toContain("pane.split.horizontal");
     expect(getCommandIds(panelTargetCommands)).toContain("pane.split.vertical");
     expect(getCommandIds(panelTargetCommands)).toContain("pane.split.horizontal");
+  });
+
+  it("shows open-folder-in-new-tab command for folder context targets only", () => {
+    const folderTargetCommands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "folder",
+      targetScope: "tree-entry",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      selectedPaths: ["C:\\Users"],
+    });
+    const fileTargetCommands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "file",
+      targetScope: "tree-entry",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      selectedPaths: ["C:\\notes.txt"],
+    });
+
+    expect(getCommandIds(folderTargetCommands)).toContain("filesystem.openSelectedFolderInNewTab");
+    expect(getCommandIds(fileTargetCommands)).not.toContain("filesystem.openSelectedFolderInNewTab");
+  });
+
+  it("keeps open-folder-in-new-tab available for single directory selection", () => {
+    const commands = getCommandsForTrigger("palette", {
+      source: "palette",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\Users"],
+      selectedEntryKinds: {
+        "C:\\Users": "folder",
+      },
+    });
+
+    expect(getCommandIds(commands)).toContain("filesystem.openSelectedFolderInNewTab");
+  });
+
+  it("maps properties pane switch shortcut to ctrl+shift+o", () => {
+    expect(isCommandShortcutMatch("pane.switch.properties", {
+      key: "o",
+      ctrlKey: true,
+      shiftKey: true,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+    expect(isCommandShortcutMatch("pane.switch.properties", {
+      key: "i",
+      ctrlKey: true,
+      shiftKey: true,
+      altKey: false,
+      metaKey: false,
+    })).toBe(false);
+  });
+
+  it("keeps planned commands out of trigger results", () => {
+    const shortcutCommands = getCommandsForTrigger("shortcut", {
+      source: "shortcut",
+      activeTabId: "tab-1",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\notes.txt"],
+    });
+
+    expect(getCommandIds(shortcutCommands)).not.toContain("tab.switch.next");
+    expect(getCommandIds(shortcutCommands)).not.toContain("filesystem.copy");
+  });
+
+  it("keeps planned commands listed in the registry", () => {
+    const commandIds = COMMANDS.map(command => command.id);
+    expect(commandIds).toContain("tab.switch.next");
+    expect(commandIds).toContain("filesystem.copy");
+    expect(commandIds).toContain("workspace.runScript");
   });
 });

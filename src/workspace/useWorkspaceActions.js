@@ -3,6 +3,7 @@ import { getErrorMessage } from "./appRuntime";
 import {
   workspaceCloseTab,
   workspaceCloseTabPane,
+  workspaceNewWindow,
   workspaceNewTab,
   workspaceSetActiveTab,
   workspaceSetTabActivePane,
@@ -84,6 +85,10 @@ export default function useWorkspaceActions({
     if (!currentWindow) return;
     workspaceNewTab(currentWindow.windowId).catch(handleWorkspaceCommandError);
   }, [currentWindow, handleWorkspaceCommandError]);
+
+  const handleCreateWindow = useCallback(() => {
+    workspaceNewWindow().catch(handleWorkspaceCommandError);
+  }, [handleWorkspaceCommandError]);
 
   const handleCloseTab = useCallback(tabId => {
     if (!currentWindow) return;
@@ -199,6 +204,7 @@ export default function useWorkspaceActions({
     handleWorkspaceCommandError,
     handleSetActiveTab,
     handleCreateTab,
+    handleCreateWindow,
     handleCloseTab,
     handleChangePanelType,
     handleSetTabCwdHint,

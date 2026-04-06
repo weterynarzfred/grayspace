@@ -16,8 +16,8 @@ Usable scaffolding, but missing core file-manager features.
 * custom context menu
 * external UI panel from workspace config
 * popover notifications and confirmation dialogs
-* command palette
-* settings panel command list placeholders
+* command palette + centralized command registry
+* settings panel command list (read-only)
 
 ## run locally (windows)
 
@@ -35,6 +35,49 @@ Install and run:
 npm install
 npm run tauri_dev
 ```
+
+## keyboard shortcuts
+
+### active
+
+* `Ctrl+Shift+P` open command palette
+* `Ctrl+T` new tab
+* `Ctrl+N` new window
+* `Ctrl+F4` close tab
+* `Alt+V` split active pane vertically
+* `Alt+H` split active pane horizontally
+* `Ctrl+Shift+E` switch active pane to filesystem
+* `Ctrl+Shift+\`` switch active pane to terminal
+* `Ctrl+Shift+V` switch active pane to preview
+* `Ctrl+Shift+O` switch active pane to properties
+* `Ctrl+Shift+U` switch active pane to external UI
+* filesystem panel:
+  * `Arrow Up/Down` move selection (loops)
+  * `Shift+Arrow Up/Down` range selection
+  * `Arrow Right/Left` expand/collapse selected folder
+  * `Enter` open selected item(s)
+  * `Ctrl+Enter` open selected folder in new tab
+  * `Alt+Arrow Up` go one folder up (with workspace-exit confirmation when needed)
+  * `Delete` delete selected item(s)
+  * `F2` rename selected file/folder
+  * `Ctrl+Z` undo filesystem action
+  * `Ctrl+Y` / `Ctrl+Shift+Z` redo filesystem action
+  * mouse: middle-click folder or `Ctrl+DoubleClick` folder opens it in a new tab
+
+### planned (inactive)
+
+* `Ctrl+Tab` switch to next tab
+* `Ctrl+C` copy selected entries
+* `Ctrl+X` cut selected entries
+* `Ctrl+V` paste entries
+* `Ctrl+Space` toggle active pane maximize
+* `F2` (multiple selection) bulk rename
+* `Ctrl+F` filter current folder
+* `Ctrl+Shift+F` search current folder and subfolders
+* `Ctrl+R` open recently opened folders
+* `Ctrl+Shift+T` create text file and rename immediately
+* `Ctrl+Shift+N` create folder and rename immediately
+* workspace script commands from `.grayspace/folder.json` in palette/context
 
 ## TODO
 
@@ -71,7 +114,7 @@ npm run tauri_dev
 
 * [ ] new folder / new file shortcuts
 * [ ] tab switching shortcuts
-* [ ] panel switching shortcuts
+* [x] panel switching shortcuts
 * [ ] folder history search (ctrl + r)
 
 ### filesystem (ctrl + shift + e)
@@ -94,7 +137,7 @@ npm run tauri_dev
   * [ ] bulk rename
 * [ ] cut / copy / paste
   * [ ] system integration
-* [ ] undo (ctrl+z)
+* [x] undo (ctrl+z)
 * [x] keyboard navigation
 * [ ] path input / navigation
 * [ ] back/forward history
@@ -124,7 +167,7 @@ npm run tauri_dev
 * [x] run via UI buttons
 * [ ] move toward **command palette-based execution** and remove the panel (scaffold ready)
 
-### preview
+### preview (ctrl + shift + v)
 
 * [x] media + text preview/edit
 * [x] sync with selection
@@ -143,7 +186,7 @@ npm run tauri_dev
   * [ ] maybe sqlite or other DB viewer/editor if there's anything nice
   * [ ] maybe try integrating providers through the Windows shell?
 
-### properties (ctrl + shift + v)
+### properties (ctrl + shift + o)
 
 * [x] basic info
 * [ ] metadata support

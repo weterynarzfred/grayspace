@@ -11,6 +11,14 @@ function resolveTargetTabId(context = {}, activeTab = null) {
   return activeTab?.tabId || "";
 }
 
+const PANEL_TYPE_BY_COMMAND_ID = {
+  [COMMAND_IDS.PANE_SWITCH_TO_FILESYSTEM]: "Filesystem",
+  [COMMAND_IDS.PANE_SWITCH_TO_TERMINAL]: "Terminal",
+  [COMMAND_IDS.PANE_SWITCH_TO_PREVIEW]: "Preview",
+  [COMMAND_IDS.PANE_SWITCH_TO_PROPERTIES]: "Properties",
+  [COMMAND_IDS.PANE_SWITCH_TO_EXTERNAL_UI]: "External UI",
+};
+
 export default function executeCommand(
   commandId,
   {
@@ -27,6 +35,16 @@ export default function executeCommand(
     return true;
   }
 
+  if (commandId === COMMAND_IDS.TAB_NEW) {
+    workspaceActions?.handleCreateTab?.();
+    return true;
+  }
+
+  if (commandId === COMMAND_IDS.WINDOW_NEW) {
+    workspaceActions?.handleCreateWindow?.();
+    return true;
+  }
+
   if (commandId === COMMAND_IDS.PANE_SPLIT_VERTICAL || commandId === COMMAND_IDS.PANE_SPLIT_HORIZONTAL) {
     const tabId = activeTab?.tabId || "";
     const paneId = resolveTargetPaneId(context, activeTab);
@@ -40,6 +58,16 @@ export default function executeCommand(
     return true;
   }
 
+  const targetPanelType = PANEL_TYPE_BY_COMMAND_ID[commandId];
+  if (targetPanelType) {
+    const tabId = activeTab?.tabId || "";
+    const paneId = resolveTargetPaneId(context, activeTab);
+    if (!tabId || !paneId) return false;
+
+    workspaceActions?.handleChangePanelType?.(tabId, paneId, targetPanelType);
+    return true;
+  }
+
   if (commandId === COMMAND_IDS.TAB_CLOSE) {
     const tabId = resolveTargetTabId(context, activeTab);
     if (!tabId) return false;
@@ -48,7 +76,11 @@ export default function executeCommand(
   }
 
   if (
-    commandId === COMMAND_IDS.FILESYSTEM_RENAME_SELECTED
+    commandId === COMMAND_IDS.FILESYSTEM_UNDO
+    || commandId === COMMAND_IDS.FILESYSTEM_REDO
+    || commandId === COMMAND_IDS.FILESYSTEM_OPEN_SELECTED_FOLDER_IN_NEW_TAB
+    || commandId === COMMAND_IDS.FILESYSTEM_GO_UP
+    || commandId === COMMAND_IDS.FILESYSTEM_RENAME_SELECTED
     || commandId === COMMAND_IDS.FILESYSTEM_DELETE_SELECTED
   ) {
     dispatchAppCommand(commandId, context);

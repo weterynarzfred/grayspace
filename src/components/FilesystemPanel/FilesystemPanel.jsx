@@ -169,6 +169,7 @@ function FilesystemPanel({
     handleEntryRenameSubmit,
     handleDeleteSelectedEntries,
     handlePanelKeyDown,
+    handleOpenSelectedEntryInNewTab,
     isExternalDragOver,
   } = useFilesystemPanelInteractions({
     tabId,
@@ -337,6 +338,22 @@ function FilesystemPanel({
       }
       if (commandId === COMMAND_IDS.FILESYSTEM_DELETE_SELECTED) {
         void handleDeleteSelectedEntries();
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_UNDO) {
+        void undoEntries();
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_REDO) {
+        void redoEntries();
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_OPEN_SELECTED_FOLDER_IN_NEW_TAB) {
+        handleOpenSelectedEntryInNewTab();
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_GO_UP) {
+        void handleGoUpDoubleClick();
       }
     };
 
@@ -347,7 +364,11 @@ function FilesystemPanel({
   }, [
     handleBeginRenameSelectedEntry,
     handleDeleteSelectedEntries,
+    handleGoUpDoubleClick,
+    handleOpenSelectedEntryInNewTab,
     paneId,
+    redoEntries,
+    undoEntries,
   ]);
   const { handlePanelScroll } = useFilesystemPanelLoadMore({
     panelRef: panelScrollRef,

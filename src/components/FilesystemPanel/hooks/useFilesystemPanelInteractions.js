@@ -150,10 +150,18 @@ export default function useFilesystemPanelInteractions({
 
   const emitTabSelectedFiles = useCallback((nextSelectedPaths) => {
     if (!tabId) return;
-    onTabSelectedFilesChange?.({
-      selectedPaths: uniqueNonEmptyPaths(nextSelectedPaths),
+    const normalizedPaths = uniqueNonEmptyPaths(nextSelectedPaths);
+    const selectedEntryKinds = {};
+    normalizedPaths.forEach((path) => {
+      const entry = treeData.entryByPath[path];
+      if (!entry) return;
+      selectedEntryKinds[path] = entry.is_dir ? "folder" : "file";
     });
-  }, [onTabSelectedFilesChange, tabId]);
+    onTabSelectedFilesChange?.({
+      selectedPaths: normalizedPaths,
+      selectedEntryKinds,
+    });
+  }, [onTabSelectedFilesChange, tabId, treeData.entryByPath]);
   const clearSelectedEntries = useCallback(() => {
     setSelectedPath("");
     emitTabSelectedFiles([]);
@@ -176,8 +184,10 @@ export default function useFilesystemPanelInteractions({
     emitTabSelectedFiles(nextSelectedEntryPaths);
   }, [emitTabSelectedFiles, selectEntry, treeData.entryPaths]);
 
-  const handleEntryDoubleClick = useCallback((entry) => {
+  const handleEntryDoubleClick = useCallback((entry, event) => {
+    const forceOpenInNewTab = Boolean(entry?.is_dir && event?.ctrlKey);
     openEntry(entry, {
+      forceOpenInNewTab,
       isWorkspaceFolder: workspaceFolderPathSet.has(entry.path),
     });
   }, [openEntry, workspaceFolderPathSet]);
@@ -425,6 +435,28 @@ export default function useFilesystemPanelInteractions({
     workspaceFolderPathSet,
   ]);
 
+  const handleOpenSelectedEntryInNewTab = useCallback(() => {
+    if (!isBrowsing || isEntryOperationInProgress) return false;
+    if (selectedEntryPaths.length !== 1) return false;
+
+    const selectedPath = selectedEntryPaths[0];
+    const selectedEntry = treeData.entryByPath[selectedPath];
+    if (!selectedEntry?.is_dir) return false;
+
+    void openEntry(selectedEntry, {
+      forceOpenInNewTab: true,
+      isWorkspaceFolder: workspaceFolderPathSet.has(selectedEntry.path),
+    });
+    return true;
+  }, [
+    isBrowsing,
+    isEntryOperationInProgress,
+    openEntry,
+    selectedEntryPaths,
+    treeData.entryByPath,
+    workspaceFolderPathSet,
+  ]);
+
   const handlePanelKeyDown = useCallback((event) => {
     if (event.defaultPrevented || event.repeat) return;
     if (isEntryOperationInProgress) return;
@@ -504,6 +536,7 @@ export default function useFilesystemPanelInteractions({
     handleEntryRenameSubmit,
     handleDeleteSelectedEntries,
     handlePanelKeyDown,
+    handleOpenSelectedEntryInNewTab,
     isExternalDragOver,
   };
 }

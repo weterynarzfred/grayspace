@@ -20,7 +20,6 @@ import useTabDragDrop from "./workspace/useTabDragDrop";
 import useWorkspaceLifecycle from "./workspace/useWorkspaceLifecycle";
 import useWorkspaceActions from "./workspace/useWorkspaceActions";
 import useWorkspaceTabTitles from "./workspace/useWorkspaceTabTitles";
-import usePaneSplitShortcuts from "./workspace/usePaneSplitShortcuts";
 import { useNotificationCenter } from "./notifications/notificationCenter";
 import resolveContextMenuTarget from "./context/resolveContextMenuTarget";
 import CommandPalettePopover from "./components/popovers/CommandPalettePopover";
@@ -33,12 +32,33 @@ import {
 } from "./commands/commandRegistry";
 import executeCommand from "./commands/executeCommand";
 import { getSelectedPathsFromState } from "./utils/pathSelection";
+import isEditableKeyboardTarget from "./utils/isEditableKeyboardTarget";
 
 import styles from "./App.module.scss";
 
 function getActivePaneState(activeTab) {
   const activePaneId = activeTab?.activePaneId ?? "";
   return activeTab?.paneStates?.[activePaneId] ?? null;
+}
+
+function arePathListsEqual(leftPaths = [], rightPaths = []) {
+  if (leftPaths.length !== rightPaths.length) return false;
+  return leftPaths.every((path, index) => path === rightPaths[index]);
+}
+
+function areEntryKindMapsEqual(leftKinds = {}, rightKinds = {}) {
+  const leftEntries = Object.entries(leftKinds);
+  const rightEntries = Object.entries(rightKinds);
+  if (leftEntries.length !== rightEntries.length) return false;
+  return leftEntries.every(([path, kind]) => rightKinds[path] === kind);
+}
+
+function isTerminalKeyboardTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest("[data-terminal-shortcuts]")
+    || target.closest(".xterm"),
+  );
 }
 
 function resolveContextMenuSelectedPaths(commandContext, target) {
@@ -61,6 +81,7 @@ function resolveContextMenuSelectedPaths(commandContext, target) {
 function App() {
   const [viewState, dispatch] = useReducer(workspaceReducer, initialWorkspaceViewState);
   const [runtimeError, setRuntimeError] = useState("");
+  const [tabSelectionMetaByTabId, setTabSelectionMetaByTabId] = useState({});
   const [commandPaletteState, setCommandPaletteState] = useState({
     isOpen: false,
     position: { x: 24, y: 24 },
@@ -100,14 +121,33 @@ function App() {
   })), [tabTitlesByTabId, tabs]);
   const activeTab = selectActiveTab(viewState.snapshot, currentWindow);
   const activePaneState = getActivePaneState(activeTab);
+  const activePaneSelectedPaths = useMemo(
+    () => getSelectedPathsFromState(activePaneState?.filesystemState),
+    [activePaneState?.filesystemState],
+  );
+  const activeTabSelectionMeta = activeTab?.tabId
+    ? tabSelectionMetaByTabId[activeTab.tabId]
+    : undefined;
+  const activeSelectedEntryKinds = useMemo(() => {
+    if (!activeTabSelectionMeta) return undefined;
+    if (!arePathListsEqual(activeTabSelectionMeta.selectedPaths, activePaneSelectedPaths)) return undefined;
+    const entryKinds = activeTabSelectionMeta.selectedEntryKinds;
+    if (!entryKinds || Object.keys(entryKinds).length === 0) return undefined;
+    return entryKinds;
+  }, [activePaneSelectedPaths, activeTabSelectionMeta]);
   const commandContextBase = useMemo(() => ({
+    activeTabId: activeTab?.tabId ?? "",
     activePaneId: activeTab?.activePaneId ?? "",
     activePanelType: activePaneState?.panelType ?? "",
     isFilesystemBrowsing: Boolean(activePaneState?.filesystemState?.currentPath),
-    selectedPaths: getSelectedPathsFromState(activePaneState?.filesystemState),
+    selectedPaths: activePaneSelectedPaths,
+    selectedEntryKinds: activeSelectedEntryKinds,
   }), [
+    activePaneSelectedPaths,
+    activeSelectedEntryKinds,
     activePaneState?.filesystemState,
     activePaneState?.panelType,
+    activeTab?.tabId,
     activeTab?.activePaneId,
   ]);
   const paletteContext = useMemo(
@@ -117,6 +157,14 @@ function App() {
   const paletteCommands = useMemo(
     () => getCommandsForTrigger("palette", paletteContext),
     [paletteContext],
+  );
+  const shortcutContext = useMemo(
+    () => ({ ...commandContextBase, source: "shortcut" }),
+    [commandContextBase],
+  );
+  const shortcutCommands = useMemo(
+    () => getCommandsForTrigger("shortcut", shortcutContext),
+    [shortcutContext],
   );
   const contextMenuCommands = useMemo(() => {
     if (!contextMenuState.context) return [];
@@ -206,7 +254,46 @@ function App() {
       openCommandPalette,
     },
   ), [activeTab, openCommandPalette, workspaceActions]);
-  usePaneSplitShortcuts(executeAppCommand);
+  const handleTabSelectedFilesChange = useCallback((tabId, selectedFiles) => {
+    workspaceActions.handleSetTabSelectedFiles(tabId, selectedFiles);
+    if (!tabId) return;
+
+    const selectedPaths = getSelectedPathsFromState(selectedFiles);
+    const rawSelectedEntryKinds = selectedFiles?.selectedEntryKinds;
+    const nextSelectedEntryKinds = {};
+    if (rawSelectedEntryKinds && typeof rawSelectedEntryKinds === "object") {
+      selectedPaths.forEach((path) => {
+        const kind = rawSelectedEntryKinds[path];
+        if (kind === "file" || kind === "folder") nextSelectedEntryKinds[path] = kind;
+      });
+    }
+
+    setTabSelectionMetaByTabId((previous) => {
+      const previousMeta = previous[tabId];
+      const hasSelection = selectedPaths.length > 0;
+      if (!hasSelection) {
+        if (!previousMeta) return previous;
+        const { [tabId]: _removed, ...rest } = previous;
+        return rest;
+      }
+
+      if (
+        previousMeta
+        && arePathListsEqual(previousMeta.selectedPaths, selectedPaths)
+        && areEntryKindMapsEqual(previousMeta.selectedEntryKinds, nextSelectedEntryKinds)
+      ) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [tabId]: {
+          selectedPaths,
+          selectedEntryKinds: nextSelectedEntryKinds,
+        },
+      };
+    });
+  }, [workspaceActions]);
   const handleTabMiddleClick = useCallback((tabId) => {
     if (!tabId) return;
     executeAppCommand(COMMAND_IDS.TAB_CLOSE, {
@@ -226,17 +313,23 @@ function App() {
   }, [closeCommandPalette, executeAppCommand, paletteContext]);
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.defaultPrevented) return;
-      if (!isCommandShortcutMatch(COMMAND_IDS.COMMAND_PALETTE_OPEN, event)) return;
+      if (event.defaultPrevented || event.repeat) return;
+      if (isEditableKeyboardTarget(event.target) && !isTerminalKeyboardTarget(event.target)) return;
+
+      const matchedCommand = shortcutCommands.find(command => (
+        isCommandShortcutMatch(command.id, event)
+      ));
+      if (!matchedCommand) return;
+
       event.preventDefault();
-      executeAppCommand(COMMAND_IDS.COMMAND_PALETTE_OPEN, { source: "shortcut" });
+      executeAppCommand(matchedCommand.id, shortcutContext);
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [executeAppCommand]);
+  }, [executeAppCommand, shortcutCommands, shortcutContext]);
 
   useEffect(() => {
     if (!activeNotification) return;
@@ -287,7 +380,7 @@ function App() {
             cwdHint={activeTab.terminalCwdHint ?? ""}
             onCurrentPathChange={workspaceActions.handleSetTabCwdHint}
             onFilesystemStateChange={workspaceActions.handleSetPaneFilesystemState}
-            onTabSelectedFilesChange={workspaceActions.handleSetTabSelectedFiles}
+            onTabSelectedFilesChange={handleTabSelectedFilesChange}
             onPanelTypeChange={workspaceActions.handleChangePanelType}
             onPaneActivate={workspaceActions.handleSetActivePane}
             onPaneSplit={workspaceActions.handleSplitPane}
