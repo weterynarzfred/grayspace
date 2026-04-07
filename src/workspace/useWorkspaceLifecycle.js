@@ -9,7 +9,6 @@ import { getErrorMessage } from "./appRuntime";
 
 export default function useWorkspaceLifecycle({
   dispatch,
-  setRuntimeError,
   currentWindowIdRef,
 }) {
   useEffect(() => {
@@ -53,12 +52,13 @@ export default function useWorkspaceLifecycle({
     };
 
     initializeWorkspace().catch(error => {
-      if (!isDisposed) setRuntimeError(getErrorMessage(error));
+      if (isDisposed) return;
+      console.error("[workspace-lifecycle]", getErrorMessage(error));
     });
 
     return () => {
       isDisposed = true;
       unlistenCallbacks.forEach(unlisten => unlisten?.());
     };
-  }, [currentWindowIdRef, dispatch, setRuntimeError]);
+  }, [currentWindowIdRef, dispatch]);
 }

@@ -27,12 +27,18 @@ export default function executeCommand(
     activeTab = null,
     workspaceActions = undefined,
     openCommandPalette = undefined,
+    openRecentFolders = undefined,
   } = {},
 ) {
   if (!commandId) return false;
 
   if (commandId === COMMAND_IDS.COMMAND_PALETTE_OPEN) {
     openCommandPalette?.();
+    return true;
+  }
+
+  if (commandId === COMMAND_IDS.FILESYSTEM_OPEN_RECENT_FOLDERS) {
+    openRecentFolders?.();
     return true;
   }
 

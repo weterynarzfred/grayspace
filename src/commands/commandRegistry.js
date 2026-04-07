@@ -510,11 +510,16 @@ export const COMMANDS = [
     id: COMMAND_IDS.FILESYSTEM_OPEN_RECENT_FOLDERS,
     title: "Open Recently Opened Folders",
     shortcut: "Ctrl+R",
-    triggers: [],
-    scope: "filesystem",
-    state: "planned",
-    whenText: "activePanelType === \"Filesystem\"",
-    when: isFilesystemPanelActive,
+    triggers: ["shortcut", "palette"],
+    scope: "tab",
+    whenText: "hasActiveTab()",
+    when: hasActiveTab,
+    shortcutMatcher: event =>
+      event.ctrlKey
+      && !event.shiftKey
+      && !event.altKey
+      && !event.metaKey
+      && event.key.toLowerCase() === "r",
   },
   {
     id: COMMAND_IDS.FILESYSTEM_CREATE_TEXT_FILE,

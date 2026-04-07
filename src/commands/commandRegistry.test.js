@@ -179,11 +179,21 @@ describe("commandRegistry", () => {
     });
 
     expect(getCommandIds(shortcutCommands)).toContain("tab.switch.next");
+    expect(getCommandIds(shortcutCommands)).toContain("filesystem.openRecentFolders");
     expect(getCommandIds(shortcutCommands)).toContain("filesystem.createTextFile");
     expect(getCommandIds(shortcutCommands)).toContain("filesystem.createFolder");
     expect(getCommandIds(shortcutCommands)).toContain("filesystem.copy");
     expect(getCommandIds(shortcutCommands)).toContain("filesystem.cut");
     expect(getCommandIds(shortcutCommands)).toContain("filesystem.paste");
+  });
+
+  it("hides open-recent command when there is no active tab", () => {
+    const commands = getCommandsForTrigger("shortcut", {
+      source: "shortcut",
+      activeTabId: "",
+    });
+
+    expect(getCommandIds(commands)).not.toContain("filesystem.openRecentFolders");
   });
 
   it("keeps planned commands listed in the registry", () => {
@@ -214,6 +224,16 @@ describe("commandRegistry", () => {
       key: "n",
       ctrlKey: true,
       shiftKey: true,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+  });
+
+  it("maps open-recent shortcut to ctrl+r", () => {
+    expect(isCommandShortcutMatch("filesystem.openRecentFolders", {
+      key: "r",
+      ctrlKey: true,
+      shiftKey: false,
       altKey: false,
       metaKey: false,
     })).toBe(true);

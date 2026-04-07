@@ -10,6 +10,8 @@ import {
   workspaceSetTabLayoutSplitRatio,
   workspaceSetTabPaneFilesystemState,
   workspaceSetTabPanelType,
+  workspaceReplaceTabFolder,
+  workspaceRecentFoldersRecord,
   workspaceSetTabSelectedFiles,
   workspaceSetTabTerminalCwd,
   workspaceSetTabWorkspaceRoot,
@@ -45,7 +47,6 @@ export default function useWorkspaceActions({
   activeTab = null,
   pushNotification,
   openConfirm,
-  setRuntimeError,
 }) {
   const paneDirtyStateRef = useRef(new Map());
   const terminalCwdByTabRef = useRef(new Map());
@@ -67,12 +68,12 @@ export default function useWorkspaceActions({
 
   const handleWorkspaceCommandError = useCallback(error => {
     const message = getErrorMessage(error);
-    setRuntimeError?.(message);
     showActionErrorNotification(message);
-  }, [setRuntimeError, showActionErrorNotification]);
+  }, [showActionErrorNotification]);
 
   const handleTabScopedCommandError = useCallback(error => {
-    if (getErrorMessage(error) === "Tab not found.") return;
+    const message = getErrorMessage(error);
+    if (message === "Tab not found." || message === "Pane not found.") return;
     handleWorkspaceCommandError(error);
   }, [handleWorkspaceCommandError]);
 
@@ -110,6 +111,9 @@ export default function useWorkspaceActions({
         terminalCwdByTabRef.current.delete(tabId);
         handleTabScopedCommandError(error);
       });
+      if (nextPath) {
+        workspaceRecentFoldersRecord(nextPath).catch(() => {});
+      }
     }
 
     if (activeTab?.tabId !== tabId) return;
@@ -200,6 +204,11 @@ export default function useWorkspaceActions({
     handleSplitPane(activeTab.tabId, paneId, direction);
   }, [activeTab, handleSplitPane]);
 
+  const handleOpenFolderInCurrentTab = useCallback(async (tabId, path) => {
+    if (!tabId || !path) return;
+    await workspaceReplaceTabFolder(tabId, path);
+  }, []);
+
   return {
     handleWorkspaceCommandError,
     handleSetActiveTab,
@@ -216,5 +225,6 @@ export default function useWorkspaceActions({
     handleSetSplitRatio,
     handleSetTabSelectedFiles,
     handleSplitActivePane,
+    handleOpenFolderInCurrentTab,
   };
 }

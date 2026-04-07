@@ -51,6 +51,14 @@ function getSplitPreviewClassName(direction) {
   }`;
 }
 
+function getWorkspaceLayoutKey(workspaceRoot = "") {
+  const normalizedWorkspaceRoot = typeof workspaceRoot === "string"
+    ? workspaceRoot.trim()
+    : "";
+  if (!normalizedWorkspaceRoot) return "default";
+  return `workspace:${encodeURIComponent(normalizedWorkspaceRoot.toLowerCase())}`;
+}
+
 function WorkspacePanelLayout({
   tab,
   cwdHint = "",
@@ -68,7 +76,7 @@ function WorkspacePanelLayout({
   const paneCount = Object.keys(paneStates).length;
   const tabLayout = getTabLayout(tab?.layout);
   const tabId = tab?.tabId ?? "";
-  const splitContextKey = tab?.workspaceRoot ? "workspace" : "default";
+  const splitContextKey = getWorkspaceLayoutKey(tab?.workspaceRoot);
   const activePaneId = tab?.activePaneId ?? "";
   const {
     splitPreview,
@@ -93,7 +101,7 @@ function WorkspacePanelLayout({
     };
 
     return <div
-      key={`${tabId || "tab"}::${paneState?.paneId ?? paneId}`}
+      key={`${tabId || "tab"}::${paneState?.paneId ?? paneId}::${splitContextKey}`}
       className={`${styles.paneViewport} ${isActivePane ? styles.activePane : ""}`}
       data-contextmenu-boundary="panel"
       data-context-kind="panel"

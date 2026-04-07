@@ -10,6 +10,8 @@ import {
   workspaceSetTabLayoutSplitRatio,
   workspaceSetTabPaneFilesystemState,
   workspaceSetTabPanelType,
+  workspaceReplaceTabFolder,
+  workspaceRecentFoldersRecord,
   workspaceSetTabSelectedFiles,
   workspaceSetTabTerminalCwd,
   workspaceSetTabWorkspaceRoot,
@@ -26,6 +28,8 @@ vi.mock("./workspaceApi", () => ({
   workspaceSetTabLayoutSplitRatio: vi.fn(),
   workspaceSetTabPaneFilesystemState: vi.fn(),
   workspaceSetTabPanelType: vi.fn(),
+  workspaceReplaceTabFolder: vi.fn(),
+  workspaceRecentFoldersRecord: vi.fn(),
   workspaceSetTabSelectedFiles: vi.fn(),
   workspaceSetTabTerminalCwd: vi.fn(),
   workspaceSetTabWorkspaceRoot: vi.fn(),
@@ -42,6 +46,8 @@ const resolvedCommands = [
   workspaceSetTabLayoutSplitRatio,
   workspaceSetTabPaneFilesystemState,
   workspaceSetTabPanelType,
+  workspaceReplaceTabFolder,
+  workspaceRecentFoldersRecord,
   workspaceSetTabSelectedFiles,
   workspaceSetTabTerminalCwd,
   workspaceSetTabWorkspaceRoot,
@@ -133,6 +139,7 @@ describe("useWorkspaceActions handleSetTabCwdHint", () => {
 
     expect(workspaceSetTabTerminalCwd).not.toHaveBeenCalled();
     expect(workspaceSetTabWorkspaceRoot).not.toHaveBeenCalled();
+    expect(workspaceRecentFoldersRecord).not.toHaveBeenCalled();
   });
 
   it("does not clear workspace root for updates from a non-active tab", async () => {
@@ -168,6 +175,8 @@ describe("useWorkspaceActions handleSetTabCwdHint", () => {
 
     expect(workspaceSetTabTerminalCwd).toHaveBeenCalledTimes(1);
     expect(workspaceSetTabTerminalCwd).toHaveBeenCalledWith("tab-1", "C:\\workspace\\src");
+    expect(workspaceRecentFoldersRecord).toHaveBeenCalledTimes(1);
+    expect(workspaceRecentFoldersRecord).toHaveBeenCalledWith("C:\\workspace\\src");
   });
 });
 
@@ -191,5 +200,36 @@ describe("useWorkspaceActions basic commands", () => {
     });
 
     expect(workspaceNewWindow).toHaveBeenCalledTimes(1);
+  });
+
+  it("replaces current tab folder in place", async () => {
+    const { result } = renderHook(() => useWorkspaceActions({
+      currentWindow: { windowId: "window-1" },
+      activeTab: createActiveTab(),
+    }));
+
+    await act(async () => {
+      await result.current.handleOpenFolderInCurrentTab("tab-1", "C:\\Users");
+    });
+
+    expect(workspaceReplaceTabFolder).toHaveBeenCalledWith("tab-1", "C:\\Users");
+  });
+
+  it("ignores stale pane activation errors when pane no longer exists", async () => {
+    workspaceSetTabActivePane.mockRejectedValueOnce(new Error("Pane not found."));
+    const pushNotification = vi.fn();
+    const { result } = renderHook(() => useWorkspaceActions({
+      currentWindow: { windowId: "window-1" },
+      activeTab: createActiveTab(),
+      pushNotification,
+    }));
+
+    await act(async () => {
+      result.current.handleSetActivePane("tab-1", "pane-stale");
+      await Promise.resolve();
+    });
+
+    expect(workspaceSetTabActivePane).toHaveBeenCalledWith("tab-1", "pane-stale");
+    expect(pushNotification).not.toHaveBeenCalled();
   });
 });

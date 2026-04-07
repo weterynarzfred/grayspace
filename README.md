@@ -52,6 +52,7 @@ npm run tauri_dev
 * `Ctrl+Shift+V` switch active pane to preview
 * `Ctrl+Shift+O` switch active pane to properties
 * `Ctrl+Shift+U` switch active pane to external UI
+* `Ctrl+R` open recently opened folders
 * filesystem panel:
   * `Arrow Up/Down` move selection (loops)
   * `Shift+Arrow Up/Down` range selection
@@ -64,7 +65,7 @@ npm run tauri_dev
   * `Ctrl+Shift+T` create text file and rename immediately
   * `Ctrl+Shift+N` create folder and rename immediately
   * `Ctrl+Z` undo filesystem action
-  * `Ctrl+Y` / `Ctrl+Shift+Z` redo filesystem action
+  * `Ctrl+Y` redo filesystem action
   * mouse: middle-click folder or `Ctrl+DoubleClick` folder opens it in a new tab
 
 ### planned (inactive)
@@ -73,7 +74,6 @@ npm run tauri_dev
 * `F2` (multiple selection) bulk rename
 * `Ctrl+F` filter current folder
 * `Ctrl+Shift+F` search current folder and subfolders
-* `Ctrl+R` open recently opened folders
 * workspace script commands from `.grayspace/folder.json` in palette/context
 
 ## TODO
@@ -148,7 +148,7 @@ npm run tauri_dev
 * [ ] archive (zip, rar, 7z, etc) operations
 * [ ] add middle click on breadcrumbs, drives, and ".."
 * [ ] figure out what a "main" filesystem panel is, because when there's multiple, they fight
-* [ ] deselect file on empty space click
+* [x] deselect file on empty space click
 * [x] virtualize file lists in large folders
 
 ### terminal (ctrl + shift + `)
@@ -191,7 +191,7 @@ npm run tauri_dev
 * [ ] custom metadata (sidecar files)
 * [ ] bulk properties when multiple files are selected
 
-### external UI
+### external UI (ctrl + shift + g)
 
 * [x] load URL from `.grayspace/folder.json` (`externalUI`) inside panel
 * [ ] load HTML files
@@ -205,5 +205,4 @@ npm run tauri_dev
 
 ## might get scrapped
 
-* undo system
 * the whole canvas panel

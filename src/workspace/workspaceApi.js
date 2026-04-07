@@ -77,6 +77,22 @@ export function workspaceOpenFolderFromTab(tabId, path) {
   return invokeWithPayload("workspace_open_folder_from_tab", { tabId, path });
 }
 
+export function workspaceReplaceTabFolder(tabId, path) {
+  return invokeWithPayload("workspace_replace_tab_folder", { tabId, path });
+}
+
+export function workspaceRecentFoldersList() {
+  return invoke("workspace_recent_folders_list");
+}
+
+export function workspaceRecentFoldersRecord(path) {
+  return invoke("workspace_recent_folders_record", { path });
+}
+
+export function workspaceRecentFoldersRemove(path) {
+  return invoke("workspace_recent_folders_remove", { path });
+}
+
 export function workspaceMoveTab(sourceWindowId, targetWindowId, tabId, targetIndex = null) {
   return invokeWithPayload("workspace_move_tab", {
     sourceWindowId,

@@ -1,0 +1,82 @@
+@use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
+
+.popover {
+  width: min(42rem, calc(100vw - 1rem));
+}
+
+.searchLabel {
+  display: block;
+  border-bottom: 1px solid $border-default;
+  padding: 0.45rem;
+}
+
+.searchTitle {
+  display: block;
+  font-size: $font-size-small;
+  color: $text-secondary;
+  margin-bottom: 0.3rem;
+}
+
+.searchInput {
+  width: 100%;
+  border: 1px solid $border-default;
+  background: $bg-surface;
+  color: $text-primary;
+  padding: 0.4rem 0.45rem;
+  font-size: $font-size-small;
+  outline: none;
+
+  &:focus {
+    border-color: $accent-active;
+  }
+}
+
+.entryList {
+  list-style: none;
+  margin: 0;
+  padding: 0.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: min(26rem, calc(100vh - 6rem));
+  overflow: auto;
+}
+
+.entryItem {
+  list-style: none;
+}
+
+.entryRow {
+  @include popover-action-button;
+}
+
+.entryRowSelected,
+.entryRow:hover {
+  @include popover-action-button-active;
+}
+
+.entryPath {
+  color: $text-primary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entryPathWorkspace {
+  color: $text-accent-2;
+}
+
+.entryDate {
+  color: $text-secondary;
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+  flex-shrink: 0;
+}
+
+.emptyRow {
+  border: 1px solid $border-secondary;
+  padding: 0.28rem 0.4rem;
+  font-size: $font-size-small;
+  color: $text-secondary;
+}

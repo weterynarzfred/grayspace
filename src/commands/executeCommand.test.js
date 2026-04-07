@@ -178,4 +178,15 @@ describe("executeCommand", () => {
     expect(didExecute).toBe(true);
     expect(openCommandPalette).toHaveBeenCalledTimes(1);
   });
+
+  it("executes open-recent-folders callback", () => {
+    const openRecentFolders = vi.fn();
+
+    const didExecute = executeCommand(COMMAND_IDS.FILESYSTEM_OPEN_RECENT_FOLDERS, {
+      openRecentFolders,
+    });
+
+    expect(didExecute).toBe(true);
+    expect(openRecentFolders).toHaveBeenCalledTimes(1);
+  });
 });

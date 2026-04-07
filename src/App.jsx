@@ -20,10 +20,16 @@ import useTabDragDrop from "./workspace/useTabDragDrop";
 import useWorkspaceLifecycle from "./workspace/useWorkspaceLifecycle";
 import useWorkspaceActions from "./workspace/useWorkspaceActions";
 import useWorkspaceTabTitles from "./workspace/useWorkspaceTabTitles";
+import { getErrorMessage } from "./workspace/appRuntime";
+import {
+  workspaceRecentFoldersList,
+  workspaceRecentFoldersRemove,
+} from "./workspace/workspaceApi";
 import { useNotificationCenter } from "./notifications/notificationCenter";
 import resolveContextMenuTarget from "./context/resolveContextMenuTarget";
 import CommandPalettePopover from "./components/popovers/CommandPalettePopover";
 import ContextMenuPopover from "./components/popovers/ContextMenuPopover";
+import RecentFoldersPopover from "./components/popovers/RecentFoldersPopover";
 import SystemNotificationPopover from "./components/popovers/SystemNotificationPopover";
 import {
   COMMAND_IDS,
@@ -80,7 +86,6 @@ function resolveContextMenuSelectedPaths(commandContext, target) {
 
 function App() {
   const [viewState, dispatch] = useReducer(workspaceReducer, initialWorkspaceViewState);
-  const [runtimeError, setRuntimeError] = useState("");
   const [tabSelectionMetaByTabId, setTabSelectionMetaByTabId] = useState({});
   const [commandPaletteState, setCommandPaletteState] = useState({
     isOpen: false,
@@ -92,8 +97,15 @@ function App() {
     target: null,
     context: null,
   });
+  const [recentFoldersState, setRecentFoldersState] = useState({
+    isOpen: false,
+    isLoading: false,
+    position: { x: 24, y: 24 },
+    entries: [],
+  });
   const currentWindowIdRef = useRef("");
   const lastPointerPositionRef = useRef({ x: 24, y: 24 });
+  const recentFoldersRequestIdRef = useRef(0);
   const {
     activeNotification,
     pushNotification,
@@ -110,7 +122,7 @@ function App() {
 
   currentWindowIdRef.current = viewState.currentWindowId;
 
-  useWorkspaceLifecycle({ dispatch, setRuntimeError, currentWindowIdRef });
+  useWorkspaceLifecycle({ dispatch, currentWindowIdRef });
 
   const currentWindow = selectCurrentWindow(viewState.snapshot, viewState.currentWindowId);
   const tabs = selectTabsForWindow(viewState.snapshot, currentWindow);
@@ -176,7 +188,6 @@ function App() {
     activeTab,
     pushNotification,
     openConfirm,
-    setRuntimeError,
   });
 
   const {
@@ -199,6 +210,11 @@ function App() {
       ? { ...state, isOpen: false, target: null, context: null }
       : state);
   }, []);
+  const closeRecentFolders = useCallback(() => {
+    setRecentFoldersState((state) => state.isOpen
+      ? { ...state, isOpen: false, isLoading: false }
+      : state);
+  }, []);
   const openCommandPalette = useCallback(() => {
     const { x, y } = lastPointerPositionRef.current;
     setCommandPaletteState({
@@ -206,7 +222,40 @@ function App() {
       position: { x, y },
     });
     closeContextMenu();
-  }, [closeContextMenu]);
+    closeRecentFolders();
+  }, [closeContextMenu, closeRecentFolders]);
+  const openRecentFolders = useCallback(() => {
+    const { x, y } = lastPointerPositionRef.current;
+    const nextRequestId = recentFoldersRequestIdRef.current + 1;
+    recentFoldersRequestIdRef.current = nextRequestId;
+    setRecentFoldersState((state) => ({
+      ...state,
+      isOpen: true,
+      isLoading: true,
+      position: { x, y },
+    }));
+    closeCommandPalette();
+    closeContextMenu();
+    workspaceRecentFoldersList()
+      .then((entries) => {
+        if (recentFoldersRequestIdRef.current !== nextRequestId) return;
+        const nextEntries = Array.isArray(entries) ? entries : [];
+        setRecentFoldersState((state) => ({
+          ...state,
+          entries: nextEntries,
+          isLoading: false,
+        }));
+      })
+      .catch((error) => {
+        if (recentFoldersRequestIdRef.current !== nextRequestId) return;
+        setRecentFoldersState((state) => ({ ...state, entries: [], isLoading: false }));
+        pushNotification?.({
+          title: "Failed to load recent folders",
+          message: getErrorMessage(error),
+          tone: "error",
+        });
+      });
+  }, [closeCommandPalette, closeContextMenu, pushNotification]);
   const handlePointerMoveCapture = useCallback((event) => {
     lastPointerPositionRef.current = {
       x: event.clientX,
@@ -253,8 +302,9 @@ function App() {
       activeTab,
       workspaceActions,
       openCommandPalette,
+      openRecentFolders,
     },
-  ), [activeTab, currentWindow, openCommandPalette, workspaceActions]);
+  ), [activeTab, currentWindow, openCommandPalette, openRecentFolders, workspaceActions]);
   const handleTabSelectedFilesChange = useCallback((tabId, selectedFiles) => {
     workspaceActions.handleSetTabSelectedFiles(tabId, selectedFiles);
     if (!tabId) return;
@@ -312,6 +362,43 @@ function App() {
     closeCommandPalette();
     executeAppCommand(commandId, paletteContext);
   }, [closeCommandPalette, executeAppCommand, paletteContext]);
+  const handleRecentFolderSelect = useCallback(async (path) => {
+    const targetPath = typeof path === "string" ? path.trim() : "";
+    if (!targetPath) return;
+    closeRecentFolders();
+    const activeTabId = activeTab?.tabId ?? "";
+    if (!activeTabId) return;
+
+    try {
+      await workspaceActions.handleOpenFolderInCurrentTab(activeTabId, targetPath);
+      return;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      if (message === "Folder does not exist.") {
+        pushNotification?.({
+          title: "Folder no longer exists",
+          message: targetPath,
+          tone: "warning",
+        });
+        workspaceRecentFoldersRemove(targetPath).catch(() => {});
+        setRecentFoldersState((state) => ({
+          ...state,
+          entries: state.entries.filter((entry) => entry.path !== targetPath),
+        }));
+        return;
+      }
+      pushNotification?.({
+        title: "Failed to open folder",
+        message,
+        tone: "error",
+      });
+    }
+  }, [
+    activeTab?.tabId,
+    closeRecentFolders,
+    pushNotification,
+    workspaceActions,
+  ]);
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.defaultPrevented || event.repeat) return;
@@ -336,13 +423,13 @@ function App() {
     if (!activeNotification) return;
     closeContextMenu();
     closeCommandPalette();
-  }, [activeNotification, closeCommandPalette, closeContextMenu]);
+    closeRecentFolders();
+  }, [activeNotification, closeCommandPalette, closeContextMenu, closeRecentFolders]);
 
   if (!currentWindow || !activeTab) {
     return <main className={styles.appShell}>
       <div className={styles.loadingShell}>
         <p className={styles.loadingText}>Loading workspace...</p>
-        {runtimeError ? <p className={styles.errorText}>{runtimeError}</p> : null}
       </div>
     </main>;
   }
@@ -374,7 +461,6 @@ function App() {
       </DndContext>
 
       <section className={styles.workspaceContent}>
-        {runtimeError ? <p className={styles.errorText}>{runtimeError}</p> : null}
         <PanelsDndLayer>
           <WorkspacePanelLayout
             tab={activeTab}
@@ -406,6 +492,14 @@ function App() {
       commands={contextMenuCommands}
       onCommand={handleContextMenuCommand}
       onClose={closeContextMenu}
+    />
+    <RecentFoldersPopover
+      open={recentFoldersState.isOpen}
+      position={recentFoldersState.position}
+      entries={recentFoldersState.entries}
+      isLoading={recentFoldersState.isLoading}
+      onSelect={handleRecentFolderSelect}
+      onClose={closeRecentFolders}
     />
     <SystemNotificationPopover
       open={Boolean(activeNotification)}
