@@ -3,6 +3,7 @@ mod commands;
 use tauri::Manager;
 
 use commands::filesystem::{
+  create_folder, create_text_file,
   delete_paths, filesystem_get_properties, filesystem_watch_start, filesystem_watch_stop,
   filesystem_resolve_workspace_folders, handle_filesystem_window_destroyed, import_paths,
   list_directory, list_directory_page, list_drives, move_path, open_path, parent_path,
@@ -63,6 +64,8 @@ pub fn run() {
       open_path,
       move_path,
       rename_path,
+      create_text_file,
+      create_folder,
       delete_paths,
       import_paths,
       preview_read_file,

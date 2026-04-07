@@ -61,6 +61,8 @@ npm run tauri_dev
   * `Alt+Arrow Up` go one folder up (with workspace-exit confirmation when needed)
   * `Delete` delete selected item(s)
   * `F2` rename selected file/folder
+  * `Ctrl+Shift+T` create text file and rename immediately
+  * `Ctrl+Shift+N` create folder and rename immediately
   * `Ctrl+Z` undo filesystem action
   * `Ctrl+Y` / `Ctrl+Shift+Z` redo filesystem action
   * mouse: middle-click folder or `Ctrl+DoubleClick` folder opens it in a new tab
@@ -75,8 +77,6 @@ npm run tauri_dev
 * `Ctrl+F` filter current folder
 * `Ctrl+Shift+F` search current folder and subfolders
 * `Ctrl+R` open recently opened folders
-* `Ctrl+Shift+T` create text file and rename immediately
-* `Ctrl+Shift+N` create folder and rename immediately
 * workspace script commands from `.grayspace/folder.json` in palette/context
 
 ## TODO
@@ -112,7 +112,7 @@ npm run tauri_dev
 
 ### QOL
 
-* [ ] new folder / new file shortcuts
+* [x] new folder / new file shortcuts
 * [x] tab switching shortcuts
 * [x] panel switching shortcuts
 * [ ] folder history search (ctrl + r)

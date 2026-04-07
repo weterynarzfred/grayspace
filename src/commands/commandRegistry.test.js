@@ -88,6 +88,54 @@ describe("commandRegistry", () => {
     expect(getCommandIds(fileTargetCommands)).not.toContain("filesystem.openSelectedFolderInNewTab");
   });
 
+  it("shows create commands for filesystem panel and folder context targets only while browsing", () => {
+    const panelTargetCommands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "panel",
+      targetPanelType: "Filesystem",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: [],
+    });
+    const folderTargetCommands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "folder",
+      targetScope: "tree-entry",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\Users"],
+    });
+    const drivesPanelCommands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "panel",
+      targetPanelType: "Filesystem",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: false,
+      selectedPaths: [],
+    });
+    const fileTargetCommands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "file",
+      targetScope: "tree-entry",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\notes.txt"],
+    });
+
+    expect(getCommandIds(panelTargetCommands)).toContain("filesystem.createTextFile");
+    expect(getCommandIds(panelTargetCommands)).toContain("filesystem.createFolder");
+    expect(getCommandIds(folderTargetCommands)).toContain("filesystem.createTextFile");
+    expect(getCommandIds(folderTargetCommands)).toContain("filesystem.createFolder");
+    expect(getCommandIds(drivesPanelCommands)).not.toContain("filesystem.createTextFile");
+    expect(getCommandIds(drivesPanelCommands)).not.toContain("filesystem.createFolder");
+    expect(getCommandIds(fileTargetCommands)).not.toContain("filesystem.createTextFile");
+    expect(getCommandIds(fileTargetCommands)).not.toContain("filesystem.createFolder");
+  });
+
   it("keeps open-folder-in-new-tab available for single directory selection", () => {
     const commands = getCommandsForTrigger("palette", {
       source: "palette",
@@ -131,6 +179,8 @@ describe("commandRegistry", () => {
     });
 
     expect(getCommandIds(shortcutCommands)).toContain("tab.switch.next");
+    expect(getCommandIds(shortcutCommands)).toContain("filesystem.createTextFile");
+    expect(getCommandIds(shortcutCommands)).toContain("filesystem.createFolder");
     expect(getCommandIds(shortcutCommands)).not.toContain("filesystem.copy");
   });
 
@@ -145,6 +195,24 @@ describe("commandRegistry", () => {
       key: "Tab",
       ctrlKey: true,
       shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+  });
+
+  it("maps create shortcuts to ctrl+shift+t and ctrl+shift+n", () => {
+    expect(isCommandShortcutMatch("filesystem.createTextFile", {
+      key: "T",
+      ctrlKey: true,
+      shiftKey: true,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+
+    expect(isCommandShortcutMatch("filesystem.createFolder", {
+      key: "n",
+      ctrlKey: true,
+      shiftKey: true,
       altKey: false,
       metaKey: false,
     })).toBe(true);

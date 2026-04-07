@@ -1,6 +1,7 @@
 use super::{
   build_directory_page, read_sorted_directory_entries,
   create_filesystem_watcher, drain_watchers_in_path_tree,
+  create_folder, create_text_file,
   delete_paths, filesystem_get_properties, filesystem_resolve_workspace_folders,
   handle_move_rename_error, import_paths, list_directory, move_path, parent_path, remap_path_prefix, rename_path_core,
   watch_state_key, ManagedFilesystemWatcher,
@@ -388,6 +389,38 @@ fn rename_path_rejects_collisions_when_adjustment_is_disabled() {
     .expect_err("should reject strict collision")
     .contains("already exists"));
   assert!(source_file.exists(), "source file should remain in place");
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn create_text_file_creates_file_with_requested_name() {
+  let test_root = unique_test_root("grayspace_create_text_file");
+  fs::create_dir_all(&test_root).expect("should create temp root");
+
+  let result = create_text_file(&test_root.to_string_lossy(), "untitled.txt", None)
+    .expect("create_text_file should create file");
+
+  assert_eq!(result.name, "untitled.txt");
+  assert_eq!(result.requested_name, "untitled.txt");
+  assert!(!result.adjusted);
+  assert!(test_root.join("untitled.txt").is_file(), "text file should exist");
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn create_folder_adjusts_colliding_name() {
+  let test_root = unique_test_root("grayspace_create_folder_collision");
+  fs::create_dir_all(test_root.join("New folder")).expect("should create colliding folder");
+
+  let result = create_folder(&test_root.to_string_lossy(), "New folder", None)
+    .expect("create_folder should adjust colliding name");
+
+  assert_eq!(result.requested_name, "New folder");
+  assert_eq!(result.name, "New folder.001");
+  assert!(result.adjusted);
+  assert!(test_root.join("New folder.001").is_dir(), "adjusted folder should exist");
 
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
 }

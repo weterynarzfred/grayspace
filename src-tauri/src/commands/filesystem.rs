@@ -401,6 +401,73 @@ fn resolve_non_conflicting_name(
   }
 }
 
+fn resolve_non_conflicting_create_name(parent_path: &Path, requested_name: &str) -> String {
+  let mut candidate_name = requested_name.to_string();
+  loop {
+    let candidate_path = parent_path.join(&candidate_name);
+    if !candidate_path.exists() {
+      return candidate_name;
+    }
+    candidate_name = build_next_collision_name(&candidate_name);
+  }
+}
+
+fn create_path_core(
+  parent_dir: &str,
+  name: &str,
+  should_create_directory: bool,
+  allow_adjustment: Option<bool>,
+) -> Result<RenamePathResult, String> {
+  let normalized_parent_dir = parent_dir.trim();
+  let normalized_name = name.trim();
+  let should_allow_adjustment = allow_adjustment.unwrap_or(true);
+
+  if normalized_parent_dir.is_empty() {
+    return Err("A parent directory path is required.".to_string());
+  }
+  if normalized_name.is_empty() {
+    return Err("A name is required.".to_string());
+  }
+  if normalized_name.contains('\\') || normalized_name.contains('/') {
+    return Err("The name cannot contain path separators.".to_string());
+  }
+  if normalized_name == "." || normalized_name == ".." {
+    return Err("The name cannot be '.' or '..'.".to_string());
+  }
+
+  let parent_path = PathBuf::from(normalized_parent_dir);
+  if !parent_path.is_dir() {
+    return Err("The parent path must be an existing folder.".to_string());
+  }
+
+  let resolved_name = if should_allow_adjustment {
+    resolve_non_conflicting_create_name(&parent_path, normalized_name)
+  } else {
+    let candidate_path = parent_path.join(normalized_name);
+    if candidate_path.exists() {
+      return Err(format!(
+        "An item named '{}' already exists in this folder.",
+        normalized_name
+      ));
+    }
+    normalized_name.to_string()
+  };
+
+  let destination_path = parent_path.join(&resolved_name);
+  if should_create_directory {
+    fs::create_dir(&destination_path).map_err(|error| error.to_string())?;
+  } else {
+    fs::write(&destination_path, "").map_err(|error| error.to_string())?;
+  }
+
+  Ok(RenamePathResult {
+    path: destination_path.to_string_lossy().to_string(),
+    name: resolved_name.clone(),
+    requested_name: normalized_name.to_string(),
+    adjusted: resolved_name != normalized_name,
+  })
+}
+
 fn handle_move_rename_error(
   source_path: &Path,
   destination_path: &Path,
@@ -714,6 +781,24 @@ pub fn rename_path(
   );
 
   rename_result
+}
+
+#[tauri::command]
+pub fn create_text_file(
+  parent_dir: &str,
+  name: &str,
+  allow_adjustment: Option<bool>,
+) -> Result<RenamePathResult, String> {
+  create_path_core(parent_dir, name, false, allow_adjustment)
+}
+
+#[tauri::command]
+pub fn create_folder(
+  parent_dir: &str,
+  name: &str,
+  allow_adjustment: Option<bool>,
+) -> Result<RenamePathResult, String> {
+  create_path_core(parent_dir, name, true, allow_adjustment)
 }
 
 #[tauri::command]

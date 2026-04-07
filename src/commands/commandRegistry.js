@@ -61,12 +61,20 @@ function isPanelContextTarget(context) {
   return context?.targetType === "panel";
 }
 
+function isFilesystemPanelContextTarget(context) {
+  return isPanelContextTarget(context) && context?.targetPanelType === "Filesystem";
+}
+
 function isFilesystemEntryContextTarget(context) {
   return CONTEXT_MENU_TARGETS.has(context?.targetType ?? "");
 }
 
 function isFilesystemTreeEntryContextTarget(context) {
   return isFilesystemEntryContextTarget(context) && context?.targetScope === "tree-entry";
+}
+
+function isFilesystemTreeFolderContextTarget(context) {
+  return context?.targetType === "folder" && context?.targetScope === "tree-entry";
 }
 
 function isFilesystemBrowsing(context) {
@@ -286,7 +294,7 @@ export const COMMANDS = [
   {
     id: COMMAND_IDS.FILESYSTEM_REDO,
     title: "Redo Filesystem Action",
-    shortcut: "Ctrl+Y / Ctrl+Shift+Z",
+    shortcut: "Ctrl+Y",
     triggers: ["shortcut", "palette"],
     scope: "filesystem",
     whenText: "activePanelType === \"Filesystem\" && isFilesystemBrowsing",
@@ -303,7 +311,7 @@ export const COMMANDS = [
   {
     id: COMMAND_IDS.FILESYSTEM_OPEN_SELECTED_FOLDER_IN_NEW_TAB,
     title: "Open Selected Folder in New Tab",
-    shortcut: "Ctrl+Enter / Middle Click Folder / Ctrl+Double Click Folder",
+    shortcut: "Ctrl+Enter",
     triggers: ["shortcut", "palette", "context-menu"],
     scope: "filesystem",
     whenText: "source === \"context-menu\" ? (targetType === \"folder\" && targetScope === \"tree-entry\") : (activePanelType === \"Filesystem\" && isFilesystemBrowsing && hasSingleDirectorySelection())",
@@ -485,21 +493,49 @@ export const COMMANDS = [
     id: COMMAND_IDS.FILESYSTEM_CREATE_TEXT_FILE,
     title: "Create Text File",
     shortcut: "Ctrl+Shift+T",
-    triggers: [],
+    triggers: ["shortcut", "palette", "context-menu"],
     scope: "filesystem",
-    state: "planned",
-    whenText: "activePanelType === \"Filesystem\" && isFilesystemBrowsing",
-    when: context => isFilesystemPanelActive(context) && isFilesystemBrowsing(context),
+    whenText: "source === \"context-menu\" ? (isFilesystemBrowsing && (targetType === \"folder\" && targetScope === \"tree-entry\" || (targetType === \"panel\" && targetPanelType === \"Filesystem\"))) : (activePanelType === \"Filesystem\" && isFilesystemBrowsing)",
+    when: (context) => {
+      if (isContextMenuSource(context)) return (
+        isFilesystemBrowsing(context)
+        && (
+          isFilesystemTreeFolderContextTarget(context)
+          || isFilesystemPanelContextTarget(context)
+        )
+      );
+      return isFilesystemPanelActive(context) && isFilesystemBrowsing(context);
+    },
+    shortcutMatcher: event =>
+      event.ctrlKey
+      && event.shiftKey
+      && !event.altKey
+      && !event.metaKey
+      && event.key.toLowerCase() === "t",
   },
   {
     id: COMMAND_IDS.FILESYSTEM_CREATE_FOLDER,
     title: "Create Folder",
     shortcut: "Ctrl+Shift+N",
-    triggers: [],
+    triggers: ["shortcut", "palette", "context-menu"],
     scope: "filesystem",
-    state: "planned",
-    whenText: "activePanelType === \"Filesystem\" && isFilesystemBrowsing",
-    when: context => isFilesystemPanelActive(context) && isFilesystemBrowsing(context),
+    whenText: "source === \"context-menu\" ? (isFilesystemBrowsing && (targetType === \"folder\" && targetScope === \"tree-entry\" || (targetType === \"panel\" && targetPanelType === \"Filesystem\"))) : (activePanelType === \"Filesystem\" && isFilesystemBrowsing)",
+    when: (context) => {
+      if (isContextMenuSource(context)) return (
+        isFilesystemBrowsing(context)
+        && (
+          isFilesystemTreeFolderContextTarget(context)
+          || isFilesystemPanelContextTarget(context)
+        )
+      );
+      return isFilesystemPanelActive(context) && isFilesystemBrowsing(context);
+    },
+    shortcutMatcher: event =>
+      event.ctrlKey
+      && event.shiftKey
+      && !event.altKey
+      && !event.metaKey
+      && event.key.toLowerCase() === "n",
   },
   {
     id: COMMAND_IDS.WORKSPACE_RUN_SCRIPT,

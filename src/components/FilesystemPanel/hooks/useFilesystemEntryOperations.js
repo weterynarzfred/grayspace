@@ -14,6 +14,8 @@ import {
 } from "./filesystemEntryOperationUtils";
 
 const MAX_FILESYSTEM_HISTORY_ITEMS = 100;
+const DEFAULT_NEW_TEXT_FILE_NAME = "untitled.txt";
+const DEFAULT_NEW_FOLDER_NAME = "New folder";
 
 export default function useFilesystemEntryOperations({
   tabId = "",
@@ -455,6 +457,52 @@ export default function useFilesystemEntryOperations({
     setIsMovingEntry,
   ]);
 
+  const createEntry = useCallback(async (
+    command,
+    parentDir,
+    defaultName,
+    createErrorMessage,
+  ) => {
+    const normalizedParentDir = typeof parentDir === "string" ? parentDir.trim() : "";
+    const normalizedName = typeof defaultName === "string" ? defaultName.trim() : "";
+    if (!normalizedParentDir || !normalizedName) return null;
+
+    setIsMovingEntry(true);
+    setError("");
+
+    try {
+      const createResult = await invoke(command, {
+        parentDir: normalizedParentDir,
+        name: normalizedName,
+      });
+      await refreshEntriesForPath(normalizedParentDir);
+      return createResult;
+    } catch (createError) {
+      setError(getNavigationErrorMessage(createError, createErrorMessage));
+      throw createError;
+    } finally {
+      setIsMovingEntry(false);
+    }
+  }, [refreshEntriesForPath, setError, setIsMovingEntry]);
+
+  const createTextFile = useCallback(async (parentDir = currentPath) => (
+    createEntry(
+      "create_text_file",
+      parentDir,
+      DEFAULT_NEW_TEXT_FILE_NAME,
+      "Failed to create text file.",
+    )
+  ), [createEntry, currentPath]);
+
+  const createFolder = useCallback(async (parentDir = currentPath) => (
+    createEntry(
+      "create_folder",
+      parentDir,
+      DEFAULT_NEW_FOLDER_NAME,
+      "Failed to create folder.",
+    )
+  ), [createEntry, currentPath]);
+
   const undoEntries = useCallback(async () => {
     const lastEntry = undoStackRef.current.at(-1);
     if (!lastEntry) return false;
@@ -578,6 +626,8 @@ export default function useFilesystemEntryOperations({
     deleteEntries,
     importExternalPaths,
     renameEntry,
+    createTextFile,
+    createFolder,
     undoEntries,
     redoEntries,
   };

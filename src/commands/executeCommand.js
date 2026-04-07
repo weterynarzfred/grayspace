@@ -96,6 +96,8 @@ export default function executeCommand(
     || commandId === COMMAND_IDS.FILESYSTEM_OPEN_SELECTED_FOLDER_IN_NEW_TAB
     || commandId === COMMAND_IDS.FILESYSTEM_GO_UP
     || commandId === COMMAND_IDS.FILESYSTEM_RENAME_SELECTED
+    || commandId === COMMAND_IDS.FILESYSTEM_CREATE_TEXT_FILE
+    || commandId === COMMAND_IDS.FILESYSTEM_CREATE_FOLDER
     || commandId === COMMAND_IDS.FILESYSTEM_DELETE_SELECTED
   ) {
     dispatchAppCommand(commandId, context);

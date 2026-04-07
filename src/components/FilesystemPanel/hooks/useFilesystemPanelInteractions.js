@@ -5,6 +5,7 @@ import useExternalFilesystemDrag from "./useExternalFilesystemDrag";
 import useExternalPathDrop from "../../hooks/useExternalPathDrop";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 import isEditableKeyboardTarget from "../../../utils/isEditableKeyboardTarget";
+import { getParentDirectoryPath } from "../../../utils/pathWatch";
 import { getNavigationErrorMessage } from "./filesystemNavigationUtils";
 import {
   buildTreeData,
@@ -35,6 +36,8 @@ export default function useFilesystemPanelInteractions({
   importExternalPaths,
   deleteEntries,
   renameEntry,
+  createTextFile,
+  createFolder,
   onEntryPathRenamed = undefined,
   onTabSelectedFilesChange,
   onDeleteShortcutCommand = undefined,
@@ -48,6 +51,7 @@ export default function useFilesystemPanelInteractions({
   const upSelectionId = "__up__";
   const [externalDropDestinationPath, setExternalDropDestinationPath] = useState("");
   const [renamingPath, setRenamingPath] = useState("");
+  const [pendingRenamePath, setPendingRenamePath] = useState("");
   const treeData = useMemo(() => buildTreeData(treeRows), [treeRows]);
   const selectedEntryPaths = useMemo(() => (
     selectedPaths.filter((path) => treeData.entryPathSet.has(path))
@@ -284,6 +288,99 @@ export default function useFilesystemPanelInteractions({
     treeData.entryByPath,
   ]);
 
+  const beginRenameForPath = useCallback((entryPath) => {
+    if (!entryPath) return;
+    if (treeData.entryByPath[entryPath]) {
+      setPendingRenamePath("");
+      setRenamingPath(entryPath);
+      scrollPathIntoView(entryPath);
+      return;
+    }
+    setPendingRenamePath(entryPath);
+  }, [scrollPathIntoView, treeData.entryByPath]);
+
+  const resolveCreateTarget = useCallback(() => {
+    const selectedPath = selectedEntryPaths[0];
+    const selectedEntry = treeData.entryByPath[selectedPath];
+    if (!selectedEntry) {
+      return {
+        parentDir: currentPath,
+        selectedFolderPath: "",
+      };
+    }
+
+    if (selectedEntry.is_dir) {
+      return {
+        parentDir: selectedEntry.path,
+        selectedFolderPath: selectedEntry.path,
+      };
+    }
+
+    return {
+      parentDir: getParentDirectoryPath(selectedEntry.path) || currentPath,
+      selectedFolderPath: "",
+    };
+  }, [currentPath, selectedEntryPaths, treeData.entryByPath]);
+
+  const createItemAndRename = useCallback(async (
+    createAction,
+    createErrorTitle,
+    options = {},
+  ) => {
+    if (!isBrowsing || isEntryOperationInProgress) return false;
+    if (typeof createAction !== "function") return false;
+
+    const overrideParentDir = typeof options?.parentDir === "string" ? options.parentDir : "";
+    const overrideFolderPath = typeof options?.expandFolderPath === "string"
+      ? options.expandFolderPath
+      : "";
+    const fallbackTarget = resolveCreateTarget();
+    const parentDir = overrideParentDir || fallbackTarget.parentDir;
+    const selectedFolderPath = overrideFolderPath || fallbackTarget.selectedFolderPath;
+    if (!parentDir) return false;
+
+    const selectedFolderRow = selectedFolderPath ? rowByPath[selectedFolderPath] : null;
+    if (selectedFolderPath && selectedFolderRow && !selectedFolderRow.isExpanded) {
+      onToggleDirectoryExpanded?.(selectedFolderPath);
+    }
+
+    try {
+      const createdEntry = await createAction(parentDir);
+      const createdPath = typeof createdEntry?.path === "string" ? createdEntry.path : "";
+      if (!createdPath) return false;
+
+      const nextSelectedPaths = setSelectedPath(createdPath);
+      emitTabSelectedFiles(nextSelectedPaths);
+      beginRenameForPath(createdPath);
+      return true;
+    } catch (createError) {
+      pushNotification?.({
+        title: createErrorTitle,
+        message: getNavigationErrorMessage(createError, "Operation failed."),
+        tone: "error",
+      });
+      return false;
+    }
+  }, [
+    beginRenameForPath,
+    emitTabSelectedFiles,
+    isBrowsing,
+    isEntryOperationInProgress,
+    onToggleDirectoryExpanded,
+    pushNotification,
+    resolveCreateTarget,
+    rowByPath,
+    setSelectedPath,
+  ]);
+
+  const handleCreateFolder = useCallback(async (options = {}) => (
+    createItemAndRename(createFolder, "Create folder failed", options)
+  ), [createFolder, createItemAndRename]);
+
+  const handleCreateTextFile = useCallback(async (options = {}) => (
+    createItemAndRename(createTextFile, "Create file failed", options)
+  ), [createItemAndRename, createTextFile]);
+
   useEffect(() => {
     setExternalDropDestinationPath("");
   }, [currentPath]);
@@ -295,6 +392,14 @@ export default function useFilesystemPanelInteractions({
   useEffect(() => {
     if (renamingPath && !treeData.entryByPath[renamingPath]) setRenamingPath("");
   }, [renamingPath, treeData.entryByPath]);
+
+  useEffect(() => {
+    if (!pendingRenamePath) return;
+    if (!treeData.entryByPath[pendingRenamePath]) return;
+    setRenamingPath(pendingRenamePath);
+    setPendingRenamePath("");
+    scrollPathIntoView(pendingRenamePath);
+  }, [pendingRenamePath, scrollPathIntoView, treeData.entryByPath]);
 
   const handleDeleteSelectedEntries = useCallback(async () => {
     const normalizedSelection = uniqueNonEmptyPaths(selectedEntryPaths);
@@ -534,6 +639,8 @@ export default function useFilesystemPanelInteractions({
     handleBeginRenameSelectedEntry,
     handleEntryRenameCancel,
     handleEntryRenameSubmit,
+    handleCreateTextFile,
+    handleCreateFolder,
     handleDeleteSelectedEntries,
     handlePanelKeyDown,
     handleOpenSelectedEntryInNewTab,

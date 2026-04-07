@@ -278,6 +278,47 @@ describe("FilesystemPanel", () => {
         };
       }
 
+      if (command === "create_text_file" || command === "create_folder") {
+        const parentDir = payload?.parentDir ?? "";
+        const requestedName = String(payload?.name ?? "").trim();
+        const parentEntries = directoryState[parentDir];
+        if (!parentEntries) {
+          throw new Error(`Unhandled create parent path: ${parentDir}`);
+        }
+
+        let resolvedName = requestedName;
+        while (parentEntries.some(entry => entry.name === resolvedName)) {
+          const extensionIndex = resolvedName.lastIndexOf(".");
+          const baseName = extensionIndex > 0 ? resolvedName.slice(0, extensionIndex) : resolvedName;
+          const extension = extensionIndex > 0 ? resolvedName.slice(extensionIndex) : "";
+          const suffixMatch = baseName.match(/^(.*)\.(\d{3,})$/);
+          if (suffixMatch) {
+            const [, nameBase = "", counterValue = "0"] = suffixMatch;
+            const width = counterValue.length;
+            const nextCounter = String(Number(counterValue) + 1).padStart(width, "0");
+            resolvedName = `${nameBase}.${nextCounter}${extension}`;
+          } else {
+            resolvedName = `${baseName}.001${extension}`;
+          }
+        }
+
+        const createdPath = path.win32.join(parentDir, resolvedName);
+        const isFolder = command === "create_folder";
+        parentEntries.push({
+          name: resolvedName,
+          path: createdPath,
+          is_dir: isFolder,
+        });
+        if (isFolder) directoryState[createdPath] = [];
+
+        return {
+          path: createdPath,
+          name: resolvedName,
+          requestedName,
+          adjusted: resolvedName !== requestedName,
+        };
+      }
+
       if (command === "import_paths") {
         const destinationDir = payload?.destinationDir;
         const importPaths = payload?.paths ?? [];
@@ -2236,6 +2277,200 @@ describe("FilesystemPanel", () => {
     }));
 
     expect(await screen.findByRole("textbox")).toHaveValue("notes.txt");
+  });
+
+  it("creates a new text file from app command events and starts rename", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-create-text",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.createTextFile",
+        context: {
+          targetPaneId: "pane-event-create-text",
+        },
+      },
+    }));
+
+    expect(await screen.findByRole("textbox")).toHaveValue("untitled.txt");
+  });
+
+  it("creates a new folder from app command events and starts rename", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-create-folder",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.createFolder",
+        context: {
+          targetPaneId: "pane-event-create-folder",
+        },
+      },
+    }));
+
+    expect(await screen.findByRole("textbox")).toHaveValue("New folder");
+  });
+
+  it("creates a sibling when a file is selected", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-create-sibling",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.createFolder",
+        context: {
+          targetPaneId: "pane-event-create-sibling",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("create_folder", {
+        parentDir: "C:\\",
+        name: "New folder",
+      });
+    });
+  });
+
+  it("creates a child when a folder is selected", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-create-child",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.click(usersButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.createTextFile",
+        context: {
+          targetPaneId: "pane-event-create-child",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("create_text_file", {
+        parentDir: "C:\\Users",
+        name: "untitled.txt",
+      });
+    });
+  });
+
+  it("uses the first selected entry when creating with multi-selection", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-create-multi",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    const todoButton = await screen.findByRole("button", { name: /todo\.txt/i });
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(todoButton);
+    fireEvent.click(notesButton, { ctrlKey: true });
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.createFolder",
+        context: {
+          targetPaneId: "pane-event-create-multi",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("create_folder", {
+        parentDir: "C:\\Users",
+        name: "New folder",
+      });
+    });
+  });
+
+  it("creates in current root from filesystem panel context menu", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-create-panel-context",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.click(usersButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.createTextFile",
+        context: {
+          source: "context-menu",
+          targetPaneId: "pane-event-create-panel-context",
+          targetType: "panel",
+          targetPanelType: "Filesystem",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("create_text_file", {
+        parentDir: "C:\\",
+        name: "untitled.txt",
+      });
+    });
+  });
+
+  it("creates inside clicked folder from folder context menu", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-create-folder-context",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.createFolder",
+        context: {
+          source: "context-menu",
+          targetPaneId: "pane-event-create-folder-context",
+          targetType: "folder",
+          targetScope: "tree-entry",
+          targetPath: "C:\\Users",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("create_folder", {
+        parentDir: "C:\\Users",
+        name: "New folder",
+      });
+    });
   });
 
   it("opens a selected folder in a new tab from app command events", async () => {

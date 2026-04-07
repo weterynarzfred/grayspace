@@ -82,6 +82,8 @@ function FilesystemPanel({
     deleteEntries,
     importExternalPaths,
     renameEntry,
+    createTextFile,
+    createFolder,
     undoEntries,
     redoEntries,
   } = nav;
@@ -165,6 +167,8 @@ function FilesystemPanel({
     handlePanelBackgroundClick,
     handlePanelBackgroundContextMenu,
     handleBeginRenameSelectedEntry,
+    handleCreateTextFile,
+    handleCreateFolder,
     handleEntryRenameCancel,
     handleEntryRenameSubmit,
     handleDeleteSelectedEntries,
@@ -190,6 +194,8 @@ function FilesystemPanel({
     importExternalPaths,
     deleteEntries,
     renameEntry,
+    createTextFile,
+    createFolder,
     onEntryPathRenamed: remapRenamedPath,
     onTabSelectedFilesChange,
     onDeleteShortcutCommand: () => executeFilesystemShortcutCommand(COMMAND_IDS.FILESYSTEM_DELETE_SELECTED),
@@ -233,6 +239,26 @@ function FilesystemPanel({
       },
     });
   }, [paneId]);
+  const resolveCreateCommandOptions = useCallback((commandContext = {}) => {
+    if (commandContext?.source !== "context-menu") return {};
+
+    if (
+      commandContext?.targetType === "folder"
+      && commandContext?.targetScope === "tree-entry"
+      && commandContext?.targetPath
+    ) {
+      return {
+        parentDir: commandContext.targetPath,
+        expandFolderPath: commandContext.targetPath,
+      };
+    }
+
+    if (commandContext?.targetType === "panel") {
+      return { parentDir: currentPath };
+    }
+
+    return {};
+  }, [currentPath]);
   const canLeaveWorkspaceWithoutConfirm = useCallback((nextPath) => {
     if (!tabWorkspaceRoot) return true;
     return isPathInsideRoot(nextPath, tabWorkspaceRoot);
@@ -336,6 +362,14 @@ function FilesystemPanel({
         handleBeginRenameSelectedEntry();
         return;
       }
+      if (commandId === COMMAND_IDS.FILESYSTEM_CREATE_TEXT_FILE) {
+        void handleCreateTextFile(resolveCreateCommandOptions(context));
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_CREATE_FOLDER) {
+        void handleCreateFolder(resolveCreateCommandOptions(context));
+        return;
+      }
       if (commandId === COMMAND_IDS.FILESYSTEM_DELETE_SELECTED) {
         void handleDeleteSelectedEntries();
         return;
@@ -363,10 +397,13 @@ function FilesystemPanel({
     };
   }, [
     handleBeginRenameSelectedEntry,
+    handleCreateFolder,
+    handleCreateTextFile,
     handleDeleteSelectedEntries,
     handleGoUpDoubleClick,
     handleOpenSelectedEntryInNewTab,
     paneId,
+    resolveCreateCommandOptions,
     redoEntries,
     undoEntries,
   ]);
