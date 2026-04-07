@@ -147,6 +147,7 @@ export default function useFilesystemPanelInteractions({
   const effectiveActiveDropDestinationPath =
     externalDropDestinationPath || dnd.activeDropDestinationPath;
   const isInternalDragActive = dnd.activeDragPaths.length > 0;
+  const dragIntent = dnd.isCopyIntent ? "copy" : "move";
   const activeDragEntries = useMemo(() => (
     treeData.entries.filter((entry) => internalActiveDragPathSet.has(entry.path))
   ), [internalActiveDragPathSet, treeData.entries]);
@@ -629,6 +630,7 @@ export default function useFilesystemPanelInteractions({
     isInternalDragActive,
     activeDragEntries,
     activeDragEntry,
+    dragIntent,
     renamingPath,
     handleEntryClick,
     handleEntryDoubleClick,

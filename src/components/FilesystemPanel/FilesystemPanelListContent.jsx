@@ -69,7 +69,9 @@ export default function FilesystemPanelListContent({
   const {
     activeEntry: activeDragEntry = null,
     activeEntries: activeDragEntries = [],
+    intent: dragIntent = "move",
   } = drag;
+  const dragIntentLabel = dragIntent === "copy" ? "Copy" : "Move";
 
   return <div
     className={styles.panelList}
@@ -179,8 +181,11 @@ export default function FilesystemPanelListContent({
           </span>
           <span className={styles.dragOverlayMeta}>
             {activeDragEntries.length > 1
-              ? "Move selection"
+              ? "Selection"
               : (activeDragEntry.is_dir ? "Folder" : "File")}
+          </span>
+          <span className={styles.dragOverlayIntent}>
+            {dragIntentLabel}
           </span>
         </div>}
       </DragOverlay>

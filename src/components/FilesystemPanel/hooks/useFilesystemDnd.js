@@ -43,6 +43,7 @@ function useFilesystemDnd({
   const [activeDragPaths, setActiveDragPaths] = useState([]);
   const [ownedDragPaths, setOwnedDragPaths] = useState([]);
   const [activeDropDestinationPath, setActiveDropDestinationPath] = useState("");
+  const [isCopyIntent, setIsCopyIntent] = useState(false);
   const externalDragStartedRef = useRef(false);
   const pendingExternalDragSourcePathsRef = useRef([]);
   const pendingExternalDragStartedAtMsRef = useRef(0);
@@ -86,11 +87,20 @@ function useFilesystemDnd({
 
   function startModifierTracking(initialCtrlKey = false) {
     stopModifierTracking();
-    copyModifierPressedRef.current = Boolean(initialCtrlKey);
+    const initialCopyIntent = Boolean(initialCtrlKey);
+    copyModifierPressedRef.current = initialCopyIntent;
+    setIsCopyIntent(initialCopyIntent);
     if (typeof window === "undefined") return;
 
-    const updateModifier = (event) => { copyModifierPressedRef.current = Boolean(event?.ctrlKey); };
-    const clearModifier = () => { copyModifierPressedRef.current = false; };
+    const updateModifier = (event) => {
+      const nextCopyIntent = Boolean(event?.ctrlKey);
+      copyModifierPressedRef.current = nextCopyIntent;
+      setIsCopyIntent(nextCopyIntent);
+    };
+    const clearModifier = () => {
+      copyModifierPressedRef.current = false;
+      setIsCopyIntent(false);
+    };
 
     window.addEventListener("keydown", updateModifier, true);
     window.addEventListener("keyup", updateModifier, true);
@@ -108,6 +118,7 @@ function useFilesystemDnd({
     modifierTrackingCleanupRef.current?.();
     modifierTrackingCleanupRef.current = null;
     copyModifierPressedRef.current = false;
+    setIsCopyIntent(false);
   }
 
   useEffect(() => {
@@ -290,7 +301,7 @@ function useFilesystemDnd({
         await moveEntries(actionableSourcePaths, destinationDir);
       }
     } catch {
-      // moveEntries already sets user-facing error state.
+      // Entry operations handle user-facing notifications on failure.
     }
   }
 
@@ -343,6 +354,7 @@ function useFilesystemDnd({
   return {
     activeDragPaths,
     activeDropDestinationPath,
+    isCopyIntent,
     externalDragPaths: ownedDragPaths,
     getBreadcrumbDropId: getBreadcrumbDndId,
     getPanelDropId: getPanelDndId,

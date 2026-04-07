@@ -36,5 +36,16 @@ export function normalizeInitialFilesystemState(initialState) {
 }
 
 export function getNavigationErrorMessage(error, fallbackMessage) {
-  return error instanceof Error && error.message ? error.message : fallbackMessage;
+  if (typeof error === "string" && error.trim()) return error.trim();
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object") {
+    const objectError = [
+      error.message,
+      error.error,
+      error.reason,
+      error.details,
+    ].find(value => typeof value === "string" && value.trim());
+    if (objectError) return objectError.trim();
+  }
+  return fallbackMessage;
 }

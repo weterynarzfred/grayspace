@@ -46,6 +46,18 @@ export default function useFilesystemEntryOperations({
       tone,
     });
   }, [pushNotification]);
+  const notifyOperationError = useCallback(({
+    title = "Operation failed",
+    error = null,
+    fallbackMessage = "Operation failed.",
+  } = {}) => {
+    const message = getNavigationErrorMessage(error, fallbackMessage);
+    notifyUser({
+      title,
+      message,
+      tone: "error",
+    });
+  }, [notifyUser]);
 
   const trimUndoStack = useCallback(() => {
     if (undoStackRef.current.length <= MAX_FILESYSTEM_HISTORY_ITEMS) return;
@@ -120,7 +132,6 @@ export default function useFilesystemEntryOperations({
         });
       }
     } catch (moveError) {
-      setError(getNavigationErrorMessage(moveError, errorMessage));
       moveErrorToThrow = moveError;
     } finally {
       if (activePath && movedItems.length > 0) {
@@ -128,7 +139,6 @@ export default function useFilesystemEntryOperations({
           await refreshEntriesForPath(activePath);
         } catch (refreshError) {
           if (!moveErrorToThrow) {
-            setError(getNavigationErrorMessage(refreshError, "Failed to refresh folder."));
             moveErrorToThrow = refreshError;
           }
         }
@@ -301,21 +311,31 @@ export default function useFilesystemEntryOperations({
     if (!destinationDir || normalizedSourcePaths.length === 0) return;
 
     const activePath = currentPath || destinationDir;
-    const movedItems = await runMovePairs(
-      normalizedSourcePaths.map(sourcePath => ({
-        sourcePath,
-        destinationDir,
-      })),
-      {
-        activePath,
-        removeSelection: true,
-        errorMessage: "Failed to move item.",
-      },
-    );
-    pushMoveHistoryEntry(movedItems);
-    return movedItems;
+    try {
+      const movedItems = await runMovePairs(
+        normalizedSourcePaths.map(sourcePath => ({
+          sourcePath,
+          destinationDir,
+        })),
+        {
+          activePath,
+          removeSelection: true,
+          errorMessage: "Failed to move item.",
+        },
+      );
+      pushMoveHistoryEntry(movedItems);
+      return movedItems;
+    } catch (moveError) {
+      notifyOperationError({
+        title: "Move failed",
+        error: moveError,
+        fallbackMessage: "Failed to move item.",
+      });
+      throw moveError;
+    }
   }, [
     currentPath,
+    notifyOperationError,
     pushMoveHistoryEntry,
     runMovePairs,
   ]);
@@ -333,7 +353,11 @@ export default function useFilesystemEntryOperations({
     try {
       await invoke("import_paths", { paths: normalizedSourcePaths, destinationDir });
     } catch (copyError) {
-      setError(getNavigationErrorMessage(copyError, "Failed to copy item."));
+      notifyOperationError({
+        title: "Copy failed",
+        error: copyError,
+        fallbackMessage: "Failed to copy item.",
+      });
       copyErrorToThrow = copyError;
     } finally {
       if (activePath) {
@@ -341,7 +365,6 @@ export default function useFilesystemEntryOperations({
           await refreshEntriesForPath(activePath);
         } catch (refreshError) {
           if (!copyErrorToThrow) {
-            setError(getNavigationErrorMessage(refreshError, "Failed to refresh folder."));
             copyErrorToThrow = refreshError;
           }
         }
@@ -356,6 +379,7 @@ export default function useFilesystemEntryOperations({
     refreshEntriesForPath,
     setError,
     setIsMovingEntry,
+    notifyOperationError,
   ]);
 
   const deleteEntries = useCallback(async (paths) => {
@@ -407,7 +431,11 @@ export default function useFilesystemEntryOperations({
         clearSelection();
       }
     } catch (importError) {
-      setError(getNavigationErrorMessage(importError, "Failed to import dropped items."));
+      notifyOperationError({
+        title: "Import failed",
+        error: importError,
+        fallbackMessage: "Failed to import dropped items.",
+      });
       throw importError;
     } finally {
       setIsImportingExternal(false);
@@ -419,6 +447,7 @@ export default function useFilesystemEntryOperations({
     refreshEntriesForPath,
     setError,
     setIsImportingExternal,
+    notifyOperationError,
   ]);
 
   const renameEntry = useCallback(async (sourcePath, nextName) => {

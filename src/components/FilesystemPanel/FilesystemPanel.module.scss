@@ -78,6 +78,13 @@
   color: $text-secondary;
 }
 
+.dragOverlayIntent {
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+  color: $accent-active;
+  text-transform: uppercase;
+}
+
 .thumbnailSizeToggle {
   @include interactive-tile;
   border-left: 1px solid $border-default;

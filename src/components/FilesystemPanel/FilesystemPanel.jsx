@@ -159,6 +159,7 @@ function FilesystemPanel({
     isInternalDragActive,
     activeDragEntries,
     activeDragEntry,
+    dragIntent,
     renamingPath,
     handleEntryClick,
     handleEntryDoubleClick,
@@ -527,6 +528,7 @@ function FilesystemPanel({
         drag={{
           activeEntry: activeDragEntry,
           activeEntries: activeDragEntries,
+          intent: dragIntent,
         }}
       />
     </div>

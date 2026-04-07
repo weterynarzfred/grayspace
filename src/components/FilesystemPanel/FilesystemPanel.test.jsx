@@ -953,6 +953,41 @@ describe("FilesystemPanel", () => {
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 
+  it("shows move/copy drag intent while dragging internally", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof dndCallbacks.onDragStart).toBe("function");
+      expect(typeof dndCallbacks.onDragCancel).toBe("function");
+    });
+
+    dndCallbacks.onDragStart?.({
+      active: { id: "entry:C:\\notes.txt" },
+      activatorEvent: { ctrlKey: false },
+    });
+
+    expect(await screen.findByText("Move")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
+    await waitFor(() => {
+      expect(screen.getByText("Copy")).toBeInTheDocument();
+    });
+
+    fireEvent.keyUp(window, { key: "Control", ctrlKey: false });
+    await waitFor(() => {
+      expect(screen.getByText("Move")).toBeInTheDocument();
+    });
+
+    dndCallbacks.onDragCancel?.();
+    await waitFor(() => {
+      expect(screen.queryByText("Move")).not.toBeInTheDocument();
+      expect(screen.queryByText("Copy")).not.toBeInTheDocument();
+    });
+  });
+
   it("moves an entry when dropped onto a file row inside an expanded folder", async () => {
     renderFilesystemPanel();
 

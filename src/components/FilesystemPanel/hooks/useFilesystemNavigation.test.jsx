@@ -501,6 +501,55 @@ describe("useFilesystemNavigation", () => {
     });
   });
 
+  it("shows a notification with reason when move fails", async () => {
+    const pushNotification = vi.fn();
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
+
+      if (command === "list_directory_page") {
+        if (payload?.path === "C:\\Users") {
+          return {
+            entries: [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }],
+            hasMore: false,
+            totalCount: 1,
+          };
+        }
+        return { entries: [], hasMore: false, totalCount: 0 };
+      }
+
+      if (command === "move_path") {
+        throw new Error("An item named 'todo.txt' already exists in the destination folder.");
+      }
+
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useFilesystemNavigation(
+      { currentDrive: "C:\\", currentPath: "C:\\Users" },
+      { pushNotification },
+    ));
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
+    });
+
+    await act(async () => {
+      await expect(result.current.moveEntries(["C:\\Users\\todo.txt"], "C:\\Archive")).rejects.toThrow(
+        "already exists",
+      );
+    });
+
+    expect(pushNotification).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Move failed",
+      tone: "error",
+      message: expect.stringContaining("already exists"),
+    }));
+    expect(result.current.error).toBe("");
+  });
+
   it("supports undo and redo for rename operations", async () => {
     const directoryState = {
       "C:\\Users": [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }],
@@ -688,6 +737,104 @@ describe("useFilesystemNavigation", () => {
     expect(result.current.entries.map((entry) => entry.path)).toEqual([
       "C:\\Projects\\readme.md",
     ]);
+  });
+
+  it("shows a notification with reason when copy fails", async () => {
+    const pushNotification = vi.fn();
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
+
+      if (command === "list_directory_page") {
+        if (payload?.path === "C:\\Users") {
+          return {
+            entries: [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }],
+            hasMore: false,
+            totalCount: 1,
+          };
+        }
+        return { entries: [], hasMore: false, totalCount: 0 };
+      }
+
+      if (command === "import_paths") {
+        throw new Error("An item named 'todo.txt' already exists in the destination folder.");
+      }
+
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useFilesystemNavigation(
+      { currentDrive: "C:\\", currentPath: "C:\\Users" },
+      { pushNotification },
+    ));
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
+    });
+
+    await act(async () => {
+      await expect(result.current.copyEntries(["C:\\Users\\todo.txt"], "C:\\Archive")).rejects.toThrow(
+        "already exists",
+      );
+    });
+
+    expect(pushNotification).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Copy failed",
+      tone: "error",
+      message: expect.stringContaining("already exists"),
+    }));
+    expect(result.current.error).toBe("");
+  });
+
+  it("shows a notification with reason when external import fails", async () => {
+    const pushNotification = vi.fn();
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
+
+      if (command === "list_directory_page") {
+        if (payload?.path === "C:\\Users") {
+          return {
+            entries: [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }],
+            hasMore: false,
+            totalCount: 1,
+          };
+        }
+        return { entries: [], hasMore: false, totalCount: 0 };
+      }
+
+      if (command === "import_paths") {
+        throw new Error("Access is denied. (os error 5)");
+      }
+
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useFilesystemNavigation(
+      { currentDrive: "C:\\", currentPath: "C:\\Users" },
+      { pushNotification },
+    ));
+
+    await waitFor(() => {
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
+    });
+
+    await act(async () => {
+      await expect(
+        result.current.importExternalPaths(["D:\\Downloads\\clip.mp4"], "C:\\Users"),
+      ).rejects.toThrow("Access is denied");
+    });
+
+    expect(pushNotification).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Import failed",
+      tone: "error",
+      message: expect.stringContaining("Access is denied"),
+    }));
+    expect(result.current.error).toBe("");
   });
 
   it("loads additional directory pages on demand", async () => {
