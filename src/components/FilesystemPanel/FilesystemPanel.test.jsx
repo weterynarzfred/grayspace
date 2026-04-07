@@ -460,6 +460,29 @@ describe("FilesystemPanel", () => {
     expect(screen.getByText("C:")).toBeInTheDocument();
   });
 
+  it("submits breadcrumb path input through tab folder replacement callback", async () => {
+    const handleOpenFolderInCurrentTab = vi.fn().mockResolvedValue(undefined);
+
+    renderFilesystemPanel({
+      tabId: "tab-breadcrumb-input",
+      onOpenFolderInCurrentTab: handleOpenFolderInCurrentTab,
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const breadcrumbsNav = await screen.findByRole("navigation", { name: "Current path" });
+    fireEvent.click(breadcrumbsNav);
+
+    const pathInput = await screen.findByRole("textbox", { name: "Current folder path" });
+    fireEvent.change(pathInput, { target: { value: "C:\\Users" } });
+    fireEvent.submit(pathInput.closest("form"));
+
+    await waitFor(() => {
+      expect(handleOpenFolderInCurrentTab).toHaveBeenCalledWith("tab-breadcrumb-input", "C:\\Users");
+    });
+  });
+
   it("single click selects but does not open a drive", async () => {
     renderFilesystemPanel();
 

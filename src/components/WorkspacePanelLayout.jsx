@@ -62,6 +62,9 @@ function getWorkspaceLayoutKey(workspaceRoot = "") {
 function WorkspacePanelLayout({
   tab,
   cwdHint = "",
+  recentFoldersEntries = [],
+  recentFoldersLoading = false,
+  onOpenFolderInCurrentTab = undefined,
   onCurrentPathChange = undefined,
   onFilesystemStateChange = undefined,
   onTabSelectedFilesChange = undefined,
@@ -154,6 +157,9 @@ function WorkspacePanelLayout({
           tabWorkspaceRoot={tab?.workspaceRoot ?? ""}
           tabSelectedFiles={tab?.selectedFiles}
           cwdHint={cwdHint}
+          recentFoldersEntries={recentFoldersEntries}
+          recentFoldersLoading={recentFoldersLoading}
+          onOpenFolderInCurrentTab={onOpenFolderInCurrentTab}
           terminalSessionId={paneState?.terminalSessionId ?? ""}
         />
       </PaneHeaderActionsProvider>
@@ -168,6 +174,7 @@ function WorkspacePanelLayout({
     handleCornerHandlePointerUp,
     onCurrentPathChange,
     onFilesystemStateChange,
+    onOpenFolderInCurrentTab,
     onPaneActivate,
     onPaneClose,
     onPaneDirtyStateChange,
@@ -175,6 +182,8 @@ function WorkspacePanelLayout({
     onTabSelectedFilesChange,
     paneCount,
     paneStates,
+    recentFoldersEntries,
+    recentFoldersLoading,
     splitPreview,
     tab?.selectedFiles,
     tabId,

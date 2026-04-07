@@ -215,6 +215,34 @@ function App() {
       ? { ...state, isOpen: false, isLoading: false }
       : state);
   }, []);
+  const refreshRecentFolders = useCallback(async ({ notifyOnError = false } = {}) => {
+    const nextRequestId = recentFoldersRequestIdRef.current + 1;
+    recentFoldersRequestIdRef.current = nextRequestId;
+    setRecentFoldersState((state) => ({ ...state, isLoading: true }));
+
+    try {
+      const entries = await workspaceRecentFoldersList();
+      if (recentFoldersRequestIdRef.current !== nextRequestId) return [];
+      const nextEntries = Array.isArray(entries) ? entries : [];
+      setRecentFoldersState((state) => ({
+        ...state,
+        entries: nextEntries,
+        isLoading: false,
+      }));
+      return nextEntries;
+    } catch (error) {
+      if (recentFoldersRequestIdRef.current !== nextRequestId) return [];
+      setRecentFoldersState((state) => ({ ...state, entries: [], isLoading: false }));
+      if (notifyOnError) {
+        pushNotification?.({
+          title: "Failed to load recent folders",
+          message: getErrorMessage(error),
+          tone: "error",
+        });
+      }
+      return [];
+    }
+  }, [pushNotification]);
   const openCommandPalette = useCallback(() => {
     const { x, y } = lastPointerPositionRef.current;
     setCommandPaletteState({
@@ -226,36 +254,15 @@ function App() {
   }, [closeContextMenu, closeRecentFolders]);
   const openRecentFolders = useCallback(() => {
     const { x, y } = lastPointerPositionRef.current;
-    const nextRequestId = recentFoldersRequestIdRef.current + 1;
-    recentFoldersRequestIdRef.current = nextRequestId;
     setRecentFoldersState((state) => ({
       ...state,
       isOpen: true,
-      isLoading: true,
       position: { x, y },
     }));
     closeCommandPalette();
     closeContextMenu();
-    workspaceRecentFoldersList()
-      .then((entries) => {
-        if (recentFoldersRequestIdRef.current !== nextRequestId) return;
-        const nextEntries = Array.isArray(entries) ? entries : [];
-        setRecentFoldersState((state) => ({
-          ...state,
-          entries: nextEntries,
-          isLoading: false,
-        }));
-      })
-      .catch((error) => {
-        if (recentFoldersRequestIdRef.current !== nextRequestId) return;
-        setRecentFoldersState((state) => ({ ...state, entries: [], isLoading: false }));
-        pushNotification?.({
-          title: "Failed to load recent folders",
-          message: getErrorMessage(error),
-          tone: "error",
-        });
-      });
-  }, [closeCommandPalette, closeContextMenu, pushNotification]);
+    void refreshRecentFolders({ notifyOnError: true });
+  }, [closeCommandPalette, closeContextMenu, refreshRecentFolders]);
   const handlePointerMoveCapture = useCallback((event) => {
     lastPointerPositionRef.current = {
       x: event.clientX,
@@ -362,16 +369,14 @@ function App() {
     closeCommandPalette();
     executeAppCommand(commandId, paletteContext);
   }, [closeCommandPalette, executeAppCommand, paletteContext]);
-  const handleRecentFolderSelect = useCallback(async (path) => {
+  const openFolderInCurrentTabViaRecentFlow = useCallback(async (tabId, path) => {
     const targetPath = typeof path === "string" ? path.trim() : "";
-    if (!targetPath) return;
-    closeRecentFolders();
-    const activeTabId = activeTab?.tabId ?? "";
-    if (!activeTabId) return;
+    if (!tabId || !targetPath) return false;
 
     try {
-      await workspaceActions.handleOpenFolderInCurrentTab(activeTabId, targetPath);
-      return;
+      await workspaceActions.handleOpenFolderInCurrentTab(tabId, targetPath);
+      void refreshRecentFolders({ notifyOnError: false });
+      return true;
     } catch (error) {
       const message = getErrorMessage(error);
       if (message === "Folder does not exist.") {
@@ -385,20 +390,23 @@ function App() {
           ...state,
           entries: state.entries.filter((entry) => entry.path !== targetPath),
         }));
-        return;
+        return false;
       }
+
       pushNotification?.({
         title: "Failed to open folder",
         message,
         tone: "error",
       });
+      return false;
     }
-  }, [
-    activeTab?.tabId,
-    closeRecentFolders,
-    pushNotification,
-    workspaceActions,
-  ]);
+  }, [pushNotification, refreshRecentFolders, workspaceActions]);
+  const handleRecentFolderSelect = useCallback((path) => {
+    closeRecentFolders();
+    const activeTabId = activeTab?.tabId ?? "";
+    if (!activeTabId) return;
+    void openFolderInCurrentTabViaRecentFlow(activeTabId, path);
+  }, [activeTab?.tabId, closeRecentFolders, openFolderInCurrentTabViaRecentFlow]);
   useEffect(() => {
     const handleKeyDown = (event) => {
       if (event.defaultPrevented || event.repeat) return;
@@ -425,6 +433,9 @@ function App() {
     closeCommandPalette();
     closeRecentFolders();
   }, [activeNotification, closeCommandPalette, closeContextMenu, closeRecentFolders]);
+  useEffect(() => {
+    void refreshRecentFolders({ notifyOnError: false });
+  }, [activeTab?.tabId, activeTab?.terminalCwdHint, refreshRecentFolders]);
 
   if (!currentWindow || !activeTab) {
     return <main className={styles.appShell}>
@@ -465,6 +476,9 @@ function App() {
           <WorkspacePanelLayout
             tab={activeTab}
             cwdHint={activeTab.terminalCwdHint ?? ""}
+            recentFoldersEntries={recentFoldersState.entries}
+            recentFoldersLoading={recentFoldersState.isLoading}
+            onOpenFolderInCurrentTab={openFolderInCurrentTabViaRecentFlow}
             onCurrentPathChange={workspaceActions.handleSetTabCwdHint}
             onFilesystemStateChange={workspaceActions.handleSetPaneFilesystemState}
             onTabSelectedFilesChange={handleTabSelectedFilesChange}

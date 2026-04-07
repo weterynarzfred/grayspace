@@ -8,6 +8,37 @@
   gap: 0.25rem;
 }
 
+.breadcrumbStack {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.breadcrumbRow {
+  cursor: text;
+}
+
+.pathForm {
+  margin: 0;
+}
+
+.pathInput {
+  display: block;
+  width: 100%;
+  background: $bg-surface;
+  color: $text-primary;
+  padding: 0.2rem 0.45rem;
+  height: 100%;
+  font-size: $font-size-small;
+  font-family: $font-mono;
+  outline: none;
+
+  &:focus {
+    border-color: $accent-active;
+  }
+}
+
 .crumbButton {
   display: inline-flex;
   align-items: center;
@@ -25,4 +56,59 @@
 
 .dropTarget {
   @include drop-target-outline;
+}
+
+.recentFolderList {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background: $bg-surface;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  max-height: 10rem;
+  overflow: auto;
+  z-index: 1;
+}
+
+.recentFolderItem {
+  list-style: none;
+}
+
+.recentFolderButton {
+  @include popover-action-button;
+}
+
+.recentFolderButton:hover,
+.recentFolderButtonSelected {
+  @include popover-action-button-active;
+}
+
+.recentFolderPath {
+  color: $text-primary;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentFolderPathWorkspace {
+  color: $text-accent-2;
+}
+
+.recentFolderDate {
+  color: $text-secondary;
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+  flex-shrink: 0;
+}
+
+.recentFolderEmpty {
+  border: 1px solid $border-secondary;
+  padding: 0.28rem 0.4rem;
+  font-size: $font-size-small;
+  color: $text-secondary;
 }

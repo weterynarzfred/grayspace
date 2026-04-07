@@ -136,7 +136,7 @@ npm run tauri_dev
   * [x] system integration
 * [x] undo (ctrl+z)
 * [x] keyboard navigation
-* [ ] path input / navigation
+* [x] path input / navigation
 * [ ] back/forward history
 * [ ] search + filtering
 * [ ] "open with"

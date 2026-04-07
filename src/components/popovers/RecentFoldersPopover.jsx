@@ -1,23 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import FloatingPopover from "./FloatingPopover";
+import {
+  formatRecentFolderOpenedAtLabel,
+  normalizeRecentFolderEntries,
+} from "./recentFoldersShared";
 import styles from "./RecentFoldersPopover.module.scss";
-
-function formatOpenedAtLabel(timestamp) {
-  const openedAtMs = Number.isFinite(timestamp) ? timestamp : 0;
-  if (openedAtMs <= 0) return "";
-  return new Date(openedAtMs).toISOString().slice(0, 10);
-}
-
-function normalizeEntries(entries = []) {
-  return entries
-    .filter((entry) => typeof entry?.path === "string" && entry.path.trim())
-    .map((entry) => ({
-      path: entry.path.trim(),
-      openedAtMs: Number.isFinite(entry.openedAtMs) ? entry.openedAtMs : 0,
-      isWorkspace: entry.isWorkspace === true,
-      searchText: entry.path.trim().toLowerCase(),
-    }));
-}
 
 function RecentFoldersPopover({
   open = false,
@@ -31,7 +18,7 @@ function RecentFoldersPopover({
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
-  const normalizedEntries = useMemo(() => normalizeEntries(entries), [entries]);
+  const normalizedEntries = useMemo(() => normalizeRecentFolderEntries(entries), [entries]);
   const visibleEntries = normalizedEntries;
 
   useEffect(() => {
@@ -113,7 +100,7 @@ function RecentFoldersPopover({
           >
             {entry.path}
           </span>
-          <span className={styles.entryDate}>{formatOpenedAtLabel(entry.openedAtMs)}</span>
+          <span className={styles.entryDate}>{formatRecentFolderOpenedAtLabel(entry.openedAtMs)}</span>
         </button>
       </li>)}
       {visibleEntries.length === 0 && !isLoading ? <li className={styles.emptyRow}>No recent folders.</li> : null}

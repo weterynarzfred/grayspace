@@ -47,11 +47,14 @@ function FilesystemPanel({
   paneId = "",
   panelType = "Filesystem",
   tabWorkspaceRoot = "",
+  onOpenFolderInCurrentTab = undefined,
   onPanelTypeChange = undefined,
   onCurrentPathChange = undefined,
   onFilesystemStateChange = undefined,
   onTabSelectedFilesChange = undefined,
   filesystemState = undefined,
+  recentFoldersEntries = [],
+  recentFoldersLoading = false,
 }) {
   const panelRef = useRef(null);
   const panelScrollRef = useRef(null);
@@ -381,6 +384,23 @@ function FilesystemPanel({
     if (!await confirmWorkspaceExitIfNeeded(nextPath)) return;
     navigateToPath(nextPath);
   }, [confirmWorkspaceExitIfNeeded, navigateToPath]);
+  const handleOpenFolderViaRecentSelection = useCallback(async (nextPath) => {
+    const normalizedPath = typeof nextPath === "string" ? nextPath.trim() : "";
+    if (!normalizedPath) return;
+
+    if (typeof onOpenFolderInCurrentTab === "function") {
+      await onOpenFolderInCurrentTab(tabId, normalizedPath);
+      return;
+    }
+
+    if (!await confirmWorkspaceExitIfNeeded(normalizedPath)) return;
+    navigateToPath(normalizedPath);
+  }, [
+    confirmWorkspaceExitIfNeeded,
+    navigateToPath,
+    onOpenFolderInCurrentTab,
+    tabId,
+  ]);
   const handleGoUpDoubleClick = useCallback(async () => {
     if (!await confirmWorkspaceExitIfNeeded(upDestinationPath)) return;
     navigateToPath(upDestinationPath);
@@ -608,10 +628,18 @@ function FilesystemPanel({
           currentPath,
           currentDrive,
           onSelect: handleBreadcrumbSelect,
+          onPathSubmit: path => {
+            void handleOpenFolderViaRecentSelection(path);
+          },
           activeDragPaths: effectiveActiveDragPaths,
           isMovingEntry,
           getDropIdForPath: dnd.getBreadcrumbDropId,
           workspaceFolderPathSet,
+          recentFoldersEntries,
+          isLoadingRecentFolders: recentFoldersLoading,
+          onSelectRecentFolder: path => {
+            void handleOpenFolderViaRecentSelection(path);
+          },
         }}
         upEntry={{
           destinationPath: upDestinationPath,

@@ -33,4 +33,118 @@ describe("Breadcrumbs", () => {
       { label: "docs", path: "C:\\Users\\alice\\docs" },
     ]);
   });
+
+  it("switches to path input when clicking breadcrumb row background", () => {
+    render(<Breadcrumbs currentPath={"C:\\Users"} currentDrive={"C:\\"} onSelect={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+
+    expect(screen.getByRole("textbox", { name: "Current folder path" })).toBeInTheDocument();
+  });
+
+  it("submits edited path with onPathSubmit callback", () => {
+    const handlePathSubmit = vi.fn();
+
+    render(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={vi.fn()}
+        onPathSubmit={handlePathSubmit}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    fireEvent.change(pathInput, { target: { value: "C:\\Temp" } });
+    fireEvent.submit(pathInput.closest("form"));
+
+    expect(handlePathSubmit).toHaveBeenCalledWith("C:\\Temp");
+  });
+
+  it("collapses path input on blur when path is unchanged", () => {
+    render(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    fireEvent.blur(pathInput);
+
+    expect(screen.queryByRole("textbox", { name: "Current folder path" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Current path" })).toBeInTheDocument();
+  });
+
+  it("keeps path input open on blur when path was changed", () => {
+    render(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    fireEvent.change(pathInput, { target: { value: "C:\\Temp" } });
+    fireEvent.blur(pathInput);
+
+    expect(screen.getByRole("textbox", { name: "Current folder path" })).toBeInTheDocument();
+  });
+
+  it("shows recent folders and selects one when clicked", () => {
+    const handleRecentSelect = vi.fn();
+
+    render(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={vi.fn()}
+        recentFoldersEntries={[
+          { path: "C:\\Users", openedAtMs: 1710806400000, isWorkspace: false },
+          { path: "D:\\Work", openedAtMs: 1710892800000, isWorkspace: true },
+        ]}
+        onSelectRecentFolder={handleRecentSelect}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /D:\\Work/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    fireEvent.focus(pathInput);
+    fireEvent.click(screen.getByRole("button", { name: /D:\\Work/i }));
+
+    expect(handleRecentSelect).toHaveBeenCalledWith("D:\\Work");
+  });
+
+  it("browses recent folder suggestions with arrow keys and mirrors value in input", () => {
+    render(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={vi.fn()}
+        recentFoldersEntries={[
+          { path: "C:\\Users", openedAtMs: 1710806400000, isWorkspace: false },
+          { path: "D:\\Work", openedAtMs: 1710892800000, isWorkspace: true },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    pathInput.focus();
+
+    fireEvent.keyDown(pathInput, { key: "ArrowDown" });
+    expect(pathInput).toHaveValue("C:\\Users");
+
+    fireEvent.keyDown(pathInput, { key: "ArrowDown" });
+    expect(pathInput).toHaveValue("D:\\Work");
+
+    fireEvent.keyDown(pathInput, { key: "ArrowUp" });
+    expect(pathInput).toHaveValue("C:\\Users");
+  });
 });

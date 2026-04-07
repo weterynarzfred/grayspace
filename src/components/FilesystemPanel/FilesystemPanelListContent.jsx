@@ -33,10 +33,14 @@ export default function FilesystemPanelListContent({
     currentPath = "",
     currentDrive = "",
     onSelect: onBreadcrumbSelect = undefined,
+    onPathSubmit: onBreadcrumbPathSubmit = undefined,
     activeDragPaths = [],
     isMovingEntry = false,
     getDropIdForPath: getBreadcrumbDropId = undefined,
     workspaceFolderPathSet = new Set(),
+    recentFoldersEntries = [],
+    isLoadingRecentFolders = false,
+    onSelectRecentFolder = undefined,
   } = breadcrumbs;
   const {
     destinationPath: upDestinationPath = "",
@@ -103,10 +107,14 @@ export default function FilesystemPanelListContent({
         currentPath={currentPath}
         currentDrive={currentDrive}
         onSelect={onBreadcrumbSelect}
+        onPathSubmit={onBreadcrumbPathSubmit}
         activeDragPaths={activeDragPaths}
         isMovingEntry={isMovingEntry}
         getDropIdForPath={getBreadcrumbDropId}
         workspaceFolderPathSet={workspaceFolderPathSet}
+        recentFoldersEntries={recentFoldersEntries}
+        isLoadingRecentFolders={isLoadingRecentFolders}
+        onSelectRecentFolder={onSelectRecentFolder}
       />
 
       {!isLoadingEntries && !error && <ul className={styles.entryList}>
