@@ -74,14 +74,45 @@ export default function useFilesystemPanelInteractions({
     return drivePaths.filter((path) => typeof path === "string" && path);
   }, [drivePaths, isBrowsing, treeData.entryPaths]);
 
+  const runInternalDropTransfer = useCallback(async ({
+    sourcePaths = [],
+    destinationDir = "",
+    shouldCopy = false,
+  } = {}) => {
+    const normalizedSourcePaths = uniqueNonEmptyPaths(sourcePaths);
+    if (!destinationDir || normalizedSourcePaths.length === 0) return;
+
+    if (shouldCopy) {
+      await copyEntries(normalizedSourcePaths, destinationDir);
+      return;
+    }
+
+    await moveEntries(normalizedSourcePaths, destinationDir);
+  }, [copyEntries, moveEntries]);
+
+  const runExternalDropTransfer = useCallback(async ({
+    sourcePaths = [],
+    destinationDir = "",
+    shouldCopy = true,
+  } = {}) => {
+    const normalizedSourcePaths = uniqueNonEmptyPaths(sourcePaths);
+    if (!destinationDir || normalizedSourcePaths.length === 0) return;
+
+    if (shouldCopy) {
+      await importExternalPaths(normalizedSourcePaths, destinationDir);
+      return;
+    }
+
+    await moveEntries(normalizedSourcePaths, destinationDir);
+  }, [importExternalPaths, moveEntries]);
+
   const dnd = useFilesystemDnd({
     paneId,
     entries: treeData.entries,
     entryParentByPath: treeData.entryParentByPath,
     selectedPaths: selectedEntryPaths,
     isMovingEntry: isEntryOperationInProgress,
-    moveEntries,
-    copyEntries,
+    onDropTransfer: runInternalDropTransfer,
   });
 
   const handleExternalDragStateChange = useCallback((dragState) => {
@@ -103,13 +134,26 @@ export default function useFilesystemPanelInteractions({
       currentPath,
     );
     const matchingInternalDragPaths = dnd.consumeMatchingExternalDragSourcePaths(droppedPaths);
+    const dropEffect = typeof context.dropEffect === "string"
+      ? context.dropEffect.toLowerCase()
+      : "";
+    const shouldCopyInternal = context.ctrlKey === true || dropEffect === "copy";
+    const shouldCopyExternal = !(context.shiftKey === true || dropEffect === "move");
     setExternalDropDestinationPath("");
     if (matchingInternalDragPaths.length > 0) {
-      await moveEntries(matchingInternalDragPaths, destinationDir);
+      await runInternalDropTransfer({
+        sourcePaths: matchingInternalDragPaths,
+        destinationDir,
+        shouldCopy: shouldCopyInternal,
+      });
       return;
     }
-    await importExternalPaths(droppedPaths, destinationDir);
-  }, [currentPath, dnd, importExternalPaths, moveEntries]);
+    await runExternalDropTransfer({
+      sourcePaths: droppedPaths,
+      destinationDir,
+      shouldCopy: shouldCopyExternal,
+    });
+  }, [currentPath, dnd, runExternalDropTransfer, runInternalDropTransfer]);
 
   const { isExternalDragOver } = useExternalPathDrop({
     panelRef,
@@ -120,6 +164,7 @@ export default function useFilesystemPanelInteractions({
 
   useExternalFilesystemDrag({
     dragPaths: dnd.externalDragPaths,
+    dragMode: dnd.externalDragMode,
     isEnabled: isExternalDragEnabled,
     onExternalDragStart: dnd.markExternalDragStart,
     onExternalDragError: dnd.clearExternalDragStart,

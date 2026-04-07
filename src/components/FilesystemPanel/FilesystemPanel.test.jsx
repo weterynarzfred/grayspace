@@ -1259,6 +1259,7 @@ describe("FilesystemPanel", () => {
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
         paths: ["C:\\notes.txt"],
+        mode: "move",
       });
     });
     cursorPosition.mockResolvedValue({ x: 100, y: 100 });
@@ -1273,6 +1274,30 @@ describe("FilesystemPanel", () => {
       destinationDir: "C:\\Users",
     });
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+  });
+
+  it("starts an external drag in move mode when Shift is held", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof dndCallbacks.onDragStart).toBe("function");
+    });
+
+    cursorPosition.mockResolvedValue({ x: 900, y: 900 });
+    dndCallbacks.onDragStart?.({
+      active: { id: "entry:C:\\notes.txt" },
+      activatorEvent: { shiftKey: true, ctrlKey: false },
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("start_external_drag", {
+        paths: ["C:\\notes.txt"],
+        mode: "move",
+      });
+    });
   });
 
   it("moves internal files when an external drag returns and drops back into the panel", async () => {
@@ -1292,6 +1317,7 @@ describe("FilesystemPanel", () => {
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
         paths: ["C:\\notes.txt"],
+        mode: "move",
       });
     });
 
@@ -1354,6 +1380,7 @@ describe("FilesystemPanel", () => {
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
         paths: ["C:\\notes.txt"],
+        mode: "move",
       });
     });
 
@@ -1421,6 +1448,7 @@ describe("FilesystemPanel", () => {
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
         paths: ["C:\\notes.txt"],
+        mode: "move",
       });
     });
     cursorPosition.mockResolvedValue({ x: 100, y: 100 });
@@ -1812,6 +1840,59 @@ describe("FilesystemPanel", () => {
     });
 
     expect(await screen.findByText("clip.mp4")).toBeInTheDocument();
+  });
+
+  it("moves externally dropped files when Shift is held", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    await waitFor(() => {
+      expect(typeof externalDropCallback).toBe("function");
+      expect(screen.getByRole("button", { name: /Users/i })).toBeInTheDocument();
+    });
+
+    const panel = screen.getByLabelText("Filesystem panel");
+    panel.getBoundingClientRect = () => ({
+      left: 0,
+      top: 0,
+      right: 500,
+      bottom: 500,
+      width: 500,
+      height: 500,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const usersButton = screen.getByRole("button", { name: /Users/i });
+    const originalElementFromPoint = document.elementFromPoint;
+    document.elementFromPoint = vi.fn(() => usersButton);
+    fireEvent.keyDown(window, { key: "Shift", shiftKey: true });
+    try {
+      await externalDropCallback?.({
+        payload: {
+          type: "drop",
+          paths: ["C:\\notes.txt"],
+          position: { x: 100, y: 100 },
+        },
+      });
+    } finally {
+      fireEvent.keyUp(window, { key: "Shift", shiftKey: false });
+      document.elementFromPoint = originalElementFromPoint;
+    }
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("move_path", {
+        source: "C:\\notes.txt",
+        destinationDir: "C:\\Users",
+      });
+    });
+    expect(invoke).not.toHaveBeenCalledWith("import_paths", {
+      paths: ["C:\\notes.txt"],
+      destinationDir: "C:\\Users",
+    });
   });
 
   it("imports external files into a hovered folder row", async () => {

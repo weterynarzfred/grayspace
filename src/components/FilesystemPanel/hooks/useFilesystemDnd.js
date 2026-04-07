@@ -37,13 +37,13 @@ function useFilesystemDnd({
   entryParentByPath = {},
   selectedPaths,
   isMovingEntry,
-  moveEntries,
-  copyEntries,
+  onDropTransfer = undefined,
 }) {
   const [activeDragPaths, setActiveDragPaths] = useState([]);
   const [ownedDragPaths, setOwnedDragPaths] = useState([]);
   const [activeDropDestinationPath, setActiveDropDestinationPath] = useState("");
   const [isCopyIntent, setIsCopyIntent] = useState(false);
+  const [externalDragMode, setExternalDragMode] = useState("move");
   const externalDragStartedRef = useRef(false);
   const pendingExternalDragSourcePathsRef = useRef([]);
   const pendingExternalDragStartedAtMsRef = useRef(0);
@@ -90,16 +90,19 @@ function useFilesystemDnd({
     const initialCopyIntent = Boolean(initialCtrlKey);
     copyModifierPressedRef.current = initialCopyIntent;
     setIsCopyIntent(initialCopyIntent);
+    setExternalDragMode(initialCopyIntent ? "copy" : "move");
     if (typeof window === "undefined") return;
 
     const updateModifier = (event) => {
-      const nextCopyIntent = Boolean(event?.ctrlKey);
+      const nextCopyIntent = Boolean(event.ctrlKey);
       copyModifierPressedRef.current = nextCopyIntent;
       setIsCopyIntent(nextCopyIntent);
+      setExternalDragMode(nextCopyIntent ? "copy" : "move");
     };
     const clearModifier = () => {
       copyModifierPressedRef.current = false;
       setIsCopyIntent(false);
+      setExternalDragMode("move");
     };
 
     window.addEventListener("keydown", updateModifier, true);
@@ -119,6 +122,7 @@ function useFilesystemDnd({
     modifierTrackingCleanupRef.current = null;
     copyModifierPressedRef.current = false;
     setIsCopyIntent(false);
+    setExternalDragMode("move");
   }
 
   useEffect(() => {
@@ -147,11 +151,10 @@ function useFilesystemDnd({
   }
 
   function resolveDragSourcePaths(sourcePath) {
-    const entryPathSet = new Set(entries.map((entry) => entry.path));
-    if (!sourcePath || !entryPathSet.has(sourcePath)) return [];
+    if (!sourcePath || !entryByPath.has(sourcePath)) return [];
 
     const normalizedSelection = uniqueNonEmptyPaths(selectedPaths).filter(
-      (path) => entryPathSet.has(path),
+      (path) => entryByPath.has(path),
     );
     if (!normalizedSelection.includes(sourcePath)) return [sourcePath];
     return normalizedSelection;
@@ -295,11 +298,11 @@ function useFilesystemDnd({
     if (isMovingEntry || actionableSourcePaths.length === 0 || !canDropIntoDestination) return;
 
     try {
-      if (shouldCopy && typeof copyEntries === "function") {
-        await copyEntries(actionableSourcePaths, destinationDir);
-      } else {
-        await moveEntries(actionableSourcePaths, destinationDir);
-      }
+      await onDropTransfer?.({
+        sourcePaths: actionableSourcePaths,
+        destinationDir,
+        shouldCopy,
+      });
     } catch {
       // Entry operations handle user-facing notifications on failure.
     }
@@ -355,6 +358,7 @@ function useFilesystemDnd({
     activeDragPaths,
     activeDropDestinationPath,
     isCopyIntent,
+    externalDragMode,
     externalDragPaths: ownedDragPaths,
     getBreadcrumbDropId: getBreadcrumbDndId,
     getPanelDropId: getPanelDndId,

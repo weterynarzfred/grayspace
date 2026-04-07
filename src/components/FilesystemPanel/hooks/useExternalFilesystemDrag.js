@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { cursorPosition, getCurrentWindow } from "@tauri-apps/api/window";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 
 const DRAG_OUT_POLL_INTERVAL_MS = 80;
@@ -20,100 +20,80 @@ function isCursorOutsideWindow(cursor, windowPosition, windowSize) {
 
 function useExternalFilesystemDrag({
   dragPaths = [],
+  dragMode = "copy",
   isEnabled = false,
   onExternalDragStart = undefined,
   onExternalDragError = undefined,
 }) {
-  const isEnabledRef = useRef(isEnabled);
-  const onExternalDragStartRef = useRef(onExternalDragStart);
-  const onExternalDragErrorRef = useRef(onExternalDragError);
-
-  isEnabledRef.current = isEnabled;
-  onExternalDragStartRef.current = onExternalDragStart;
-  onExternalDragErrorRef.current = onExternalDragError;
-
   useEffect(() => {
     const normalizedPaths = uniqueNonEmptyPaths(dragPaths);
-    if (!isEnabled || normalizedPaths.length === 0) {
-      return undefined;
-    }
+    if (!isEnabled || normalizedPaths.length === 0) return undefined;
 
     const appWindow = getCurrentWindow();
-    let pollTimeoutId = null;
     let isDisposed = false;
-    let isCheckingCursor = false;
+    let isPolling = false;
     let didStartExternalDrag = false;
     let outsideSinceMs = null;
+    const normalizedMode = dragMode === "move" ? "move" : "copy";
 
     async function startExternalDrag() {
-      if (!isEnabledRef.current || didStartExternalDrag) return;
+      if (didStartExternalDrag) return;
 
       didStartExternalDrag = true;
-      onExternalDragStartRef.current?.(normalizedPaths);
+      onExternalDragStart?.(normalizedPaths);
 
       try {
-        await invoke("start_external_drag", { paths: normalizedPaths });
+        await invoke("start_external_drag", {
+          paths: normalizedPaths,
+          mode: normalizedMode,
+        });
       } catch (dragError) {
         didStartExternalDrag = false;
-        onExternalDragErrorRef.current?.(dragError);
+        onExternalDragError?.(dragError);
       }
     }
 
-    function markOutside() {
-      if (outsideSinceMs === null) outsideSinceMs = Date.now();
-    }
+    async function pollCursor() {
+      if (isDisposed || didStartExternalDrag || isPolling) return;
+      isPolling = true;
 
-    function markInside() {
-      outsideSinceMs = null;
-    }
+      try {
+        const [cursor, windowPosition, windowSize] = await Promise.all([
+          cursorPosition(),
+          appWindow.innerPosition(),
+          appWindow.innerSize(),
+        ]);
 
-    function scheduleCursorCheck() {
-      if (isDisposed || didStartExternalDrag) return;
-
-      pollTimeoutId = setTimeout(async () => {
-        if (isDisposed || didStartExternalDrag || isCheckingCursor || !isEnabledRef.current) {
-          scheduleCursorCheck();
-          return;
+        const isOutsideWindow = isCursorOutsideWindow(cursor, windowPosition, windowSize);
+        if (isOutsideWindow) {
+          if (outsideSinceMs === null) outsideSinceMs = Date.now();
+        } else {
+          outsideSinceMs = null;
         }
 
-        isCheckingCursor = true;
-        try {
-          const [cursor, windowPosition, windowSize] = await Promise.all([
-            cursorPosition(),
-            appWindow.innerPosition(),
-            appWindow.innerSize(),
-          ]);
-
-          const isOutsideWindow = isCursorOutsideWindow(cursor, windowPosition, windowSize);
-          if (isOutsideWindow) {
-            markOutside();
-          } else {
-            markInside();
-          }
-
-          if (
-            isOutsideWindow
-            && outsideSinceMs !== null
-            && Date.now() - outsideSinceMs >= DRAG_OUT_GRACE_PERIOD_MS
-          ) {
-            await startExternalDrag();
-          }
-        } catch {
-          // Best effort; keep polling.
-        } finally {
-          isCheckingCursor = false;
+        if (
+          isOutsideWindow
+          && outsideSinceMs !== null
+          && Date.now() - outsideSinceMs >= DRAG_OUT_GRACE_PERIOD_MS
+        ) {
+          await startExternalDrag();
         }
-
-        scheduleCursorCheck();
-      }, DRAG_OUT_POLL_INTERVAL_MS);
+      } catch {
+        // Best effort.
+      } finally {
+        isPolling = false;
+      }
     }
 
-    scheduleCursorCheck();
+    const intervalId = setInterval(() => {
+      void pollCursor();
+    }, DRAG_OUT_POLL_INTERVAL_MS);
+
     return () => {
       isDisposed = true;
-      if (pollTimeoutId) clearTimeout(pollTimeoutId);
+      clearInterval(intervalId);
     };
-  }, [dragPaths, isEnabled]);
+  }, [dragMode, dragPaths, isEnabled, onExternalDragError, onExternalDragStart]);
 }
 
 export default useExternalFilesystemDrag;
