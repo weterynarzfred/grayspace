@@ -5,6 +5,7 @@ use tauri::Manager;
 use commands::filesystem::{
   create_folder, create_text_file,
   delete_paths, filesystem_get_properties, filesystem_watch_start, filesystem_watch_stop,
+  filesystem_clipboard_get, filesystem_clipboard_set,
   filesystem_resolve_workspace_folders, handle_filesystem_window_destroyed, import_paths,
   keyboard_modifier_state,
   list_directory, list_directory_page, list_drives, move_path, open_path, parent_path,
@@ -69,6 +70,8 @@ pub fn run() {
       create_folder,
       delete_paths,
       import_paths,
+      filesystem_clipboard_set,
+      filesystem_clipboard_get,
       preview_read_file,
       preview_write_text_file,
       thumbnail_resolve_batch,

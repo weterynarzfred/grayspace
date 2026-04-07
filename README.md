@@ -69,9 +69,6 @@ npm run tauri_dev
 
 ### planned (inactive)
 
-* `Ctrl+C` copy selected entries
-* `Ctrl+X` cut selected entries
-* `Ctrl+V` paste entries
 * `Ctrl+Space` toggle active pane maximize
 * `F2` (multiple selection) bulk rename
 * `Ctrl+F` filter current folder
@@ -135,8 +132,8 @@ npm run tauri_dev
   * [ ] maybe try integrating providers through the Windows shell?
 * [x] rename (F2)
   * [ ] bulk rename
-* [ ] cut / copy / paste
-  * [ ] system integration
+* [x] cut / copy / paste
+  * [x] system integration
 * [x] undo (ctrl+z)
 * [x] keyboard navigation
 * [ ] path input / navigation

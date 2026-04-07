@@ -77,6 +77,10 @@ function isFilesystemTreeFolderContextTarget(context) {
   return context?.targetType === "folder" && context?.targetScope === "tree-entry";
 }
 
+function isFilesystemPasteContextTarget(context) {
+  return isFilesystemTreeFolderContextTarget(context) || isFilesystemPanelContextTarget(context);
+}
+
 function isFilesystemBrowsing(context) {
   return context?.isFilesystemBrowsing === true;
 }
@@ -401,39 +405,62 @@ export const COMMANDS = [
     id: COMMAND_IDS.FILESYSTEM_COPY,
     title: "Copy Selected Entries",
     shortcut: "Ctrl+C",
-    triggers: [],
+    triggers: ["shortcut", "palette", "context-menu"],
     scope: "filesystem",
-    state: "planned",
-    whenText: "activePanelType === \"Filesystem\" && isFilesystemBrowsing && hasSelectedEntries()",
-    when: (context) => (
-      isFilesystemPanelActive(context)
-      && isFilesystemBrowsing(context)
-      && hasSelectedEntries(context)
-    ),
+    whenText: "((activePanelType === \"Filesystem\" && isFilesystemBrowsing) || ((targetType === \"file\" || targetType === \"folder\") && targetScope === \"tree-entry\")) && hasSelectedEntries()",
+    when: (context) => {
+      if (!isFilesystemCommandContext(context)) return false;
+      if (!hasSelectedEntries(context)) return false;
+      if (!isContextMenuSource(context)) return true;
+      return isFilesystemTreeEntryContextTarget(context);
+    },
+    shortcutMatcher: event =>
+      event.ctrlKey
+      && !event.shiftKey
+      && !event.altKey
+      && !event.metaKey
+      && event.key.toLowerCase() === "c",
   },
   {
     id: COMMAND_IDS.FILESYSTEM_CUT,
     title: "Cut Selected Entries",
     shortcut: "Ctrl+X",
-    triggers: [],
+    triggers: ["shortcut", "palette", "context-menu"],
     scope: "filesystem",
-    state: "planned",
-    whenText: "activePanelType === \"Filesystem\" && isFilesystemBrowsing && hasSelectedEntries()",
-    when: (context) => (
-      isFilesystemPanelActive(context)
-      && isFilesystemBrowsing(context)
-      && hasSelectedEntries(context)
-    ),
+    whenText: "((activePanelType === \"Filesystem\" && isFilesystemBrowsing) || ((targetType === \"file\" || targetType === \"folder\") && targetScope === \"tree-entry\")) && hasSelectedEntries()",
+    when: (context) => {
+      if (!isFilesystemCommandContext(context)) return false;
+      if (!hasSelectedEntries(context)) return false;
+      if (!isContextMenuSource(context)) return true;
+      return isFilesystemTreeEntryContextTarget(context);
+    },
+    shortcutMatcher: event =>
+      event.ctrlKey
+      && !event.shiftKey
+      && !event.altKey
+      && !event.metaKey
+      && event.key.toLowerCase() === "x",
   },
   {
     id: COMMAND_IDS.FILESYSTEM_PASTE,
     title: "Paste Entries",
     shortcut: "Ctrl+V",
-    triggers: [],
+    triggers: ["shortcut", "palette", "context-menu"],
     scope: "filesystem",
-    state: "planned",
-    whenText: "activePanelType === \"Filesystem\" && isFilesystemBrowsing",
-    when: context => isFilesystemPanelActive(context) && isFilesystemBrowsing(context),
+    whenText: "source === \"context-menu\" ? (isFilesystemBrowsing && (targetType === \"folder\" && targetScope === \"tree-entry\" || (targetType === \"panel\" && targetPanelType === \"Filesystem\"))) : (activePanelType === \"Filesystem\" && isFilesystemBrowsing)",
+    when: (context) => {
+      if (isContextMenuSource(context)) return (
+        isFilesystemBrowsing(context)
+        && isFilesystemPasteContextTarget(context)
+      );
+      return isFilesystemPanelActive(context) && isFilesystemBrowsing(context);
+    },
+    shortcutMatcher: event =>
+      event.ctrlKey
+      && !event.shiftKey
+      && !event.altKey
+      && !event.metaKey
+      && event.key.toLowerCase() === "v",
   },
   {
     id: COMMAND_IDS.PANE_TOGGLE_MAXIMIZE,

@@ -151,6 +151,23 @@ describe("executeCommand", () => {
     });
   });
 
+  it("dispatches filesystem clipboard command events", () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const context = { source: "context-menu", targetPaneId: "pane-1" };
+
+    const didExecute = executeCommand(COMMAND_IDS.FILESYSTEM_PASTE, { context });
+
+    expect(didExecute).toBe(true);
+    expect(dispatchSpy).toHaveBeenCalledTimes(1);
+
+    const [event] = dispatchSpy.mock.calls[0];
+    expect(event.type).toBe("grayspace-command");
+    expect(event.detail).toEqual({
+      commandId: COMMAND_IDS.FILESYSTEM_PASTE,
+      context,
+    });
+  });
+
   it("executes command-palette open callback", () => {
     const openCommandPalette = vi.fn();
 

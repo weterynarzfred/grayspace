@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { cursorPosition } from "@tauri-apps/api/window";
 import { useDroppable } from "@dnd-kit/core";
 import FilesystemPanel from "./FilesystemPanel";
+import { clearFilesystemClipboardState } from "./filesystemClipboardStore";
 import PanelsDndLayer from "../PanelsDndLayer";
 import { APP_COMMAND_EVENT } from "../../commands/commandEvents";
 import { runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
@@ -108,6 +109,7 @@ function renderFilesystemPanels(primaryProps = {}, secondaryProps = {}) {
 
 describe("FilesystemPanel", () => {
   beforeEach(() => {
+    clearFilesystemClipboardState();
     externalDropCallback = undefined;
     filesystemWatchCallback = undefined;
     dndCallbacks.onDragStart = undefined;
@@ -2617,6 +2619,232 @@ describe("FilesystemPanel", () => {
           path: "C:\\Temp",
         },
       });
+    });
+  });
+
+  it("copies selected entries and pastes them into the current folder from app command events", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-copy-paste",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.copy",
+        context: {
+          targetPaneId: "pane-event-copy-paste",
+        },
+      },
+    }));
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.paste",
+        context: {
+          targetPaneId: "pane-event-copy-paste",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("import_paths", {
+        paths: ["C:\\notes.txt"],
+        destinationDir: "C:\\",
+      });
+    });
+  });
+
+  it("pastes into the selected folder when one is selected", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-copy-paste-selected-folder",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.copy",
+        context: {
+          targetPaneId: "pane-event-copy-paste-selected-folder",
+        },
+      },
+    }));
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.click(usersButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.paste",
+        context: {
+          targetPaneId: "pane-event-copy-paste-selected-folder",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("import_paths", {
+        paths: ["C:\\notes.txt"],
+        destinationDir: "C:\\Users",
+      });
+    });
+  });
+
+  it("pastes next to the selected file when no folder is selected", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-copy-paste-selected-file-neighbor",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.copy",
+        context: {
+          targetPaneId: "pane-event-copy-paste-selected-file-neighbor",
+        },
+      },
+    }));
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    expect(usersExpander).toBeTruthy();
+    fireEvent.click(usersExpander);
+
+    const todoButton = await screen.findByRole("button", { name: /todo\.txt/i });
+    fireEvent.click(todoButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.paste",
+        context: {
+          targetPaneId: "pane-event-copy-paste-selected-file-neighbor",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("import_paths", {
+        paths: ["C:\\notes.txt"],
+        destinationDir: "C:\\Users",
+      });
+    });
+  });
+
+  it("uses context selection for copy commands", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-copy-context-selection",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.copy",
+        context: {
+          source: "context-menu",
+          targetPaneId: "pane-event-copy-context-selection",
+          targetType: "file",
+          targetScope: "tree-entry",
+          selectedPaths: ["C:\\draft.md"],
+        },
+      },
+    }));
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.paste",
+        context: {
+          targetPaneId: "pane-event-copy-context-selection",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("import_paths", {
+        paths: ["C:\\draft.md"],
+        destinationDir: "C:\\",
+      });
+    });
+  });
+
+  it("cuts selected entries, pastes into folder context target, and clears cut clipboard", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-cut-paste",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.cut",
+        context: {
+          targetPaneId: "pane-event-cut-paste",
+        },
+      },
+    }));
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.paste",
+        context: {
+          source: "context-menu",
+          targetPaneId: "pane-event-cut-paste",
+          targetType: "folder",
+          targetScope: "tree-entry",
+          targetPath: "C:\\Users",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("move_path", {
+        source: "C:\\notes.txt",
+        destinationDir: "C:\\Users",
+      });
+    });
+
+    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+      detail: {
+        commandId: "filesystem.paste",
+        context: {
+          source: "context-menu",
+          targetPaneId: "pane-event-cut-paste",
+          targetType: "folder",
+          targetScope: "tree-entry",
+          targetPath: "C:\\Users",
+        },
+      },
+    }));
+
+    await waitFor(() => {
+      const moveCalls = invoke.mock.calls.filter(([command, args]) => (
+        command === "move_path"
+        && args?.source === "C:\\notes.txt"
+        && args?.destinationDir === "C:\\Users"
+      ));
+      expect(moveCalls).toHaveLength(1);
     });
   });
 

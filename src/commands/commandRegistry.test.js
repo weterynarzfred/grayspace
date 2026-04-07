@@ -181,12 +181,13 @@ describe("commandRegistry", () => {
     expect(getCommandIds(shortcutCommands)).toContain("tab.switch.next");
     expect(getCommandIds(shortcutCommands)).toContain("filesystem.createTextFile");
     expect(getCommandIds(shortcutCommands)).toContain("filesystem.createFolder");
-    expect(getCommandIds(shortcutCommands)).not.toContain("filesystem.copy");
+    expect(getCommandIds(shortcutCommands)).toContain("filesystem.copy");
+    expect(getCommandIds(shortcutCommands)).toContain("filesystem.cut");
+    expect(getCommandIds(shortcutCommands)).toContain("filesystem.paste");
   });
 
   it("keeps planned commands listed in the registry", () => {
     const commandIds = COMMANDS.map(command => command.id);
-    expect(commandIds).toContain("filesystem.copy");
     expect(commandIds).toContain("workspace.runScript");
   });
 
@@ -213,6 +214,66 @@ describe("commandRegistry", () => {
       key: "n",
       ctrlKey: true,
       shiftKey: true,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+  });
+
+  it("shows paste in filesystem panel and folder context targets while browsing", () => {
+    const panelTargetCommands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "panel",
+      targetPanelType: "Filesystem",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: [],
+    });
+    const folderTargetCommands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "folder",
+      targetScope: "tree-entry",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\Users"],
+    });
+    const fileTargetCommands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "file",
+      targetScope: "tree-entry",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\notes.txt"],
+    });
+
+    expect(getCommandIds(panelTargetCommands)).toContain("filesystem.paste");
+    expect(getCommandIds(folderTargetCommands)).toContain("filesystem.paste");
+    expect(getCommandIds(fileTargetCommands)).not.toContain("filesystem.paste");
+  });
+
+  it("maps copy, cut, and paste shortcuts to ctrl+c/x/v", () => {
+    expect(isCommandShortcutMatch("filesystem.copy", {
+      key: "c",
+      ctrlKey: true,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+
+    expect(isCommandShortcutMatch("filesystem.cut", {
+      key: "x",
+      ctrlKey: true,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+
+    expect(isCommandShortcutMatch("filesystem.paste", {
+      key: "v",
+      ctrlKey: true,
+      shiftKey: false,
       altKey: false,
       metaKey: false,
     })).toBe(true);

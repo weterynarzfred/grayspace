@@ -17,8 +17,20 @@ import useFilesystemTree from "./hooks/useFilesystemTree";
 import useFilesystemWorkspaceFolders from "./hooks/useFilesystemWorkspaceFolders";
 import useVirtualizedEntryWindow from "./hooks/useVirtualizedEntryWindow";
 import useFilesystemPanelLoadMore from "./hooks/useFilesystemPanelLoadMore";
+import {
+  clearFilesystemClipboard,
+  readFilesystemClipboard,
+  writeFilesystemClipboard,
+} from "./filesystemClipboardApi";
+import {
+  clearFilesystemClipboardState,
+  getFilesystemClipboardState,
+  setFilesystemClipboardState,
+} from "./filesystemClipboardStore";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
 import isEditableKeyboardTarget from "../../utils/isEditableKeyboardTarget";
+import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
+import { getParentDirectoryPath, isSamePath } from "../../utils/pathWatch";
 import { COMMAND_IDS, isCommandShortcutMatch } from "../../commands/commandRegistry";
 import { APP_COMMAND_EVENT } from "../../commands/commandEvents";
 import executeCommand from "../../commands/executeCommand";
@@ -28,6 +40,7 @@ import shellStyles from "../PanelShell.module.scss";
 const UP_ENTRY_SELECTION_ID = "__up__";
 const ENTRY_WINDOWING_THRESHOLD = 200;
 const THUMBNAIL_SIZE_TOGGLE_TITLE = "Toggle icon/thumbnail size";
+const NON_ENTRY_SELECTION_IDS = new Set([UP_ENTRY_SELECTION_ID]);
 
 function FilesystemPanel({
   tabId = "",
@@ -149,6 +162,7 @@ function FilesystemPanel({
       .filter((path) => typeof path === "string" && path),
   });
   const {
+    treeData,
     selectedEntryPaths,
     selectedPathSet,
     selectedEntryPathSet,
@@ -240,6 +254,94 @@ function FilesystemPanel({
       },
     });
   }, [paneId]);
+  const resolveCommandSelectedEntryPaths = useCallback((commandContext = {}) => {
+    const contextSelectedPaths = uniqueNonEmptyPaths(commandContext?.selectedPaths)
+      .filter(path => !NON_ENTRY_SELECTION_IDS.has(path));
+    if (contextSelectedPaths.length > 0) return contextSelectedPaths;
+    return selectedEntryPaths;
+  }, [selectedEntryPaths]);
+  const handleClipboardSelectionCommand = useCallback((mode, commandContext = {}) => {
+    if (!isBrowsing || isEntryOperationInProgress) return false;
+    const selectedCommandPaths = resolveCommandSelectedEntryPaths(commandContext);
+    if (selectedCommandPaths.length === 0) return false;
+
+    setFilesystemClipboardState(mode, selectedCommandPaths);
+    void writeFilesystemClipboard(selectedCommandPaths, mode);
+    return true;
+  }, [
+    isBrowsing,
+    isEntryOperationInProgress,
+    resolveCommandSelectedEntryPaths,
+  ]);
+  const resolvePasteDestination = useCallback((commandContext = {}) => {
+    if (!currentPath) return "";
+    const selectedCommandPaths = resolveCommandSelectedEntryPaths(commandContext);
+    const selectedFolderPath = selectedCommandPaths.find((entryPath) => (
+      treeData.entryByPath[entryPath]?.is_dir === true
+    ));
+    const selectedFilePath = selectedCommandPaths.find((entryPath) => (
+      treeData.entryByPath[entryPath]?.is_dir === false
+    ));
+
+    if (
+      commandContext?.source === "context-menu"
+      && commandContext?.targetType === "folder"
+      && commandContext?.targetScope === "tree-entry"
+      && commandContext?.targetPath
+    ) {
+      return commandContext.targetPath;
+    }
+
+    if (selectedFolderPath) return selectedFolderPath;
+    if (selectedFilePath) return getParentDirectoryPath(selectedFilePath) || currentPath;
+
+    return currentPath;
+  }, [
+    currentPath,
+    resolveCommandSelectedEntryPaths,
+    treeData.entryByPath,
+  ]);
+  const handlePasteEntries = useCallback(async (commandContext = {}) => {
+    if (!isBrowsing || isEntryOperationInProgress) return false;
+
+    const systemClipboardState = await readFilesystemClipboard();
+    const localClipboardState = getFilesystemClipboardState();
+    const clipboardMode = systemClipboardState.mode || localClipboardState.mode;
+    const clipboardPaths = uniqueNonEmptyPaths([
+      ...(systemClipboardState.paths.length > 0 ? systemClipboardState.paths : []),
+      ...(systemClipboardState.paths.length === 0 ? localClipboardState.paths : []),
+    ]);
+    if (!clipboardMode || clipboardPaths.length === 0) return false;
+
+    const destinationDir = resolvePasteDestination(commandContext);
+    if (!destinationDir) return false;
+
+    if (clipboardMode === "copy") {
+      await copyEntries(clipboardPaths, destinationDir);
+      return true;
+    }
+
+    const actionableMovePaths = clipboardPaths.filter((sourcePath) => {
+      if (isSamePath(sourcePath, destinationDir)) return false;
+      const sourceParentPath = getParentDirectoryPath(sourcePath);
+      if (sourceParentPath && isSamePath(sourceParentPath, destinationDir)) return false;
+      return true;
+    });
+    if (actionableMovePaths.length === 0) return false;
+
+    await moveEntries(actionableMovePaths, destinationDir);
+    clearFilesystemClipboardState();
+    await clearFilesystemClipboard();
+    return true;
+  }, [
+    clearFilesystemClipboard,
+    copyEntries,
+    isBrowsing,
+    isEntryOperationInProgress,
+    moveEntries,
+    readFilesystemClipboard,
+    resolvePasteDestination,
+  ]);
   const resolveCreateCommandOptions = useCallback((commandContext = {}) => {
     if (commandContext?.source !== "context-menu") return {};
 
@@ -363,6 +465,18 @@ function FilesystemPanel({
         handleBeginRenameSelectedEntry();
         return;
       }
+      if (commandId === COMMAND_IDS.FILESYSTEM_COPY) {
+        handleClipboardSelectionCommand("copy", context);
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_CUT) {
+        handleClipboardSelectionCommand("cut", context);
+        return;
+      }
+      if (commandId === COMMAND_IDS.FILESYSTEM_PASTE) {
+        void handlePasteEntries(context);
+        return;
+      }
       if (commandId === COMMAND_IDS.FILESYSTEM_CREATE_TEXT_FILE) {
         void handleCreateTextFile(resolveCreateCommandOptions(context));
         return;
@@ -398,11 +512,13 @@ function FilesystemPanel({
     };
   }, [
     handleBeginRenameSelectedEntry,
+    handleClipboardSelectionCommand,
     handleCreateFolder,
     handleCreateTextFile,
     handleDeleteSelectedEntries,
     handleGoUpDoubleClick,
     handleOpenSelectedEntryInNewTab,
+    handlePasteEntries,
     paneId,
     resolveCreateCommandOptions,
     redoEntries,
