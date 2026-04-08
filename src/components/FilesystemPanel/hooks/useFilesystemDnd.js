@@ -26,7 +26,7 @@ function normalizePathForMatch(path) {
     .replace(/^\\\\\.\\/, "")
     .replace(/^\/\/\.\//, "");
   return withoutDevicePrefix
-    .replace(/[\\/]+/g, "/")
+    .replaceAll(/[\\/]+/g, "/")
     .replace(/\/+$/, "")
     .toLowerCase();
 }

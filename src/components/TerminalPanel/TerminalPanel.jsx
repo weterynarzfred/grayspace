@@ -11,7 +11,7 @@ import useTerminalSession from "./hooks/useTerminalSession";
 import "@xterm/xterm/css/xterm.css";
 
 function pathForShell(path) {
-  const normalized = String(path ?? "").replace(/\\/g, "/");
+  const normalized = String(path ?? "").replaceAll("\\", "/");
   const driveMatch = normalized.match(/^([A-Za-z]):(.*)$/);
   if (!driveMatch) return normalized;
 
@@ -21,7 +21,7 @@ function pathForShell(path) {
 }
 
 function escapeSingleQuotes(value) {
-  return value.replace(/'/g, "'\\''");
+  return value.replaceAll("'", "'\\''");
 }
 
 function formatTerminalDropPaths(paths) {

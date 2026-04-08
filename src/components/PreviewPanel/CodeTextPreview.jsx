@@ -6,6 +6,13 @@ import { EditorView, keymap } from "@codemirror/view";
 import { gruvboxDark } from "@uiw/codemirror-theme-gruvbox-dark";
 import { useEffect, useMemo, useState } from "react";
 
+const BASIC_SETUP = {
+  foldGutter: false,
+  dropCursor: false,
+  highlightActiveLine: false,
+  highlightActiveLineGutter: false,
+};
+
 const previewEditorTheme = EditorView.theme({
   "&.cm-editor": {
     backgroundColor: "#282828",
@@ -118,12 +125,7 @@ function CodeTextPreview({
     data-testid="preview-text-content"
     readOnly={readOnly}
     editable={!readOnly}
-    basicSetup={{
-      foldGutter: false,
-      dropCursor: false,
-      highlightActiveLine: false,
-      highlightActiveLineGutter: false,
-    }}
+    basicSetup={BASIC_SETUP}
     extensions={extensions}
     onChange={(nextContent) => {
       if (typeof onChange === "function") onChange(nextContent);

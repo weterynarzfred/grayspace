@@ -31,7 +31,7 @@ function normalizePathForComparison(path) {
   return normalized
     .trim()
     .replace(/[\\/]+$/, "")
-    .replace(/\\/g, "/")
+    .replaceAll("\\", "/")
     .toLowerCase();
 }
 

@@ -5,7 +5,7 @@ const DIRECTORY_ICON_FALLBACK = "folder-icon";
 const fileIconCache = new Map();
 
 function normalizeIconClassName(value) {
-  return String(value ?? "").trim().replace(/\s+/g, " ");
+  return String(value ?? "").trim().replaceAll(/\s+/g, " ");
 }
 
 export function resolveFilesystemIconClass(entryName = "", { isDirectory = false } = {}) {

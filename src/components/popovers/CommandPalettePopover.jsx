@@ -20,15 +20,6 @@ function CommandPalettePopover({
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [commands.length, open]);
 
-  useEffect(() => {
-    if (!open) return;
-    setSelectedIndex((current) => {
-      if (commands.length === 0) return -1;
-      if (current < 0) return 0;
-      return Math.min(current, commands.length - 1);
-    });
-  }, [commands.length, open]);
-
   const handleInputKeyDown = (event) => {
     if (commands.length === 0) {
       if (event.key === "Enter") event.preventDefault();

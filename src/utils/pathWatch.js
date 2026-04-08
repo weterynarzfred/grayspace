@@ -1,7 +1,7 @@
 function stripWindowsDevicePrefix(path) {
   if (typeof path !== "string" || !path) return "";
 
-  const normalized = path.replace(/\//g, "\\");
+  const normalized = path.replaceAll("/", "\\");
   if (normalized.startsWith("\\\\?\\UNC\\")) return `\\\\${normalized.slice(8)}`;
   if (normalized.startsWith("\\\\?\\")) return normalized.slice(4);
   if (normalized.startsWith("\\\\.\\"))
@@ -15,7 +15,7 @@ export function normalizePathForComparison(path) {
   return stripWindowsDevicePrefix(path.trim())
     .trim()
     .replace(/[\\/]+$/, "")
-    .replace(/\\/g, "/")
+    .replaceAll("\\", "/")
     .toLowerCase();
 }
 

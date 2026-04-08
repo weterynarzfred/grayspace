@@ -10,11 +10,8 @@ function ContextMenuPopover({
   onCommand = undefined,
   onClose = undefined,
 }) {
-  if (!target) return null;
   const rootRef = useRef(null);
   const [selectedIndex, setSelectedIndex] = useState(-1);
-
-  const title = `${target.kind[0]?.toUpperCase() || ""}${target.kind.slice(1)} target`;
 
   useEffect(() => {
     if (!open) return;
@@ -22,14 +19,9 @@ function ContextMenuPopover({
     requestAnimationFrame(() => rootRef.current?.focus());
   }, [commands.length, open]);
 
-  useEffect(() => {
-    if (!open) return;
-    setSelectedIndex((current) => {
-      if (commands.length === 0) return -1;
-      if (current < 0) return 0;
-      return Math.min(current, commands.length - 1);
-    });
-  }, [commands.length, open]);
+  if (!target) return null;
+
+  const title = `${target.kind[0]?.toUpperCase() || ""}${target.kind.slice(1)} target`;
 
   const handleKeyDown = (event) => {
     if (commands.length === 0) {
@@ -67,6 +59,8 @@ function ContextMenuPopover({
   >
     <div
       ref={rootRef}
+      role="dialog"
+      aria-label={title}
       data-testid="context-menu-root"
       tabIndex={-1}
       onKeyDown={handleKeyDown}

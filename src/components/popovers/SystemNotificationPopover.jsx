@@ -16,9 +16,9 @@ function SystemNotificationPopover({
   onResolveConfirm = undefined,
   onCloseWithDefault = undefined,
 }) {
-  if (!notification) return null;
   const rootRef = useRef(null);
   const actions = useMemo(() => {
+    if (!notification) return [];
     if (notification.kind === "confirm") {
       return [
         {
@@ -41,30 +41,23 @@ function SystemNotificationPopover({
     }];
   }, [notification, onDismiss, onResolveConfirm]);
   const defaultActionIndex = useMemo(() => {
-    if (notification.kind !== "confirm") return 0;
+    if (!notification || notification.kind !== "confirm") return 0;
     return notification.defaultAction ? 1 : 0;
-  }, [notification.defaultAction, notification.kind]);
+  }, [notification]);
   const [selectedActionIndex, setSelectedActionIndex] = useState(defaultActionIndex);
-
-  const handleClose = () => {
-    if (notification.dismissOnOutside === false) return;
-    onCloseWithDefault?.(notification.id);
-  };
 
   useEffect(() => {
     if (!open) return;
     setSelectedActionIndex(defaultActionIndex);
     requestAnimationFrame(() => rootRef.current?.focus());
-  }, [defaultActionIndex, open, notification.id]);
+  }, [defaultActionIndex, open, notification?.id]);
 
-  useEffect(() => {
-    if (!open) return;
-    setSelectedActionIndex((current) => {
-      if (actions.length === 0) return -1;
-      if (current < 0) return defaultActionIndex;
-      return Math.min(current, actions.length - 1);
-    });
-  }, [actions.length, defaultActionIndex, open]);
+  if (!notification) return null;
+
+  const handleClose = () => {
+    if (notification.dismissOnOutside === false) return;
+    onCloseWithDefault?.(notification.id);
+  };
 
   const handleKeyDown = (event) => {
     if (actions.length === 0) return;
@@ -103,6 +96,8 @@ function SystemNotificationPopover({
   >
     <div
       ref={rootRef}
+      role="alertdialog"
+      aria-label={notification.title || "Notification"}
       data-testid="system-notification-root"
       tabIndex={-1}
       onKeyDown={handleKeyDown}

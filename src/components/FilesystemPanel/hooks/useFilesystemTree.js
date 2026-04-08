@@ -91,7 +91,7 @@ function replacePathPrefix(path, sourcePath, destinationPath) {
   const normalizedSuffix = normalizedPath.slice(normalizedSourcePath.length + 1);
   const normalizedDestinationPath = destinationPath.replace(/[\\/]+$/, "");
   const separator = normalizedDestinationPath.includes("\\") ? "\\" : "/";
-  return `${normalizedDestinationPath}${separator}${normalizedSuffix.replace(/\//g, separator)}`;
+  return `${normalizedDestinationPath}${separator}${normalizedSuffix.replaceAll("/", separator)}`;
 }
 
 function remapPathMap(pathMap, sourcePath, destinationPath) {

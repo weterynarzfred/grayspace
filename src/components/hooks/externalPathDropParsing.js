@@ -22,9 +22,9 @@ function trimQuotes(value) {
 }
 
 function collapseBackslashes(value) {
-  const withBackslashes = value.replace(/\//g, "\\");
-  if (!withBackslashes.startsWith("\\\\")) return withBackslashes.replace(/\\+/g, "\\");
-  return `\\\\${withBackslashes.slice(2).replace(/\\+/g, "\\")}`;
+  const withBackslashes = value.replaceAll("/", "\\");
+  if (!withBackslashes.startsWith("\\\\")) return withBackslashes.replaceAll(/\\+/g, "\\");
+  return `\\\\${withBackslashes.slice(2).replaceAll(/\\+/g, "\\")}`;
 }
 
 function stripDevicePrefix(value) {
@@ -76,10 +76,10 @@ function fromUri(value) {
 function isAbsolutePath(value) {
   return (
     /^[A-Za-z]:[\\/]/.test(value)
-    || /^\\\\/.test(value)
-    || /^\\\\\?\\/.test(value)
-    || /^\/\/\?\//.test(value)
-    || /^\//.test(value)
+    || value.startsWith("\\\\")
+    || value.startsWith("\\\\?\\")
+    || value.startsWith("//?/")
+    || value.startsWith("/")
   );
 }
 
@@ -106,7 +106,7 @@ export function externalPathKey(path) {
     .trim()
     .replace(/^\\\\\?\\UNC\\/i, "\\\\")
     .replace(/^\/\/\?\/UNC\//i, "\\\\")
-    .replace(/[\\/]+/g, "\\")
+    .replaceAll(/[\\/]+/g, "\\")
     .replace(/\\+$/, "")
     .toLowerCase();
 }
