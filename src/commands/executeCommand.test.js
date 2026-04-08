@@ -6,6 +6,11 @@ describe("executeCommand", () => {
     vi.restoreAllMocks();
   });
 
+  it("returns false for empty and unknown command ids", () => {
+    expect(executeCommand("")).toBe(false);
+    expect(executeCommand("workspace.unknown")).toBe(false);
+  });
+
   it("executes split commands through workspace actions", () => {
     const handleSplitPane = vi.fn();
 
@@ -88,6 +93,50 @@ describe("executeCommand", () => {
     expect(handleSetActiveTab).toHaveBeenCalledWith("tab-1");
   });
 
+  it("falls back to the first tab when active tab is not in order", () => {
+    const handleSetActiveTab = vi.fn();
+
+    const didExecute = executeCommand(COMMAND_IDS.TAB_SWITCH_NEXT, {
+      currentWindow: {
+        activeTabId: "tab-missing",
+        tabOrder: ["tab-1", "tab-2"],
+      },
+      activeTab: { tabId: "tab-missing" },
+      workspaceActions: { handleSetActiveTab },
+    });
+
+    expect(didExecute).toBe(true);
+    expect(handleSetActiveTab).toHaveBeenCalledWith("tab-1");
+  });
+
+  it("returns false when tab switch has no available target tab", () => {
+    expect(executeCommand(COMMAND_IDS.TAB_SWITCH_NEXT, {
+      currentWindow: { tabOrder: [] },
+    })).toBe(false);
+
+    expect(executeCommand(COMMAND_IDS.TAB_SWITCH_NEXT, {
+      currentWindow: { tabOrder: [""], activeTabId: "" },
+      activeTab: { tabId: "" },
+    })).toBe(false);
+  });
+
+  it("returns false when tab switch tabOrder is not an array", () => {
+    expect(executeCommand(COMMAND_IDS.TAB_SWITCH_NEXT, {
+      currentWindow: { tabOrder: null },
+    })).toBe(false);
+  });
+
+  it("returns false for split commands when tab or pane cannot be resolved", () => {
+    expect(executeCommand(COMMAND_IDS.PANE_SPLIT_VERTICAL, {
+      activeTab: { tabId: "", activePaneId: "pane-1" },
+    })).toBe(false);
+
+    expect(executeCommand(COMMAND_IDS.PANE_SPLIT_HORIZONTAL, {
+      activeTab: { tabId: "tab-1", activePaneId: "" },
+      context: { targetType: "panel", targetId: "" },
+    })).toBe(false);
+  });
+
   it("switches active pane panel type", () => {
     const handleChangePanelType = vi.fn();
 
@@ -98,6 +147,17 @@ describe("executeCommand", () => {
 
     expect(didExecute).toBe(true);
     expect(handleChangePanelType).toHaveBeenCalledWith("tab-1", "pane-1", "External UI");
+  });
+
+  it("returns false for panel type switches when tab or pane cannot be resolved", () => {
+    expect(executeCommand(COMMAND_IDS.PANE_SWITCH_TO_TERMINAL, {
+      activeTab: { tabId: "", activePaneId: "pane-1" },
+    })).toBe(false);
+
+    expect(executeCommand(COMMAND_IDS.PANE_SWITCH_TO_PREVIEW, {
+      activeTab: { tabId: "tab-1", activePaneId: "" },
+      context: { targetType: "panel", targetId: "" },
+    })).toBe(false);
   });
 
   it("dispatches filesystem app commands", () => {
@@ -188,5 +248,31 @@ describe("executeCommand", () => {
 
     expect(didExecute).toBe(true);
     expect(openRecentFolders).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes active tab when context does not target a tab id", () => {
+    const handleCloseTab = vi.fn();
+
+    const didExecute = executeCommand(COMMAND_IDS.TAB_CLOSE, {
+      context: { targetType: "tab", targetId: "" },
+      activeTab: { tabId: "tab-1" },
+      workspaceActions: { handleCloseTab },
+    });
+
+    expect(didExecute).toBe(true);
+    expect(handleCloseTab).toHaveBeenCalledWith("tab-1");
+  });
+
+  it("returns false when tab close cannot resolve any tab id", () => {
+    const handleCloseTab = vi.fn();
+
+    const didExecute = executeCommand(COMMAND_IDS.TAB_CLOSE, {
+      context: { targetType: "tab", targetId: "" },
+      activeTab: { tabId: "" },
+      workspaceActions: { handleCloseTab },
+    });
+
+    expect(didExecute).toBe(false);
+    expect(handleCloseTab).not.toHaveBeenCalled();
   });
 });

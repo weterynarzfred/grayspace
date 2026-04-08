@@ -1,5 +1,7 @@
 import {
   COMMANDS,
+  formatCommandState,
+  formatCommandWhen,
   getCommandsForTrigger,
   isCommandShortcutMatch,
 } from "./commandRegistry";
@@ -297,5 +299,48 @@ describe("commandRegistry", () => {
       altKey: false,
       metaKey: false,
     })).toBe(true);
+  });
+
+  it("maps redo shortcut to both ctrl+y and ctrl+shift+z", () => {
+    expect(isCommandShortcutMatch("filesystem.redo", {
+      key: "y",
+      ctrlKey: true,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+
+    expect(isCommandShortcutMatch("filesystem.redo", {
+      key: "z",
+      ctrlKey: true,
+      shiftKey: true,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+  });
+
+  it("uses trigger as source when context source is omitted", () => {
+    const commands = getCommandsForTrigger("context-menu", {
+      targetType: "folder",
+      targetScope: "tree-entry",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\Users"],
+    });
+
+    expect(getCommandIds(commands)).toContain("filesystem.openSelectedFolderInNewTab");
+  });
+
+  it("formats command state and when metadata for settings", () => {
+    const plannedCommand = COMMANDS.find(command => command.id === "workspace.runScript");
+    const activeCommand = COMMANDS.find(command => command.id === "pane.split.vertical");
+
+    expect(formatCommandState(plannedCommand)).toBe("Planned");
+    expect(formatCommandState(activeCommand)).toBe("Active");
+    expect(formatCommandState(undefined)).toBe("Active");
+
+    expect(formatCommandWhen(plannedCommand)).toContain("workspace folder scripts");
+    expect(formatCommandWhen({})).toBe("true");
   });
 });
