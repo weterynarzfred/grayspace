@@ -26,6 +26,10 @@ function isThumbnailReadyResult(result) {
     && result?.thumbnailPath;
 }
 
+function makeThumbnailUpdater(results, trackedPathSet) {
+  return (previousMap) => applyThumbnailResults(previousMap, results, trackedPathSet);
+}
+
 function applyThumbnailResults(previousMap, results, trackedPathSet) {
   let hasChanged = false;
   const nextMap = { ...previousMap };
@@ -109,7 +113,7 @@ export default function useFilesystemThumbnails({
         const payload = event?.payload;
         if (payload?.bucketPx !== thumbnailBucketPx) return;
         const trackedPathSet = trackedPathSetRef.current;
-        setThumbnailSrcByPath((previousMap) => applyThumbnailResults(previousMap, [payload], trackedPathSet));
+        setThumbnailSrcByPath(makeThumbnailUpdater([payload], trackedPathSet));
       });
       if (cancelled) {
         unlisten();

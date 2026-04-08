@@ -86,7 +86,7 @@ function useExternalFilesystemDrag({
     }
 
     const intervalId = setInterval(() => {
-      void pollCursor();
+      pollCursor();
     }, DRAG_OUT_POLL_INTERVAL_MS);
 
     return () => {

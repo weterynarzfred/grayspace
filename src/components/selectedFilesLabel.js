@@ -7,7 +7,7 @@ function getPathDisplayName(path) {
   if (!trimmedPath) return path;
 
   const pathSegments = trimmedPath.split(/[\\/]/);
-  return pathSegments[pathSegments.length - 1] ?? trimmedPath;
+  return pathSegments.at(-1) ?? trimmedPath;
 }
 
 export function getPanelSelectedFilesLabel(baseLabel, selectedFiles = {}) {

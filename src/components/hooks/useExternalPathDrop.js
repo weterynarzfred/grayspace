@@ -160,7 +160,7 @@ export default function useExternalPathDrop({
       }
     }
 
-    void subscribeTauriDragDrop();
+    subscribeTauriDragDrop();
 
     const updateKeyboardModifierState = (event) => {
       dragModifierStateRef.current = {

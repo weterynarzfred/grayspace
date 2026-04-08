@@ -46,7 +46,7 @@ export default function useFilesystemSelectionState({
     return [nextPath];
   }, [clearSelection]);
 
-  const selectEntry = useCallback((entryPath, options = {}, entryPaths, selectedEntryPaths) => {
+  const selectEntry = useCallback((entryPath, entryPaths, selectedEntryPaths, options = {}) => {
     const { additive = false, range = false } = options;
     if (typeof entryPath !== "string" || !entryPath) return selectedEntryPaths;
     if (!Array.isArray(entryPaths) || !entryPaths.includes(entryPath)) return selectedEntryPaths;

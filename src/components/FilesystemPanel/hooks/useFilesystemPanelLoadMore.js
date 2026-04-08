@@ -28,7 +28,7 @@ export default function useFilesystemPanelLoadMore({
     const remainingScrollPx =
       scrollElement.scrollHeight - (scrollElement.scrollTop + scrollElement.clientHeight);
     if (remainingScrollPx > LOAD_MORE_THRESHOLD_PX) return;
-    void loadMoreEntries();
+    loadMoreEntries();
   }, [
     handlePanelListScroll,
     scheduleEntryWindowRecompute,
@@ -45,7 +45,7 @@ export default function useFilesystemPanelLoadMore({
     if (isEntryWindowingEnabled) {
       const loadMoreIndex = Math.max(0, treeRowsCount - LOAD_MORE_TRIGGER_MARGIN_ROWS);
       if (virtualEndIndex < loadMoreIndex) return;
-      void loadMoreEntries();
+      loadMoreEntries();
       return;
     }
 
@@ -53,7 +53,7 @@ export default function useFilesystemPanelLoadMore({
     if (!panelList) return;
     const remainingScrollPx = panelList.scrollHeight - (panelList.scrollTop + panelList.clientHeight);
     if (remainingScrollPx > LOAD_MORE_THRESHOLD_PX) return;
-    void loadMoreEntries();
+    loadMoreEntries();
   }, [
     panelRef,
     isBrowsing,

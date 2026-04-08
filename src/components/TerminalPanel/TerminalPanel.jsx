@@ -12,7 +12,7 @@ import "@xterm/xterm/css/xterm.css";
 
 function pathForShell(path) {
   const normalized = String(path ?? "").replaceAll("\\", "/");
-  const driveMatch = normalized.match(/^([A-Za-z]):(.*)$/);
+  const driveMatch = /^([A-Za-z]):(.*)$/.exec(normalized);
   if (!driveMatch) return normalized;
 
   const driveLetter = driveMatch[1].toLowerCase();
@@ -76,7 +76,7 @@ function TerminalPanel({
   usePanelsDndHandlers({
     onDragEnd: (event) => {
       if (event?.over?.id !== terminalDropId) return;
-      void handleDropPaths(getDraggedPathsFromDndEvent(event));
+      handleDropPaths(getDraggedPathsFromDndEvent(event));
     },
   });
   const { isExternalDragOver } = useExternalPathDrop({

@@ -41,7 +41,7 @@ function SystemNotificationPopover({
     }];
   }, [notification, onDismiss, onResolveConfirm]);
   const defaultActionIndex = useMemo(() => {
-    if (!notification || notification.kind !== "confirm") return 0;
+    if (notification?.kind !== "confirm") return 0;
     return notification.defaultAction ? 1 : 0;
   }, [notification]);
   const [selectedActionIndex, setSelectedActionIndex] = useState(defaultActionIndex);

@@ -13,6 +13,10 @@ import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 
 const PENDING_EXTERNAL_DRAG_TTL_MS = 15000;
 
+function getEventSourcePath(event) {
+  return event?.active?.data?.current?.sourcePath || parseEntryPath(event?.active?.id);
+}
+
 function normalizePathForMatch(path) {
   if (typeof path !== "string") return "";
   const trimmedPath = path.trim();
@@ -139,10 +143,6 @@ function useFilesystemDnd({
       window.removeEventListener(EXTERNAL_FILESYSTEM_DRAG_START_EVENT, handleExternalDragStart);
     };
   }, []);
-
-  function getEventSourcePath(event) {
-    return event?.active?.data?.current?.sourcePath || parseEntryPath(event?.active?.id);
-  }
 
   function isEventOwnedByPane(event) {
     const sourcePaneId = event?.active?.data?.current?.sourcePaneId;

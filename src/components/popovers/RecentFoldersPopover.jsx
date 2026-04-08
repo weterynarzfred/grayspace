@@ -63,7 +63,7 @@ function RecentFoldersPopover({
 
     if (event.key !== "Enter") return;
     event.preventDefault();
-    const selectedEntry = visibleEntries[selectedIndex >= 0 ? selectedIndex : 0];
+    const selectedEntry = visibleEntries[Math.max(0, selectedIndex)];
     if (!selectedEntry?.path) return;
     onSelect?.(selectedEntry.path);
   };

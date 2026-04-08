@@ -42,7 +42,7 @@ function CommandPalettePopover({
 
     if (event.key !== "Enter") return;
     event.preventDefault();
-    const command = commands[selectedIndex >= 0 ? selectedIndex : 0];
+    const command = commands[Math.max(0, selectedIndex)];
     if (command) onCommand?.(command.id);
   };
 

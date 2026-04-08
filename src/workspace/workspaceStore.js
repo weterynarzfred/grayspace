@@ -32,7 +32,7 @@ export function selectTabsForWindow(snapshot, window) {
   const tabsById = new Map(snapshot.tabs.map(tab => [tab.tabId, tab]));
   return window.tabOrder
     .map(tabId => tabsById.get(tabId))
-    .filter(tab => Boolean(tab));
+    .filter(Boolean);
 }
 
 export function selectActiveTab(snapshot, window) {

@@ -23,5 +23,5 @@ export function getSelectedPathsFromState(state = {}) {
 
 export function getPrimarySelectedPath(paths = []) {
   const normalizedPaths = uniqueNonEmptyPaths(paths);
-  return normalizedPaths[normalizedPaths.length - 1] ?? "";
+  return normalizedPaths.at(-1) ?? "";
 }

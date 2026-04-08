@@ -2,6 +2,99 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveFilesystemIconClass } from "./fileIconResolver";
 import styles from "./EntryItem.module.scss";
 
+function handleExpanderDoubleClick(event) {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function handleButtonMouseDown(event) {
+  if (event.button !== 1) return;
+  event.preventDefault();
+}
+
+function hasAnyDndListeners(dndListeners) {
+  return Boolean(dndListeners && Object.keys(dndListeners).length > 0);
+}
+
+function resolveRenameValue(renameInitialValue, label) {
+  return renameInitialValue || label;
+}
+
+function shouldUseNativeDrag(isDraggable, hasDndListeners) {
+  return isDraggable && !hasDndListeners;
+}
+
+function getEntryButtonClassName({
+  isSelected,
+  isFile,
+  isConfig,
+  isDraggable,
+  isDragging,
+  isDropTarget,
+}) {
+  return [
+    styles.entryButton,
+    isSelected ? styles.selected : "",
+    isFile ? styles.file : "",
+    isConfig ? styles.configEntry : "",
+    isDraggable ? styles.draggable : "",
+    isDragging ? styles.dragging : "",
+    isDropTarget ? styles.dropTarget : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function getEntryIndentNode(nestingDepth) {
+  if (nestingDepth <= 0) return null;
+
+  return <span className={styles.entryIndent} aria-hidden>
+    {Array.from({ length: nestingDepth }, (_, index) => <span
+      key={`indent-${index}`}
+      className={styles.indentGuide}
+    />)}
+  </span>;
+}
+
+function getEntryPreviewNode(thumbnailSrc, entryIconClassName) {
+  if (thumbnailSrc) {
+    return <img
+      src={thumbnailSrc}
+      alt=""
+      aria-hidden
+      draggable={false}
+      className={styles.entryThumbnail}
+    />;
+  }
+
+  return <span
+    className={`${styles.entryIcon} icon ${entryIconClassName}`}
+    aria-hidden
+  />;
+}
+
+function getEntryContextAttributes({
+  contextKind,
+  contextId,
+  contextLabel,
+  contextPaneId,
+  contextPath,
+  contextScope,
+  dropDestinationPath,
+  label,
+}) {
+  return {
+    "data-drop-destination-path": dropDestinationPath || undefined,
+    "data-contextmenu-boundary": contextKind ? "filesystem-entry" : undefined,
+    "data-context-kind": contextKind || undefined,
+    "data-context-id": contextId || undefined,
+    "data-context-label": contextLabel || label,
+    "data-context-path": contextPath || undefined,
+    "data-context-scope": contextScope || undefined,
+    "data-context-pane-id": contextPaneId || undefined,
+  };
+}
+
 function EntryItem({
   label,
   meta,
@@ -43,30 +136,27 @@ function EntryItem({
   onRenameSubmit,
   onRenameCancel,
 }) {
-  const hasDndListeners = Boolean(dndListeners && Object.keys(dndListeners).length > 0);
+  const hasDndListeners = hasAnyDndListeners(dndListeners);
   const entryIconClassName = useMemo(() => resolveFilesystemIconClass(label, {
     isDirectory,
   }), [isDirectory, label]);
   const renameInputRef = useRef(null);
   const renameSettledRef = useRef(false);
-  const [renameValue, setRenameValue] = useState(renameInitialValue || label);
-  const buttonClassName = [
-    styles.entryButton,
-    isSelected ? styles.selected : "",
-    isFile ? styles.file : "",
-    isConfig ? styles.configEntry : "",
-    isDraggable ? styles.draggable : "",
-    isDragging ? styles.dragging : "",
-    isDropTarget ? styles.dropTarget : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const [renameValue, setRenameValue] = useState(resolveRenameValue(renameInitialValue, label));
+  const buttonClassName = getEntryButtonClassName({
+    isSelected,
+    isFile,
+    isConfig,
+    isDraggable,
+    isDragging,
+    isDropTarget,
+  });
   const editingClassName = `${buttonClassName} ${styles.entryButtonEditing}`;
 
   useEffect(() => {
     if (!isRenaming) return;
     renameSettledRef.current = false;
-    const nextValue = renameInitialValue || label;
+    const nextValue = resolveRenameValue(renameInitialValue, label);
     setRenameValue(nextValue);
     requestAnimationFrame(() => {
       renameInputRef.current?.focus();
@@ -80,15 +170,6 @@ function EntryItem({
     onToggleExpand?.();
   }
 
-  function handleExpanderDoubleClick(event) {
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
-  function handleButtonMouseDown(event) {
-    if (event.button !== 1) return;
-    event.preventDefault();
-  }
 
   function handleButtonMouseUp(event) {
     if (event.button !== 1) return;
@@ -119,24 +200,19 @@ function EntryItem({
     }
   }
 
-  const indent = nestingDepth > 0 ? <span className={styles.entryIndent} aria-hidden>
-    {Array.from({ length: nestingDepth }, (_, index) => <span
-      key={`indent-${index}`}
-      className={styles.indentGuide}
-    />)}
-  </span> : null;
-  const entryPreview = thumbnailSrc
-    ? <img
-      src={thumbnailSrc}
-      alt=""
-      aria-hidden
-      draggable={false}
-      className={styles.entryThumbnail}
-    />
-    : <span
-      className={`${styles.entryIcon} icon ${entryIconClassName}`}
-      aria-hidden
-    />;
+  const indent = getEntryIndentNode(nestingDepth);
+  const entryPreview = getEntryPreviewNode(thumbnailSrc, entryIconClassName);
+  const contextAttributes = getEntryContextAttributes({
+    contextKind,
+    contextId,
+    contextLabel,
+    contextPaneId,
+    contextPath,
+    contextScope,
+    dropDestinationPath,
+    label,
+  });
+  const isNativeDraggable = shouldUseNativeDrag(isDraggable, hasDndListeners);
 
   if (isRenaming) {
     return <li className={styles.entryItem}>
@@ -169,16 +245,9 @@ function EntryItem({
       type="button"
       className={buttonClassName}
       aria-selected={isSelected}
-      draggable={isDraggable && !hasDndListeners}
+      draggable={isNativeDraggable}
       style={buttonStyle}
-      data-drop-destination-path={dropDestinationPath || undefined}
-      data-contextmenu-boundary={contextKind ? "filesystem-entry" : undefined}
-      data-context-kind={contextKind || undefined}
-      data-context-id={contextId || undefined}
-      data-context-label={contextLabel || label}
-      data-context-path={contextPath || undefined}
-      data-context-scope={contextScope || undefined}
-      data-context-pane-id={contextPaneId || undefined}
+      {...contextAttributes}
       {...dndAttributes}
       {...dndListeners}
       onClick={onClick}

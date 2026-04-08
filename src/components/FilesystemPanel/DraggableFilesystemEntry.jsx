@@ -3,6 +3,42 @@ import { memo } from "react";
 import EntryItem from "./EntryItem";
 import { getDragEntryDndId, getEntryDndId } from "./dndIds";
 
+function getDragPaths(isSelectedForDrag, selectedEntryPaths, entryPath) {
+  return isSelectedForDrag ? selectedEntryPaths : [entryPath];
+}
+
+function getDestinationPath(isDirectory, entryPath, dropDestinationPath) {
+  return isDirectory ? entryPath : dropDestinationPath;
+}
+
+function getMetaPresentation(entryName, isDirectory, isWorkspaceFolder) {
+  const isConfigFolder = isDirectory && (entryName ?? "").toLowerCase() === ".grayspace";
+  const shouldUseConfigStyle = isConfigFolder || isWorkspaceFolder;
+
+  let metaLabel = "File";
+  if (isConfigFolder) metaLabel = "config";
+  else if (isDirectory) metaLabel = "Folder";
+
+  return {
+    metaLabel,
+    shouldUseConfigStyle,
+    contextKind: isDirectory ? "folder" : "file",
+    thumbnailValue: isDirectory ? "" : undefined,
+  };
+}
+
+function getIsDropTarget({
+  isDirectory,
+  destinationPath,
+  activeDropDestinationPath,
+  activeDragPathSet,
+}) {
+  if (!isDirectory) return false;
+  if (destinationPath !== activeDropDestinationPath) return false;
+  if (!activeDragPathSet || activeDragPathSet.size === 0) return false;
+  return !activeDragPathSet.has(destinationPath);
+}
+
 function DraggableFilesystemEntry({
   paneId = "",
   entry,
@@ -36,10 +72,11 @@ function DraggableFilesystemEntry({
     onEntryRenameCancel = undefined,
   } = actions;
 
-  const dragPaths = isSelectedForDrag ? selectedEntryPaths : [entry.path];
+  const isDirectory = entry.is_dir;
+  const dragPaths = getDragPaths(isSelectedForDrag, selectedEntryPaths, entry.path);
   const draggableId = getDragEntryDndId(paneId, entry.path);
   const droppableId = getEntryDndId(entry.path);
-  const destinationPath = entry.is_dir ? entry.path : dropDestinationPath;
+  const destinationPath = getDestinationPath(isDirectory, entry.path, dropDestinationPath);
   const {
     attributes,
     listeners,
@@ -69,38 +106,41 @@ function DraggableFilesystemEntry({
     setDroppableNodeRef(node);
   }
 
-  const isDropTarget =
-    entry.is_dir
-    && destinationPath === activeDropDestinationPath
-    && activeDragPathSet?.size > 0
-    && !activeDragPathSet.has(destinationPath);
+  const isDropTarget = getIsDropTarget({
+    isDirectory,
+    destinationPath,
+    activeDropDestinationPath,
+    activeDragPathSet,
+  });
   const isActiveDragSource = activeDragPathSet?.has(entry.path) ?? false;
   const shouldShowDraggingState = isDragging && isActiveDragSource;
-  const isConfigFolder =
-    entry.is_dir && (entry.name ?? "").toLowerCase() === ".grayspace";
-  const shouldUseConfigStyle = isConfigFolder || isWorkspaceFolder;
-  const metaLabel = isConfigFolder ? "config" : entry.is_dir ? "Folder" : "File";
+  const {
+    metaLabel,
+    shouldUseConfigStyle,
+    contextKind,
+    thumbnailValue,
+  } = getMetaPresentation(entry.name, isDirectory, isWorkspaceFolder);
 
   return <EntryItem
     label={entry.name}
     meta={metaLabel}
     isSelected={isSelected}
-    isFile={!entry.is_dir}
-    isDirectory={entry.is_dir}
+    isFile={!isDirectory}
+    isDirectory={isDirectory}
     isConfig={shouldUseConfigStyle}
     isDraggable={!isMovingEntry}
     isDragging={shouldShowDraggingState}
     isDropTarget={isDropTarget}
-    thumbnailSrc={!entry.is_dir ? thumbnailSrc : ""}
+    thumbnailSrc={thumbnailValue ?? thumbnailSrc}
     dropDestinationPath={destinationPath}
-    contextKind={entry.is_dir ? "folder" : "file"}
+    contextKind={contextKind}
     contextId={entry.path}
     contextLabel={entry.name}
     contextPath={entry.path}
     contextScope="tree-entry"
     contextPaneId={paneId}
     nestingDepth={nestingDepth}
-    showExpander={entry.is_dir}
+    showExpander={isDirectory}
     isExpanded={isExpanded}
     isRenaming={isRenaming}
     renameInitialValue={entry.name}

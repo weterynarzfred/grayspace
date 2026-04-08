@@ -1,5 +1,5 @@
 const URI_MATCH = /(?:file|vscode|vscode-file):\/\/[^\s"'<>)}\],;]+/gi;
-const ABS_PATH_MATCH = /[A-Za-z]:[\\/][^\s"'<>)}\],;]+|\\\\[^\s"'<>)}\],;]+|[A-Za-z]%3A[\\/][^\s"'<>)}\],;]+/gi;
+const ABS_PATH_MATCH = /[a-z]:[\\/][^\s"'<>)}\],;]+|\\\\[^\s"'<>)}\],;]+|[a-z]%3A[\\/][^\s"'<>)}\],;]+/gi;
 
 const isString = (value) => typeof value === "string";
 const isObj = (value) => value && typeof value === "object";
@@ -17,7 +17,7 @@ function trimQuotes(value) {
   const nextValue = trim(value);
   if (nextValue.length < 2) return nextValue;
   const first = nextValue[0];
-  if ((first !== "\"" && first !== "'") || first !== nextValue[nextValue.length - 1]) return nextValue;
+  if ((first !== "\"" && first !== "'") || first !== nextValue.at(-1)) return nextValue;
   return nextValue.slice(1, -1).trim();
 }
 
@@ -86,9 +86,9 @@ function isAbsolutePath(value) {
 function toPathCandidate(rawValue) {
   if (!isString(rawValue)) return "";
   const value = trimQuotes(rawValue);
-  if (!value || /\r|\n/.test(value)) return "";
+  if (!value || /[\r\n]/.test(value)) return "";
 
-  const embeddedUri = value.match(/(?:file|vscode|vscode-file):\/\/[^\s"'<>)}\],;]+/i)?.[0];
+  const embeddedUri = /(?:file|vscode|vscode-file):\/\/[^\s"'<>)}\],;]+/i.exec(value)?.[0];
   if (embeddedUri) {
     const pathFromEmbeddedUri = fromUri(embeddedUri);
     if (pathFromEmbeddedUri) return pathFromEmbeddedUri;
@@ -165,6 +165,38 @@ function collectFromString(value, out) {
   }
 }
 
+function getRawPathFromEntry(entry) {
+  if (isString(entry.path)) return entry.path;
+  if (isString(entry.fsPath)) return entry.fsPath;
+  return "";
+}
+
+function getSchemeUriFromEntry(entry, rawPath) {
+  const scheme = isString(entry.scheme) ? entry.scheme.toLowerCase().trim() : "";
+  if (!rawPath || !["file", "vscode", "vscode-file"].includes(scheme)) return "";
+  let authority = "";
+  if (isString(entry.authority)) authority = entry.authority;
+  else if (isString(entry.host)) authority = entry.host;
+  const uriPath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
+  return `${scheme}://${authority}${uriPath}`;
+}
+
+function collectFromJsonObject(value, out) {
+  const rawPath = getRawPathFromEntry(value);
+  if (rawPath) {
+    const path = toPathCandidate(rawPath);
+    if (path) out.push(path);
+  }
+
+  const schemeUri = getSchemeUriFromEntry(value, rawPath);
+  if (schemeUri) {
+    const path = toPathCandidate(schemeUri);
+    if (path) out.push(path);
+  }
+
+  Object.values(value).forEach((entry) => collectFromJson(entry, out));
+}
+
 function collectFromJson(value, out) {
   if (isString(value)) {
     collectFromString(value, out);
@@ -176,23 +208,9 @@ function collectFromJson(value, out) {
     return;
   }
 
-  if (!isObj(value)) return;
-
-  const rawPath = isString(value.path) ? value.path : (isString(value.fsPath) ? value.fsPath : "");
-  if (rawPath) {
-    const path = toPathCandidate(rawPath);
-    if (path) out.push(path);
+  if (isObj(value)) {
+    collectFromJsonObject(value, out);
   }
-
-  const scheme = isString(value.scheme) ? value.scheme.toLowerCase().trim() : "";
-  if (rawPath && ["file", "vscode", "vscode-file"].includes(scheme)) {
-    const authority = isString(value.authority) ? value.authority : (isString(value.host) ? value.host : "");
-    const uriPath = rawPath.startsWith("/") ? rawPath : `/${rawPath}`;
-    const path = toPathCandidate(`${scheme}://${authority}${uriPath}`);
-    if (path) out.push(path);
-  }
-
-  Object.values(value).forEach((entry) => collectFromJson(entry, out));
 }
 
 function parseUnknownPayload(value) {

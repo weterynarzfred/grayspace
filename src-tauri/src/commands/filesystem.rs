@@ -197,23 +197,34 @@ fn write_filesystem_clipboard_windows(paths: &[PathBuf], mode: &str) -> Result<(
     let format_name = utf16_null_terminated("Preferred DropEffect");
     let preferred_drop_effect_format = RegisterClipboardFormatW(format_name.as_ptr());
     if preferred_drop_effect_format != 0 {
-      let effect_handle = GlobalAlloc(GMEM_MOVEABLE, size_of::<u32>());
-      if !effect_handle.is_null() {
-        let effect_ptr = GlobalLock(effect_handle) as *mut u32;
-        if !effect_ptr.is_null() {
-          *effect_ptr = requested_drop_effect;
-          GlobalUnlock(effect_handle);
-          if SetClipboardData(preferred_drop_effect_format, effect_handle) == std::ptr::null_mut() {
-            GlobalFree(effect_handle);
-          }
-        } else {
-          GlobalFree(effect_handle);
-        }
-      }
+      write_clipboard_drop_effect(preferred_drop_effect_format, requested_drop_effect);
     }
 
     Ok(())
   })
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn write_clipboard_drop_effect(format: u32, effect: u32) {
+  use std::mem::size_of;
+  use windows_sys::Win32::Foundation::GlobalFree;
+  use windows_sys::Win32::System::DataExchange::SetClipboardData;
+  use windows_sys::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
+
+  let effect_handle = GlobalAlloc(GMEM_MOVEABLE, size_of::<u32>());
+  if effect_handle.is_null() {
+    return;
+  }
+  let effect_ptr = GlobalLock(effect_handle) as *mut u32;
+  if effect_ptr.is_null() {
+    GlobalFree(effect_handle);
+    return;
+  }
+  *effect_ptr = effect;
+  GlobalUnlock(effect_handle);
+  if SetClipboardData(format, effect_handle) == std::ptr::null_mut() {
+    GlobalFree(effect_handle);
+  }
 }
 
 #[cfg(target_os = "windows")]
@@ -224,7 +235,6 @@ fn read_filesystem_clipboard_windows() -> Result<FilesystemClipboardState, Strin
     GetClipboardData, IsClipboardFormatAvailable, RegisterClipboardFormatW,
   };
   use windows_sys::Win32::System::Ole::CF_HDROP;
-  use windows_sys::Win32::System::Memory::{GlobalLock, GlobalUnlock};
   use windows_sys::Win32::UI::Shell::{DragQueryFileW, HDROP};
 
   with_open_clipboard(|| unsafe {
@@ -264,26 +274,35 @@ fn read_filesystem_clipboard_windows() -> Result<FilesystemClipboardState, Strin
 
     let format_name = utf16_null_terminated("Preferred DropEffect");
     let preferred_drop_effect_format = RegisterClipboardFormatW(format_name.as_ptr());
-    let mut mode = "copy".to_string();
-
-    if preferred_drop_effect_format != 0
-      && IsClipboardFormatAvailable(preferred_drop_effect_format) != 0
-    {
-      let effect_handle = GetClipboardData(preferred_drop_effect_format);
-      if !effect_handle.is_null() {
-        let effect_ptr = GlobalLock(effect_handle) as *const u32;
-        if !effect_ptr.is_null() {
-          let effect = *effect_ptr;
-          if (effect & CLIPBOARD_DROPEFFECT_MOVE) != 0 {
-            mode = "cut".to_string();
-          }
-          GlobalUnlock(effect_handle);
-        }
-      }
-    }
+    let mode = read_clipboard_drop_mode(preferred_drop_effect_format);
 
     Ok(FilesystemClipboardState { mode, paths })
   })
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn read_clipboard_drop_mode(format: u32) -> String {
+  use windows_sys::Win32::System::DataExchange::{GetClipboardData, IsClipboardFormatAvailable};
+  use windows_sys::Win32::System::Memory::{GlobalLock, GlobalUnlock};
+
+  if format == 0 || IsClipboardFormatAvailable(format) == 0 {
+    return "copy".to_string();
+  }
+  let effect_handle = GetClipboardData(format);
+  if effect_handle.is_null() {
+    return "copy".to_string();
+  }
+  let effect_ptr = GlobalLock(effect_handle) as *const u32;
+  if effect_ptr.is_null() {
+    return "copy".to_string();
+  }
+  let effect = *effect_ptr;
+  GlobalUnlock(effect_handle);
+  if (effect & CLIPBOARD_DROPEFFECT_MOVE) != 0 {
+    "cut".to_string()
+  } else {
+    "copy".to_string()
+  }
 }
 
 fn watch_state_key(window_label: &str, watch_id: &str) -> String {

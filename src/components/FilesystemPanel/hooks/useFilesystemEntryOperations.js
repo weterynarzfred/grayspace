@@ -13,6 +13,40 @@ import {
   resolveDestinationPath,
 } from "./filesystemEntryOperationUtils";
 
+async function renameHistoryItem(item, reverse, pathsToRefresh) {
+  const sourcePath = reverse ? item.destinationPath : item.sourcePath;
+  const destinationPath = reverse ? item.sourcePath : item.destinationPath;
+  const destinationName = getPathName(destinationPath);
+  if (!destinationName) return;
+
+  await invoke("rename_path", {
+    path: sourcePath,
+    newName: destinationName,
+    allowAdjustment: false,
+  });
+
+  const sourceParentPath = getParentDirectoryPath(sourcePath);
+  if (sourceParentPath) pathsToRefresh.add(sourceParentPath);
+  const destinationParentPath = getParentDirectoryPath(destinationPath);
+  if (destinationParentPath) pathsToRefresh.add(destinationParentPath);
+}
+
+async function refreshPaths(pathSet, refreshEntriesForPath, setError) {
+  let firstError = null;
+  for (const refreshPath of pathSet) {
+    if (!refreshPath) continue;
+    try {
+      await refreshEntriesForPath(refreshPath);
+    } catch (refreshError) {
+      if (!firstError) {
+        setError(getNavigationErrorMessage(refreshError, "Failed to refresh folder."));
+        firstError = refreshError;
+      }
+    }
+  }
+  return firstError;
+}
+
 const MAX_FILESYSTEM_HISTORY_ITEMS = 100;
 const DEFAULT_NEW_TEXT_FILE_NAME = "untitled.txt";
 const DEFAULT_NEW_FOLDER_NAME = "New folder";
@@ -138,9 +172,7 @@ export default function useFilesystemEntryOperations({
         try {
           await refreshEntriesForPath(activePath);
         } catch (refreshError) {
-          if (!moveErrorToThrow) {
-            moveErrorToThrow = refreshError;
-          }
+          moveErrorToThrow = moveErrorToThrow || refreshError;
         }
       }
 
@@ -174,7 +206,7 @@ export default function useFilesystemEntryOperations({
     const operationItems = reverse
       ? normalizedItems.slice().reverse()
       : normalizedItems;
-    const refreshPathSet = new Set();
+    const pathsToRefresh = new Set();
     let renameErrorToThrow = null;
 
     setIsMovingEntry(true);
@@ -182,39 +214,16 @@ export default function useFilesystemEntryOperations({
 
     try {
       for (const item of operationItems) {
-        const sourcePath = reverse ? item.destinationPath : item.sourcePath;
-        const destinationPath = reverse ? item.sourcePath : item.destinationPath;
-        const destinationName = getPathName(destinationPath);
-        if (!destinationName) continue;
-
-        await invoke("rename_path", {
-          path: sourcePath,
-          newName: destinationName,
-          allowAdjustment: false,
-        });
-
-        const sourceParentPath = getParentDirectoryPath(sourcePath);
-        if (sourceParentPath) refreshPathSet.add(sourceParentPath);
-        const destinationParentPath = getParentDirectoryPath(destinationPath);
-        if (destinationParentPath) refreshPathSet.add(destinationParentPath);
+        await renameHistoryItem(item, reverse, pathsToRefresh);
       }
     } catch (renameError) {
       setError(getNavigationErrorMessage(renameError, errorMessage));
       renameErrorToThrow = renameError;
     } finally {
-      if (activePath) refreshPathSet.add(activePath);
+      if (activePath) pathsToRefresh.add(activePath);
 
-      for (const refreshPath of refreshPathSet) {
-        if (!refreshPath) continue;
-        try {
-          await refreshEntriesForPath(refreshPath);
-        } catch (refreshError) {
-          if (!renameErrorToThrow) {
-            setError(getNavigationErrorMessage(refreshError, "Failed to refresh folder."));
-            renameErrorToThrow = refreshError;
-          }
-        }
-      }
+      const refreshError = await refreshPaths(pathsToRefresh, refreshEntriesForPath, setError);
+      if (refreshError && !renameErrorToThrow) renameErrorToThrow = refreshError;
 
       setIsMovingEntry(false);
     }
@@ -280,11 +289,10 @@ export default function useFilesystemEntryOperations({
 
       if (shouldOpenInNewTab) {
         try {
-          if (workspaceRootForEntry && isSamePath(workspaceRootForEntry, entry.path)) {
-            await workspaceOpenWorkspaceFolderFromTab(tabId, entry.path);
-          } else {
-            await workspaceOpenFolderFromTab(tabId, entry.path);
-          }
+          const openInTab = (workspaceRootForEntry && isSamePath(workspaceRootForEntry, entry.path))
+            ? workspaceOpenWorkspaceFolderFromTab
+            : workspaceOpenFolderFromTab;
+          await openInTab(tabId, entry.path);
           clearSelection();
           setError("");
         } catch (openInNewTabError) {
@@ -364,9 +372,7 @@ export default function useFilesystemEntryOperations({
         try {
           await refreshEntriesForPath(activePath);
         } catch (refreshError) {
-          if (!copyErrorToThrow) {
-            copyErrorToThrow = refreshError;
-          }
+          copyErrorToThrow = copyErrorToThrow || refreshError;
         }
       }
 

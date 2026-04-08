@@ -91,7 +91,6 @@ function FloatingPopover({
 
   return <div
     ref={popoverRef}
-    role="dialog"
     className={`${styles.popover} ${className}`.trim()}
     style={{
       left: `${resolvedPosition.x}px`,

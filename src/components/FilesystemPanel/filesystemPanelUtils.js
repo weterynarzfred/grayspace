@@ -26,7 +26,7 @@ export function resolveExternalDropDestinationFromPoint(clientPosition, fallback
 
   const hoveredElement = document.elementFromPoint(clientPosition.x, clientPosition.y);
   const dropTargetElement = hoveredElement?.closest?.("[data-drop-destination-path]");
-  const destinationPath = dropTargetElement?.getAttribute("data-drop-destination-path") ?? "";
+  const destinationPath = dropTargetElement?.dataset.dropDestinationPath ?? "";
   return destinationPath || fallbackPath;
 }
 

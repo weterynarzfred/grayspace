@@ -119,9 +119,13 @@ function Breadcrumbs({
   const handleStartPathEditing = useCallback((event) => {
     event.stopPropagation();
     if (isPathEditing) return;
-    if (event.button !== 0) return;
-    if (!(event.target instanceof Element)) return;
-    if (event.target.closest("button")) return;
+    if (event.type === "keydown") {
+      if (event.key !== "Enter") return;
+    } else {
+      if (event.button !== 0) return;
+      if (!(event.target instanceof Element)) return;
+      if (event.target.closest("button")) return;
+    }
     setPathDraft(currentPath ?? "");
     setIsPathEditing(true);
     setSelectedSuggestionIndex(-1);
@@ -161,11 +165,14 @@ function Breadcrumbs({
 
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      const nextIndex = event.key === "ArrowDown"
-        ? (selectedSuggestionIndex < 0 ? 0 : (selectedSuggestionIndex + 1) % suggestionCount)
-        : (selectedSuggestionIndex < 0
+      let nextIndex;
+      if (event.key === "ArrowDown") {
+        nextIndex = selectedSuggestionIndex < 0 ? 0 : (selectedSuggestionIndex + 1) % suggestionCount;
+      } else {
+        nextIndex = selectedSuggestionIndex < 0
           ? suggestionCount - 1
-          : (selectedSuggestionIndex - 1 + suggestionCount) % suggestionCount);
+          : (selectedSuggestionIndex - 1 + suggestionCount) % suggestionCount;
+      }
       setSelectedSuggestionIndex(nextIndex);
       setPathDraft(normalizedRecentFolders[nextIndex]?.path ?? pathDraft);
     }
@@ -188,7 +195,11 @@ function Breadcrumbs({
   return <div className={styles.breadcrumbStack}>
     <div
       className={styles.breadcrumbRow}
+      role={isPathEditing ? undefined : "button"}
+      tabIndex={isPathEditing ? undefined : 0}
+      aria-label={isPathEditing ? undefined : "Edit current path"}
       onClick={handleStartPathEditing}
+      onKeyDown={isPathEditing ? undefined : handleStartPathEditing}
     >
       {isPathEditing ? <form className={styles.pathForm} onSubmit={handleSubmitPath}>
         <input

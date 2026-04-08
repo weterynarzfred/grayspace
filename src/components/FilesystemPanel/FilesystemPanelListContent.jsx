@@ -6,6 +6,11 @@ import EntryItem from "./EntryItem";
 import UpEntryDropTarget from "./UpEntryDropTarget";
 import styles from "./FilesystemPanel.module.scss";
 
+function getDragOverlayMeta(entries, entry) {
+  if (entries.length > 1) return "Selection";
+  return entry?.is_dir ? "Folder" : "File";
+}
+
 export default function FilesystemPanelListContent({
   paneId = "",
   browse = {},
@@ -188,9 +193,7 @@ export default function FilesystemPanelListContent({
               : activeDragEntry.name}
           </span>
           <span className={styles.dragOverlayMeta}>
-            {activeDragEntries.length > 1
-              ? "Selection"
-              : (activeDragEntry.is_dir ? "Folder" : "File")}
+            {getDragOverlayMeta(activeDragEntries, activeDragEntry)}
           </span>
           <span className={styles.dragOverlayIntent}>
             {dragIntentLabel}

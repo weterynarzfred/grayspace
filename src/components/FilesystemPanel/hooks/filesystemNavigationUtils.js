@@ -31,7 +31,7 @@ export function normalizeInitialFilesystemState(initialState) {
     currentPath: typeof state.currentPath === "string" ? state.currentPath : "",
     selectedPaths,
     expandedPaths,
-    selectionAnchorPath: selectedPaths[selectedPaths.length - 1] ?? "",
+    selectionAnchorPath: selectedPaths.at(-1) ?? "",
   };
 }
 

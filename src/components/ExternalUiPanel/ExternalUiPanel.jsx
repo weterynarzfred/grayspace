@@ -88,7 +88,7 @@ function ExternalUiPanel({
       }
     }
 
-    void loadExternalUiConfig();
+    loadExternalUiConfig();
     return () => {
       isDisposed = true;
     };

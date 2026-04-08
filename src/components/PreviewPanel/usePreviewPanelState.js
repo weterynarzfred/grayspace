@@ -53,9 +53,14 @@ function usePreviewPanelState({
     && saveStatus === "dirty"
     && previousPreviewPath
     && selectedPreviewPath !== previousPreviewPath;
-  const previewPath = isLocked ? lockedPath : (
-    shouldStickToPreviousPath ? previousPreviewPath : selectedPreviewPath
-  );
+  let previewPath;
+  if (isLocked) {
+    previewPath = lockedPath;
+  } else if (shouldStickToPreviousPath) {
+    previewPath = previousPreviewPath;
+  } else {
+    previewPath = selectedPreviewPath;
+  }
   const previewDropId = useMemo(() => `preview-drop:${paneId || "preview"}`, [paneId]);
   const previewLabel = useMemo(() => getPathDisplayName(previewPath), [previewPath]);
   const previewDirectoryPath = useMemo(() => getParentDirectoryPath(previewPath), [previewPath]);
@@ -174,7 +179,7 @@ function usePreviewPanelState({
 
   const handleSaveNow = useCallback(() => {
     if (!isTextEditable || !previewPath) return;
-    void saveTextFile(previewPath, textContent);
+    saveTextFile(previewPath, textContent);
   }, [isTextEditable, previewPath, saveTextFile, textContent]);
 
   useEffect(() => {

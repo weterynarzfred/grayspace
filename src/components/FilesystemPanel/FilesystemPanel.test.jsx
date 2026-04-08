@@ -1,5 +1,5 @@
 import path from "node:path";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { cursorPosition } from "@tauri-apps/api/window";
 import { useDroppable } from "@dnd-kit/core";
@@ -7,7 +7,7 @@ import FilesystemPanel from "./FilesystemPanel";
 import { clearFilesystemClipboardState } from "./filesystemClipboardStore";
 import PanelsDndLayer from "../PanelsDndLayer";
 import { APP_COMMAND_EVENT } from "../../commands/commandEvents";
-import { runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
+import { flushPromises, runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
 import { advanceTimersBy } from "../../test/utils/timers";
 
 const { openConfirmMock } = vi.hoisted(() => ({
@@ -2408,14 +2408,16 @@ describe("FilesystemPanel", () => {
     const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
     fireEvent.click(notesButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.renameSelected",
         context: {
           targetPaneId: "pane-event",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     expect(await screen.findByRole("textbox")).toHaveValue("notes.txt");
   });
@@ -2428,14 +2430,16 @@ describe("FilesystemPanel", () => {
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.createTextFile",
         context: {
           targetPaneId: "pane-event-create-text",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     expect(await screen.findByRole("textbox")).toHaveValue("untitled.txt");
   });
@@ -2448,14 +2452,16 @@ describe("FilesystemPanel", () => {
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.createFolder",
         context: {
           targetPaneId: "pane-event-create-folder",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     expect(await screen.findByRole("textbox")).toHaveValue("New folder");
   });
@@ -2471,14 +2477,16 @@ describe("FilesystemPanel", () => {
     const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
     fireEvent.click(notesButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.createFolder",
         context: {
           targetPaneId: "pane-event-create-sibling",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("create_folder", {
@@ -2499,14 +2507,16 @@ describe("FilesystemPanel", () => {
     const usersButton = await screen.findByRole("button", { name: /Users/i });
     fireEvent.click(usersButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.createTextFile",
         context: {
           targetPaneId: "pane-event-create-child",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("create_text_file", {
@@ -2534,14 +2544,16 @@ describe("FilesystemPanel", () => {
     fireEvent.click(todoButton);
     fireEvent.click(notesButton, { ctrlKey: true });
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.createFolder",
         context: {
           targetPaneId: "pane-event-create-multi",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("create_folder", {
@@ -2562,8 +2574,9 @@ describe("FilesystemPanel", () => {
     const usersButton = await screen.findByRole("button", { name: /Users/i });
     fireEvent.click(usersButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.createTextFile",
         context: {
           source: "context-menu",
@@ -2571,8 +2584,9 @@ describe("FilesystemPanel", () => {
           targetType: "panel",
           targetPanelType: "Filesystem",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("create_text_file", {
@@ -2593,8 +2607,9 @@ describe("FilesystemPanel", () => {
     const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
     fireEvent.click(notesButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.createFolder",
         context: {
           source: "context-menu",
@@ -2603,8 +2618,9 @@ describe("FilesystemPanel", () => {
           targetScope: "tree-entry",
           targetPath: "C:\\Users",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("create_folder", {
@@ -2626,14 +2642,16 @@ describe("FilesystemPanel", () => {
     const tempFolderButton = await screen.findByRole("button", { name: /Temp/i });
     fireEvent.click(tempFolderButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.openSelectedFolderInNewTab",
         context: {
           targetPaneId: "pane-event-open-folder",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("workspace_open_folder_from_tab", {
@@ -2656,23 +2674,27 @@ describe("FilesystemPanel", () => {
     const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
     fireEvent.click(notesButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.copy",
         context: {
           targetPaneId: "pane-event-copy-paste",
         },
-      },
-    }));
+        },
+      }));
+    });
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.paste",
         context: {
           targetPaneId: "pane-event-copy-paste",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("import_paths", {
@@ -2680,6 +2702,7 @@ describe("FilesystemPanel", () => {
         destinationDir: "C:\\",
       });
     });
+    await flushPromises();
   });
 
   it("pastes into the selected folder when one is selected", async () => {
@@ -2693,26 +2716,30 @@ describe("FilesystemPanel", () => {
     const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
     fireEvent.click(notesButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.copy",
         context: {
           targetPaneId: "pane-event-copy-paste-selected-folder",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     const usersButton = await screen.findByRole("button", { name: /Users/i });
     fireEvent.click(usersButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.paste",
         context: {
           targetPaneId: "pane-event-copy-paste-selected-folder",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("import_paths", {
@@ -2733,14 +2760,16 @@ describe("FilesystemPanel", () => {
     const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
     fireEvent.click(notesButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.copy",
         context: {
           targetPaneId: "pane-event-copy-paste-selected-file-neighbor",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     const usersButton = await screen.findByRole("button", { name: /Users/i });
     const usersExpander = usersButton.querySelector("[data-entry-expander]");
@@ -2750,14 +2779,16 @@ describe("FilesystemPanel", () => {
     const todoButton = await screen.findByRole("button", { name: /todo\.txt/i });
     fireEvent.click(todoButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.paste",
         context: {
           targetPaneId: "pane-event-copy-paste-selected-file-neighbor",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("import_paths", {
@@ -2778,8 +2809,9 @@ describe("FilesystemPanel", () => {
     const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
     fireEvent.click(notesButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.copy",
         context: {
           source: "context-menu",
@@ -2788,17 +2820,20 @@ describe("FilesystemPanel", () => {
           targetScope: "tree-entry",
           selectedPaths: ["C:\\draft.md"],
         },
-      },
-    }));
+        },
+      }));
+    });
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.paste",
         context: {
           targetPaneId: "pane-event-copy-context-selection",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("import_paths", {
@@ -2806,6 +2841,7 @@ describe("FilesystemPanel", () => {
         destinationDir: "C:\\",
       });
     });
+    await flushPromises();
   });
 
   it("cuts selected entries, pastes into folder context target, and clears cut clipboard", async () => {
@@ -2819,17 +2855,20 @@ describe("FilesystemPanel", () => {
     const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
     fireEvent.click(notesButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.cut",
         context: {
           targetPaneId: "pane-event-cut-paste",
         },
-      },
-    }));
+        },
+      }));
+    });
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.paste",
         context: {
           source: "context-menu",
@@ -2838,8 +2877,9 @@ describe("FilesystemPanel", () => {
           targetScope: "tree-entry",
           targetPath: "C:\\Users",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("move_path", {
@@ -2848,8 +2888,9 @@ describe("FilesystemPanel", () => {
       });
     });
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.paste",
         context: {
           source: "context-menu",
@@ -2858,8 +2899,9 @@ describe("FilesystemPanel", () => {
           targetScope: "tree-entry",
           targetPath: "C:\\Users",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       const moveCalls = invoke.mock.calls.filter(([command, args]) => (
@@ -3059,14 +3101,16 @@ describe("FilesystemPanel", () => {
     const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
     fireEvent.click(notesButton);
 
-    window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
-      detail: {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
         commandId: "filesystem.deleteSelected",
         context: {
           targetPaneId: "pane-event-delete",
         },
-      },
-    }));
+        },
+      }));
+    });
 
     await waitFor(() => {
       expect(openConfirmMock).toHaveBeenCalled();

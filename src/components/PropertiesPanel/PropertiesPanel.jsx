@@ -22,7 +22,7 @@ function getPathDisplayName(path) {
   const trimmedPath = path.replace(/[\\/]+$/, "");
   if (!trimmedPath) return path;
   const pathSegments = trimmedPath.split(/[\\/]/);
-  return pathSegments[pathSegments.length - 1] ?? trimmedPath;
+  return pathSegments.at(-1) ?? trimmedPath;
 }
 
 function getErrorMessage(error) {
@@ -43,8 +43,36 @@ function formatSize(sizeBytes) {
     unitIndex += 1;
   }
 
-  const maximumFractionDigits = value >= 100 || unitIndex === 0 ? 0 : (value >= 10 ? 1 : 2);
+  let maximumFractionDigits = 2;
+  if (value >= 100 || unitIndex === 0) maximumFractionDigits = 0;
+  else if (value >= 10) maximumFractionDigits = 1;
   return `${value.toLocaleString(undefined, { maximumFractionDigits })} ${units[unitIndex]}`;
+}
+
+function usePropertiesDetails(propertiesPath, detailsReloadVersion) {
+  const [detailsState, setDetailsState] = useState(INITIAL_DETAILS_STATE);
+
+  useEffect(() => {
+    if (!propertiesPath) {
+      setDetailsState(INITIAL_DETAILS_STATE);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setDetailsState({ status: "loading", details: null, error: "" });
+
+    invoke("filesystem_get_properties", { path: propertiesPath })
+      .then((details) => {
+        if (!cancelled) setDetailsState({ status: "ready", details, error: "" });
+      })
+      .catch((loadError) => {
+        if (!cancelled) setDetailsState({ status: "error", details: null, error: getErrorMessage(loadError) });
+      });
+
+    return () => { cancelled = true; };
+  }, [propertiesPath, detailsReloadVersion]);
+
+  return detailsState;
 }
 
 function formatDate(timestampMs) {
@@ -52,6 +80,37 @@ function formatDate(timestampMs) {
   const date = new Date(timestampMs);
   if (Number.isNaN(date.getTime())) return "Unknown";
   return date.toLocaleString();
+}
+
+function renderPropertiesHeaderLabel(propertiesLabel, isLocked) {
+  if (propertiesLabel) {
+    return <p className={styles.pathLabel}>{isLocked ? propertiesLabel : <em>{propertiesLabel}</em>}</p>;
+  }
+  return <p className={styles.muted}>Select a file to inspect.</p>;
+}
+
+function renderPropertiesLockButton(propertiesPath, isLocked, handleToggleLock) {
+  if (!propertiesPath) return null;
+  return <button
+    type="button"
+    className={`${styles.lockButton} ${isLocked ? styles.lockButtonLocked : ""}`}
+    onClick={handleToggleLock}
+  >{isLocked ? "unlock" : "lock"}</button>;
+}
+
+function renderPropertiesBody(propertiesPath, detailsState, detailsRows) {
+  if (!propertiesPath) return <p className={styles.muted}>No file selected.</p>;
+  return <>
+    <p className={styles.pathValue} title={propertiesPath}>{propertiesPath}</p>
+    {detailsState.status === "loading" ? <p className={styles.muted}>Loading properties...</p> : null}
+    {detailsState.status === "error" ? <p className={styles.error}>{detailsState.error}</p> : null}
+    {detailsState.status === "ready" ? <dl className={styles.detailsList}>
+      {detailsRows.map(({ key, value }) => <div key={key} className={styles.detailRow}>
+        <dt className={styles.detailKey}>{key}</dt>
+        <dd className={styles.detailValue}>{value}</dd>
+      </div>)}
+    </dl> : null}
+  </>;
 }
 
 function PropertiesPanel({
@@ -63,7 +122,6 @@ function PropertiesPanel({
   const selectedPropertiesPath = getPrimarySelectedPath(getSelectedPathsFromState(tabSelectedFiles));
   const [lockedPath, setLockedPath] = useState("");
   const [detailsReloadVersion, setDetailsReloadVersion] = useState(0);
-  const [detailsState, setDetailsState] = useState(INITIAL_DETAILS_STATE);
   const isLocked = Boolean(lockedPath);
   const propertiesPath = isLocked ? lockedPath : selectedPropertiesPath;
   const propertiesLabel = useMemo(() => getPathDisplayName(propertiesPath), [propertiesPath]);
@@ -133,43 +191,7 @@ function PropertiesPanel({
     onDirectoryChange: handlePropertiesFileWatchChange,
   });
 
-  useEffect(() => {
-    if (!propertiesPath) {
-      setDetailsState(INITIAL_DETAILS_STATE);
-      return undefined;
-    }
-
-    let cancelled = false;
-
-    async function loadProperties() {
-      setDetailsState({
-        status: "loading",
-        details: null,
-        error: "",
-      });
-
-      try {
-        const details = await invoke("filesystem_get_properties", { path: propertiesPath });
-        if (cancelled) return;
-        setDetailsState({
-          status: "ready",
-          details,
-          error: "",
-        });
-      } catch (loadError) {
-        if (cancelled) return;
-        setDetailsState({
-          status: "error",
-          details: null,
-          error: getErrorMessage(loadError),
-        });
-      }
-    }
-
-    loadProperties();
-
-    return () => { cancelled = true; };
-  }, [propertiesPath, detailsReloadVersion]);
+  const detailsState = usePropertiesDetails(propertiesPath, detailsReloadVersion);
 
   const details = detailsState.details;
   const detailsRows = [
@@ -178,34 +200,19 @@ function PropertiesPanel({
     { key: "date modified", value: formatDate(details?.dateModifiedMs) },
     { key: "date created", value: formatDate(details?.dateCreatedMs) },
   ];
+  const isDropTarget = (isDropOver && isPanelsDragActive) || isExternalDragOver;
 
   return <section
     ref={setPanelNodeRef}
-    className={`${shellStyles.panelContent} ${styles.panelContent} ${(isDropOver && isPanelsDragActive) || isExternalDragOver ? styles.panelDropTarget : ""}`}
+    className={`${shellStyles.panelContent} ${styles.panelContent} ${isDropTarget ? styles.panelDropTarget : ""}`}
     aria-label="Properties panel"
   >
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
-      {propertiesLabel
-        ? <p className={styles.pathLabel}>{isLocked ? propertiesLabel : <em>{propertiesLabel}</em>}</p>
-        : <p className={styles.muted}>Select a file to inspect.</p>}
-      {propertiesPath ? <button
-        type="button"
-        className={`${styles.lockButton} ${isLocked ? styles.lockButtonLocked : ""}`}
-        onClick={handleToggleLock}
-      >{isLocked ? "unlock" : "lock"}</button> : null}
+      {renderPropertiesHeaderLabel(propertiesLabel, isLocked)}
+      {renderPropertiesLockButton(propertiesPath, isLocked, handleToggleLock)}
     </PanelHeader>
     <div className={shellStyles.panelBody}>
-      {propertiesPath ? <>
-        <p className={styles.pathValue} title={propertiesPath}>{propertiesPath}</p>
-        {detailsState.status === "loading" ? <p className={styles.muted}>Loading properties...</p> : null}
-        {detailsState.status === "error" ? <p className={styles.error}>{detailsState.error}</p> : null}
-        {detailsState.status === "ready" ? <dl className={styles.detailsList}>
-          {detailsRows.map(({ key, value }) => <div key={key} className={styles.detailRow}>
-            <dt className={styles.detailKey}>{key}</dt>
-            <dd className={styles.detailValue}>{value}</dd>
-          </div>)}
-        </dl> : null}
-      </> : <p className={styles.muted}>No file selected.</p>}
+      {renderPropertiesBody(propertiesPath, detailsState, detailsRows)}
     </div>
   </section>;
 }

@@ -12,7 +12,9 @@ export function getFilesystemClipboardState() {
 }
 
 export function setFilesystemClipboardState(mode, paths = []) {
-  const normalizedMode = mode === "cut" ? "cut" : (mode === "copy" ? "copy" : "");
+  let normalizedMode = "";
+  if (mode === "cut") normalizedMode = "cut";
+  else if (mode === "copy") normalizedMode = "copy";
   const normalizedPaths = uniqueNonEmptyPaths(paths);
 
   if (!normalizedMode || normalizedPaths.length === 0) {

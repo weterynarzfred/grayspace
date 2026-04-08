@@ -101,25 +101,24 @@ export default function useWorkspaceActions({
     workspaceSetTabPanelType(tabId, paneId, panelType).catch(handleTabScopedCommandError);
   }, [handleTabScopedCommandError]);
 
-  const handleSetTabCwdHint = useCallback((tabId, _paneId, path) => {
+  const handleSetTabCwdHint = useCallback((tabId, _paneId, path = "") => {
     if (!tabId) return;
-    const nextPath = path ?? "";
     const previousPath = terminalCwdByTabRef.current.get(tabId);
-    if (previousPath !== nextPath) {
-      terminalCwdByTabRef.current.set(tabId, nextPath);
-      workspaceSetTabTerminalCwd(tabId, nextPath).catch((error) => {
+    if (previousPath !== path) {
+      terminalCwdByTabRef.current.set(tabId, path);
+      workspaceSetTabTerminalCwd(tabId, path).catch((error) => {
         terminalCwdByTabRef.current.delete(tabId);
         handleTabScopedCommandError(error);
       });
-      if (nextPath) {
-        workspaceRecentFoldersRecord(nextPath).catch(() => {});
+      if (path) {
+        workspaceRecentFoldersRecord(path).catch(() => {});
       }
     }
 
     if (activeTab?.tabId !== tabId) return;
     const workspaceRoot = activeTab?.workspaceRoot ?? "";
     if (!workspaceRoot) return;
-    if (isPathInsideRoot(nextPath, workspaceRoot)) return;
+    if (isPathInsideRoot(path, workspaceRoot)) return;
 
     workspaceSetTabWorkspaceRoot(tabId, null).catch(handleTabScopedCommandError);
   }, [activeTab, handleTabScopedCommandError]);

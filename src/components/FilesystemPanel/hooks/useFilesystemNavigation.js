@@ -61,9 +61,9 @@ export default function useFilesystemNavigation(
       : entries.map(entry => entry.path);
     return selectEntryState(
       entryPath,
-      options,
       entryPaths,
       selectedPaths.filter(path => entryPaths.includes(path)),
+      options,
     );
   }, [entries, selectEntryState, selectedPaths]);
 

@@ -202,7 +202,7 @@ export default function useFilesystemTree({
         return next;
       }
 
-      void ensureDirectoryEntriesLoaded(directoryPath);
+      ensureDirectoryEntriesLoaded(directoryPath);
       return {
         ...prev,
         [directoryPath]: true,
@@ -225,7 +225,7 @@ export default function useFilesystemTree({
   useEffect(() => {
     expandedDirectoryPaths.forEach((directoryPath) => {
       if (directoryEntriesByPath[directoryPath] || loadingByPath[directoryPath]) return;
-      void ensureDirectoryEntriesLoaded(directoryPath);
+      ensureDirectoryEntriesLoaded(directoryPath);
     });
   }, [
     directoryEntriesByPath,

@@ -56,13 +56,16 @@ export default function useFilesystemDirectoryWatcher({
         return;
       }
 
+      const handleRefreshError = (refreshError) => {
+        if (!isDisposed && typeof onWatcherError === "function")
+          onWatcherError(refreshError, watchedPath);
+      };
+
       const timeoutHandle = setTimeout(() => {
         const refreshState = watchRefreshStateRef.current.get(watchId);
         watchRefreshStateRef.current.delete(watchId);
-        Promise.resolve(onDirectoryChange?.(watchedPath, refreshState?.changedPath ?? "")).catch(refreshError => {
-          if (!isDisposed && typeof onWatcherError === "function")
-            onWatcherError(refreshError, watchedPath);
-        });
+        Promise.resolve(onDirectoryChange?.(watchedPath, refreshState?.changedPath ?? ""))
+          .catch(handleRefreshError);
       }, WATCH_REFRESH_DEBOUNCE_MS);
       watchRefreshStateRef.current.set(watchId, {
         timeoutHandle,
@@ -103,7 +106,7 @@ export default function useFilesystemDirectoryWatcher({
       isDisposed = true;
       clearAllRefreshTimeouts();
       unlistenWatch?.();
-      void stopAllWatches();
+      stopAllWatches();
     };
   }, [watchPathKey, onDirectoryChange, onWatcherError]);
 }

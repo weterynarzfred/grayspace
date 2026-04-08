@@ -5,6 +5,13 @@
   margin: 0;
   content-visibility: auto;
   contain-intrinsic-size: var(--entry-row-height, 32px);
+
+  &:nth-of-type(2n) {
+    background-color: #fff1;
+  }
+  &:nth-of-type(2n + 1) {
+    background-color: #0001;
+  }
 }
 
 .entryButton {
@@ -30,15 +37,6 @@
   cursor: text;
   background: $bg-selected;
   border-color: $border-hover;
-}
-
-.entryItem {
-  &:nth-of-type(2n) {
-    background-color: #fff1;
-  }
-  &:nth-of-type(2n + 1) {
-    background-color: #0001;
-  }
 }
 
 .entryMain {

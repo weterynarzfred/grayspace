@@ -10,20 +10,20 @@ export default function resolveContextMenuTarget(target) {
   const contextNode = target.closest("[data-contextmenu-boundary]");
   if (!contextNode) return null;
 
-  const boundary = contextNode.getAttribute("data-contextmenu-boundary") || "";
+  const boundary = contextNode.dataset.contextmenuBoundary || "";
   const allowedKinds = ALLOWED_KINDS_BY_BOUNDARY[boundary];
   if (!allowedKinds) return null;
 
-  const kind = contextNode.getAttribute("data-context-kind") || "";
+  const kind = contextNode.dataset.contextKind || "";
   if (!allowedKinds.has(kind)) return null;
 
   return {
     kind,
-    id: contextNode.getAttribute("data-context-id") || "",
-    label: contextNode.getAttribute("data-context-label") || "",
-    path: contextNode.getAttribute("data-context-path") || "",
-    scope: contextNode.getAttribute("data-context-scope") || "",
-    paneId: contextNode.getAttribute("data-context-pane-id") || "",
-    panelType: contextNode.getAttribute("data-context-panel-type") || "",
+    id: contextNode.dataset.contextId || "",
+    label: contextNode.dataset.contextLabel || "",
+    path: contextNode.dataset.contextPath || "",
+    scope: contextNode.dataset.contextScope || "",
+    paneId: contextNode.dataset.contextPaneId || "",
+    panelType: contextNode.dataset.contextPanelType || "",
   };
 }

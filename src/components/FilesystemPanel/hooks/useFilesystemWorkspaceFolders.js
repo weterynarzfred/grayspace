@@ -30,12 +30,12 @@ export default function useFilesystemWorkspaceFolders({ entries = [], paths = []
         const next = { ...previous };
         let hasChanged = false;
 
-        unresolvedPaths.forEach((path) => {
+        for (const path of unresolvedPaths) {
           const nextValue = Boolean(nextFlags[path]);
-          if (next[path] === nextValue) return;
+          if (next[path] === nextValue) continue;
           next[path] = nextValue;
           hasChanged = true;
-        });
+        }
 
         return hasChanged ? next : previous;
       });
@@ -54,7 +54,7 @@ export default function useFilesystemWorkspaceFolders({ entries = [], paths = []
       }
     }
 
-    void resolveWorkspaceFolders();
+    resolveWorkspaceFolders();
   }, [unresolvedPaths]);
 
   return useMemo(() => {

@@ -14,7 +14,43 @@ import {
 
 function getContextMenuBoundaryType(target) {
   if (!(target instanceof Element)) return "";
-  return target.closest("[data-contextmenu-boundary]")?.getAttribute("data-contextmenu-boundary") || "";
+  return target.closest("[data-contextmenu-boundary]")?.dataset.contextmenuBoundary || "";
+}
+
+function hasCommandModifiers(event) {
+  return event.metaKey || event.ctrlKey || event.altKey;
+}
+
+function handlePanelNavigationCommand(event, {
+  handleDeleteKeyPress,
+  handleExpandOrCollapseSelectedEntry,
+  handleMoveSelectionBy,
+  handleOpenSelectedEntry,
+}) {
+  switch (event.key) {
+    case "ArrowDown":
+      event.preventDefault();
+      handleMoveSelectionBy(1, event.shiftKey);
+      return;
+    case "ArrowUp":
+      event.preventDefault();
+      handleMoveSelectionBy(-1, event.shiftKey);
+      return;
+    case "ArrowRight":
+      if (handleExpandOrCollapseSelectedEntry(true)) event.preventDefault();
+      return;
+    case "ArrowLeft":
+      if (handleExpandOrCollapseSelectedEntry(false)) event.preventDefault();
+      return;
+    case "Enter":
+      if (handleOpenSelectedEntry()) event.preventDefault();
+      return;
+    case "Delete":
+      handleDeleteKeyPress(event);
+      return;
+    default:
+      return;
+  }
 }
 
 export default function useFilesystemPanelInteractions({
@@ -221,7 +257,7 @@ export default function useFilesystemPanelInteractions({
     if (!panelElement || !entryPath) return;
 
     const nextTarget = Array.from(panelElement.querySelectorAll("[data-context-id]"))
-      .find((element) => element.getAttribute("data-context-id") === entryPath);
+      .find((element) => element.dataset.contextId === entryPath);
     nextTarget?.scrollIntoView?.({ block: "nearest" });
   }, [panelRef]);
 
@@ -496,9 +532,12 @@ export default function useFilesystemPanelInteractions({
     }
 
     const currentIndex = navigationPaths.indexOf(currentReferencePath);
-    const nextIndex = currentIndex < 0
-      ? (direction > 0 ? 0 : navigationPaths.length - 1)
-      : (currentIndex + direction + navigationPaths.length) % navigationPaths.length;
+    let nextIndex;
+    if (currentIndex < 0) {
+      nextIndex = direction > 0 ? 0 : navigationPaths.length - 1;
+    } else {
+      nextIndex = (currentIndex + direction + navigationPaths.length) % navigationPaths.length;
+    }
     const nextPath = navigationPaths[nextIndex];
     const nextIsTreeEntry = treeData.entryPathSet.has(nextPath);
     const currentIsTreeEntry = treeData.entryPathSet.has(currentReferencePath);
@@ -531,7 +570,7 @@ export default function useFilesystemPanelInteractions({
   ]);
 
   const handleExpandOrCollapseSelectedEntry = useCallback((expand) => {
-    const selectedPath = selectedPaths[selectedPaths.length - 1] ?? "";
+    const selectedPath = selectedPaths.at(-1) ?? "";
     const selectedRow = rowByPath[selectedPath];
     if (!selectedRow?.entry?.is_dir) return false;
     if (expand && selectedRow.isExpanded) return false;
@@ -547,7 +586,7 @@ export default function useFilesystemPanelInteractions({
         .filter(entry => entry && !entry.is_dir);
       if (selectedFiles.length > 1) {
         selectedFiles.forEach((entry) => {
-          void openEntry(entry, {
+          openEntry(entry, {
             isWorkspaceFolder: workspaceFolderPathSet.has(entry.path),
           });
         });
@@ -555,7 +594,7 @@ export default function useFilesystemPanelInteractions({
       }
     }
 
-    const selectedPath = selectedPaths[selectedPaths.length - 1] ?? "";
+    const selectedPath = selectedPaths.at(-1) ?? "";
     if (selectedPath === upSelectionId) {
       onOpenUpEntry?.();
       return true;
@@ -569,7 +608,7 @@ export default function useFilesystemPanelInteractions({
     const selectedEntry = treeData.entryByPath[selectedPath];
     if (!selectedEntry) return false;
 
-    void openEntry(selectedEntry, {
+    openEntry(selectedEntry, {
       isWorkspaceFolder: workspaceFolderPathSet.has(selectedEntry.path),
     });
     return true;
@@ -594,7 +633,7 @@ export default function useFilesystemPanelInteractions({
     const selectedEntry = treeData.entryByPath[selectedPath];
     if (!selectedEntry?.is_dir) return false;
 
-    void openEntry(selectedEntry, {
+    openEntry(selectedEntry, {
       forceOpenInNewTab: true,
       isWorkspaceFolder: workspaceFolderPathSet.has(selectedEntry.path),
     });
@@ -608,59 +647,31 @@ export default function useFilesystemPanelInteractions({
     workspaceFolderPathSet,
   ]);
 
+  const handleDeleteKeyPress = useCallback((event) => {
+    if (!isBrowsing || selectedEntryPaths.length === 0) return;
+    event.preventDefault();
+    if (onDeleteShortcutCommand) onDeleteShortcutCommand();
+    else handleDeleteSelectedEntries();
+  }, [handleDeleteSelectedEntries, isBrowsing, onDeleteShortcutCommand, selectedEntryPaths.length]);
+
   const handlePanelKeyDown = useCallback((event) => {
     if (event.defaultPrevented || event.repeat) return;
     if (isEntryOperationInProgress) return;
     if (isEditableKeyboardTarget(event.target)) return;
+    if (hasCommandModifiers(event)) return;
 
-    const hasCommandModifiers = event.metaKey || event.ctrlKey || event.altKey;
-
-    if (!hasCommandModifiers && event.key === "ArrowDown") {
-      event.preventDefault();
-      handleMoveSelectionBy(1, event.shiftKey);
-      return;
-    }
-
-    if (!hasCommandModifiers && event.key === "ArrowUp") {
-      event.preventDefault();
-      handleMoveSelectionBy(-1, event.shiftKey);
-      return;
-    }
-
-    if (!hasCommandModifiers && event.key === "ArrowRight") {
-      if (handleExpandOrCollapseSelectedEntry(true)) event.preventDefault();
-      return;
-    }
-
-    if (!hasCommandModifiers && event.key === "ArrowLeft") {
-      if (handleExpandOrCollapseSelectedEntry(false)) event.preventDefault();
-      return;
-    }
-
-    if (!hasCommandModifiers && event.key === "Enter") {
-      if (handleOpenSelectedEntry()) event.preventDefault();
-      return;
-    }
-
-    if (event.key !== "Delete") return;
-    if (!isBrowsing) return;
-    if (hasCommandModifiers || selectedEntryPaths.length === 0) return;
-
-    event.preventDefault();
-    if (onDeleteShortcutCommand) {
-      onDeleteShortcutCommand();
-      return;
-    }
-    void handleDeleteSelectedEntries();
+    handlePanelNavigationCommand(event, {
+      handleDeleteKeyPress,
+      handleExpandOrCollapseSelectedEntry,
+      handleMoveSelectionBy,
+      handleOpenSelectedEntry,
+    });
   }, [
+    handleDeleteKeyPress,
     handleExpandOrCollapseSelectedEntry,
-    handleDeleteSelectedEntries,
     handleMoveSelectionBy,
     handleOpenSelectedEntry,
     isEntryOperationInProgress,
-    isBrowsing,
-    onDeleteShortcutCommand,
-    selectedEntryPaths.length,
   ]);
 
   return {

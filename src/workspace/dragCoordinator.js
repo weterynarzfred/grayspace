@@ -33,7 +33,7 @@ export function resolveTabDropAction({
 }) {
   const targetTabId = parseTabDndId(overId);
   if (targetTabId) {
-    const targetIndex = tabOrder.findIndex(tabId => tabId === targetTabId);
+    const targetIndex = tabOrder.indexOf(targetTabId);
     return {
       kind: "move",
       sourceWindowId,

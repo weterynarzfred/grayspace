@@ -261,7 +261,7 @@ function App() {
     }));
     closeCommandPalette();
     closeContextMenu();
-    void refreshRecentFolders({ notifyOnError: true });
+    refreshRecentFolders({ notifyOnError: true });
   }, [closeCommandPalette, closeContextMenu, refreshRecentFolders]);
   const handlePointerMoveCapture = useCallback((event) => {
     lastPointerPositionRef.current = {
@@ -331,7 +331,8 @@ function App() {
       const hasSelection = selectedPaths.length > 0;
       if (!hasSelection) {
         if (!previousMeta) return previous;
-        const { [tabId]: _removed, ...rest } = previous;
+        const rest = { ...previous };
+        delete rest[tabId];
         return rest;
       }
 
@@ -375,7 +376,7 @@ function App() {
 
     try {
       await workspaceActions.handleOpenFolderInCurrentTab(tabId, targetPath);
-      void refreshRecentFolders({ notifyOnError: false });
+      refreshRecentFolders({ notifyOnError: false });
       return true;
     } catch (error) {
       const message = getErrorMessage(error);
@@ -405,7 +406,7 @@ function App() {
     closeRecentFolders();
     const activeTabId = activeTab?.tabId ?? "";
     if (!activeTabId) return;
-    void openFolderInCurrentTabViaRecentFlow(activeTabId, path);
+    openFolderInCurrentTabViaRecentFlow(activeTabId, path);
   }, [activeTab?.tabId, closeRecentFolders, openFolderInCurrentTabViaRecentFlow]);
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -434,7 +435,7 @@ function App() {
     closeRecentFolders();
   }, [activeNotification, closeCommandPalette, closeContextMenu, closeRecentFolders]);
   useEffect(() => {
-    void refreshRecentFolders({ notifyOnError: false });
+    refreshRecentFolders({ notifyOnError: false });
   }, [activeTab?.tabId, activeTab?.terminalCwdHint, refreshRecentFolders]);
 
   if (!currentWindow || !activeTab) {

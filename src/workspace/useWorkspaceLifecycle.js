@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+
+function noop() { }
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   listenWorkspaceUpdated,
@@ -38,17 +40,19 @@ export default function useWorkspaceLifecycle({
       await syncBounds(appWindow, bootstrap.windowId);
 
       const syncCurrentWindowBounds = () => {
-        syncBounds(appWindow, currentWindowIdRef.current).catch(() => {});
+        syncBounds(appWindow, currentWindowIdRef.current).catch(noop);
       };
 
-      unlistenCallbacks.push(await appWindow.onMoved(syncCurrentWindowBounds));
-      unlistenCallbacks.push(await appWindow.onResized(syncCurrentWindowBounds));
-      unlistenCallbacks.push(await listenWorkspaceUpdated(snapshot => {
-        if (snapshot) dispatch({
-          type: "workspace/snapshot",
-          payload: { snapshot },
-        });
-      }));
+      unlistenCallbacks.push(
+        await appWindow.onMoved(syncCurrentWindowBounds),
+        await appWindow.onResized(syncCurrentWindowBounds),
+        await listenWorkspaceUpdated(snapshot => {
+          if (snapshot) dispatch({
+            type: "workspace/snapshot",
+            payload: { snapshot },
+          });
+        })
+      );
     };
 
     initializeWorkspace().catch(error => {

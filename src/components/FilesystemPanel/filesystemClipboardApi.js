@@ -2,7 +2,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
 
 function normalizeClipboardMode(mode) {
-  return mode === "cut" ? "cut" : (mode === "copy" ? "copy" : "");
+  if (mode === "cut") return "cut";
+  if (mode === "copy") return "copy";
+  return "";
 }
 
 export async function writeFilesystemClipboard(paths = [], mode = "") {

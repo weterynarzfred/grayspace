@@ -227,7 +227,7 @@ function WorkspacePanelLayout({
       );
 
       splitRatioUpdates
-        .sort((a, b) => a.splitPath.length - b.splitPath.length)
+        .toSorted((a, b) => a.splitPath.length - b.splitPath.length)
         .forEach(update => {
           onSplitRatioChange(tabId, update.splitPath, update.ratio);
         });

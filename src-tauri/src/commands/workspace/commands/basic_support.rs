@@ -248,96 +248,98 @@ struct RemoveLeafResult {
   replacement_pane_id: Option<String>,
 }
 
+fn split_after_first_removed(
+  axis: LayoutAxis,
+  ratio: u8,
+  first_result: RemoveLeafResult,
+  second_node: TabLayoutNode,
+) -> RemoveLeafResult {
+  match first_result.node {
+    Some(next_first) => RemoveLeafResult {
+      node: Some(TabLayoutNode::Split {
+        axis,
+        ratio,
+        first: Box::new(next_first),
+        second: Box::new(second_node),
+      }),
+      removed: true,
+      replacement_pane_id: first_result.replacement_pane_id,
+    },
+    None => {
+      let fallback_pane_id = first_result
+        .replacement_pane_id
+        .or_else(|| find_first_layout_pane_id(&second_node));
+      RemoveLeafResult {
+        node: Some(second_node),
+        removed: true,
+        replacement_pane_id: fallback_pane_id,
+      }
+    }
+  }
+}
+
+fn split_after_second_removed(
+  axis: LayoutAxis,
+  ratio: u8,
+  first_node: Option<TabLayoutNode>,
+  second_result: RemoveLeafResult,
+) -> RemoveLeafResult {
+  match second_result.node {
+    Some(next_second) => RemoveLeafResult {
+      node: Some(TabLayoutNode::Split {
+        axis,
+        ratio,
+        first: Box::new(first_node.expect("first node should remain")),
+        second: Box::new(next_second),
+      }),
+      removed: true,
+      replacement_pane_id: second_result.replacement_pane_id,
+    },
+    None => {
+      let fallback_pane_id = second_result
+        .replacement_pane_id
+        .or_else(|| first_node.as_ref().and_then(find_first_layout_pane_id));
+      RemoveLeafResult {
+        node: first_node,
+        removed: true,
+        replacement_pane_id: fallback_pane_id,
+      }
+    }
+  }
+}
+
 fn remove_layout_leaf(node: TabLayoutNode, target_pane_id: &str) -> RemoveLeafResult {
   match node {
     TabLayoutNode::Leaf { pane_id } => {
       if pane_id == target_pane_id {
-        RemoveLeafResult {
-          node: None,
-          removed: true,
-          replacement_pane_id: None,
-        }
+        RemoveLeafResult { node: None, removed: true, replacement_pane_id: None }
       } else {
-        RemoveLeafResult {
-          node: Some(TabLayoutNode::Leaf { pane_id }),
-          removed: false,
-          replacement_pane_id: None,
-        }
+        RemoveLeafResult { node: Some(TabLayoutNode::Leaf { pane_id }), removed: false, replacement_pane_id: None }
       }
     }
-    TabLayoutNode::Split {
-      axis,
-      ratio,
-      first,
-      second,
-    } => {
+    TabLayoutNode::Split { axis, ratio, first, second } => {
       let first_node = *first;
       let second_node = *second;
       let first_result = remove_layout_leaf(first_node, target_pane_id);
 
       if first_result.removed {
-        match first_result.node {
-          Some(next_first_node) => RemoveLeafResult {
-            node: Some(TabLayoutNode::Split {
-              axis,
-              ratio,
-              first: Box::new(next_first_node),
-              second: Box::new(second_node),
-            }),
-            removed: true,
-            replacement_pane_id: first_result.replacement_pane_id,
-          },
-          None => {
-            let fallback_pane_id = first_result
-              .replacement_pane_id
-              .or_else(|| find_first_layout_pane_id(&second_node));
-            RemoveLeafResult {
-              node: Some(second_node),
-              removed: true,
-              replacement_pane_id: fallback_pane_id,
-            }
-          }
-        }
-      } else {
-        let second_result = remove_layout_leaf(second_node, target_pane_id);
-        if second_result.removed {
-          match second_result.node {
-            Some(next_second_node) => RemoveLeafResult {
-              node: Some(TabLayoutNode::Split {
-                axis,
-                ratio,
-                first: Box::new(first_result.node.expect("first node should remain")),
-                second: Box::new(next_second_node),
-              }),
-              removed: true,
-              replacement_pane_id: second_result.replacement_pane_id,
-            },
-            None => {
-              let fallback_pane_id = second_result.replacement_pane_id.or_else(|| {
-                first_result
-                  .node
-                  .as_ref()
-                  .and_then(find_first_layout_pane_id)
-              });
-              RemoveLeafResult {
-                node: first_result.node,
-                removed: true,
-                replacement_pane_id: fallback_pane_id,
-              }
-            }
-          }
-        } else {
-          RemoveLeafResult {
-            node: Some(TabLayoutNode::Split {
-              axis,
-              ratio,
-              first: Box::new(first_result.node.expect("first node should remain")),
-              second: Box::new(second_result.node.expect("second node should remain")),
-            }),
-            removed: false,
-            replacement_pane_id: None,
-          }
-        }
+        return split_after_first_removed(axis, ratio, first_result, second_node);
+      }
+
+      let second_result = remove_layout_leaf(second_node, target_pane_id);
+      if second_result.removed {
+        return split_after_second_removed(axis, ratio, first_result.node, second_result);
+      }
+
+      RemoveLeafResult {
+        node: Some(TabLayoutNode::Split {
+          axis,
+          ratio,
+          first: Box::new(first_result.node.expect("first node should remain")),
+          second: Box::new(second_result.node.expect("second node should remain")),
+        }),
+        removed: false,
+        replacement_pane_id: None,
       }
     }
   }

@@ -14,13 +14,13 @@ function WorkspaceTabStrip({
   onCreateTab,
 }) {
   const handleMinimizeWindow = () => {
-    void getCurrentWindow().minimize();
+    getCurrentWindow().minimize();
   };
   const handleToggleMaximizeWindow = () => {
-    void getCurrentWindow().toggleMaximize();
+    getCurrentWindow().toggleMaximize();
   };
   const handleCloseWindow = () => {
-    void getCurrentWindow().close();
+    getCurrentWindow().close();
   };
   const activeTabTitle = tabs.find(tab => tab.tabId === activeDragTabId)?.title ?? "";
 

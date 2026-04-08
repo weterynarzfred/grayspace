@@ -220,13 +220,13 @@ function FilesystemPanel({
     onToggleDirectoryExpanded: toggleDirectoryExpanded,
     onOpenDrivePath: selectDrive,
     onOpenUpEntry: () => {
-      void handleGoUpDoubleClick();
+      handleGoUpDoubleClick();
     },
     workspaceFolderPathSet,
     openConfirm,
     pushNotification,
   });
-  const upDestinationPath = breadcrumbs.length > 2 ? breadcrumbs[breadcrumbs.length - 2].path : "";
+  const upDestinationPath = breadcrumbs.length > 2 ? breadcrumbs.at(-2).path : "";
   const {
     isOver: isPanelDropOver,
     setNodeRef: setPanelDropNodeRef,
@@ -246,7 +246,7 @@ function FilesystemPanel({
   const isPanelActive = useCallback(() => {
     const paneViewport = panelRef.current?.closest("[data-pane-active]");
     if (!paneViewport) return panelRef.current?.contains(document.activeElement);
-    return paneViewport.getAttribute("data-pane-active") === "true";
+    return paneViewport.dataset.paneActive === "true";
   }, []);
   const executeFilesystemShortcutCommand = useCallback((commandId) => {
     executeCommand(commandId, {
@@ -269,7 +269,7 @@ function FilesystemPanel({
     if (selectedCommandPaths.length === 0) return false;
 
     setFilesystemClipboardState(mode, selectedCommandPaths);
-    void writeFilesystemClipboard(selectedCommandPaths, mode);
+    writeFilesystemClipboard(selectedCommandPaths, mode);
     return true;
   }, [
     isBrowsing,
@@ -430,9 +430,9 @@ function FilesystemPanel({
 
       event.preventDefault();
       if (wantsUndo) {
-        void undoEntries();
+        undoEntries();
       } else {
-        void redoEntries();
+        redoEntries();
       }
     };
 
@@ -481,49 +481,28 @@ function FilesystemPanel({
       const targetPaneId = context?.targetPaneId || context?.activePaneId || "";
       if (targetPaneId && targetPaneId !== paneId) return;
 
-      if (commandId === COMMAND_IDS.FILESYSTEM_RENAME_SELECTED) {
-        handleBeginRenameSelectedEntry();
-        return;
-      }
-      if (commandId === COMMAND_IDS.FILESYSTEM_COPY) {
-        handleClipboardSelectionCommand("copy", context);
-        return;
-      }
-      if (commandId === COMMAND_IDS.FILESYSTEM_CUT) {
-        handleClipboardSelectionCommand("cut", context);
-        return;
-      }
-      if (commandId === COMMAND_IDS.FILESYSTEM_PASTE) {
-        void handlePasteEntries(context);
-        return;
-      }
-      if (commandId === COMMAND_IDS.FILESYSTEM_CREATE_TEXT_FILE) {
-        void handleCreateTextFile(resolveCreateCommandOptions(context));
-        return;
-      }
-      if (commandId === COMMAND_IDS.FILESYSTEM_CREATE_FOLDER) {
-        void handleCreateFolder(resolveCreateCommandOptions(context));
-        return;
-      }
-      if (commandId === COMMAND_IDS.FILESYSTEM_DELETE_SELECTED) {
-        void handleDeleteSelectedEntries();
-        return;
-      }
-      if (commandId === COMMAND_IDS.FILESYSTEM_UNDO) {
-        void undoEntries();
-        return;
-      }
-      if (commandId === COMMAND_IDS.FILESYSTEM_REDO) {
-        void redoEntries();
-        return;
-      }
-      if (commandId === COMMAND_IDS.FILESYSTEM_OPEN_SELECTED_FOLDER_IN_NEW_TAB) {
-        handleOpenSelectedEntryInNewTab();
-        return;
-      }
-      if (commandId === COMMAND_IDS.FILESYSTEM_GO_UP) {
-        void handleGoUpDoubleClick();
-      }
+      const commandHandlers = {
+        [COMMAND_IDS.FILESYSTEM_RENAME_SELECTED]: () => handleBeginRenameSelectedEntry(),
+        [COMMAND_IDS.FILESYSTEM_COPY]: () => handleClipboardSelectionCommand("copy", context),
+        [COMMAND_IDS.FILESYSTEM_CUT]: () => handleClipboardSelectionCommand("cut", context),
+        [COMMAND_IDS.FILESYSTEM_PASTE]: () => handlePasteEntries(context),
+        [COMMAND_IDS.FILESYSTEM_CREATE_TEXT_FILE]: () => {
+          handleCreateTextFile(resolveCreateCommandOptions(context));
+        },
+        [COMMAND_IDS.FILESYSTEM_CREATE_FOLDER]: () => {
+          handleCreateFolder(resolveCreateCommandOptions(context));
+        },
+        [COMMAND_IDS.FILESYSTEM_DELETE_SELECTED]: () => handleDeleteSelectedEntries(),
+        [COMMAND_IDS.FILESYSTEM_UNDO]: () => undoEntries(),
+        [COMMAND_IDS.FILESYSTEM_REDO]: () => redoEntries(),
+        [COMMAND_IDS.FILESYSTEM_OPEN_SELECTED_FOLDER_IN_NEW_TAB]: () => {
+          handleOpenSelectedEntryInNewTab();
+        },
+        [COMMAND_IDS.FILESYSTEM_GO_UP]: () => handleGoUpDoubleClick(),
+      };
+
+      const commandHandler = commandHandlers[commandId];
+      if (commandHandler) commandHandler();
     };
 
     window.addEventListener(APP_COMMAND_EVENT, handleAppCommand);
@@ -629,7 +608,7 @@ function FilesystemPanel({
           currentDrive,
           onSelect: handleBreadcrumbSelect,
           onPathSubmit: path => {
-            void handleOpenFolderViaRecentSelection(path);
+            handleOpenFolderViaRecentSelection(path);
           },
           activeDragPaths: effectiveActiveDragPaths,
           isMovingEntry,
@@ -638,7 +617,7 @@ function FilesystemPanel({
           recentFoldersEntries,
           isLoadingRecentFolders: recentFoldersLoading,
           onSelectRecentFolder: path => {
-            void handleOpenFolderViaRecentSelection(path);
+            handleOpenFolderViaRecentSelection(path);
           },
         }}
         upEntry={{

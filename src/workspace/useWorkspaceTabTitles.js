@@ -11,7 +11,7 @@ function getPathDisplayName(path) {
   if (!trimmedPath) return path;
 
   const pathSegments = trimmedPath.split(/[\\/]/).filter(Boolean);
-  return pathSegments[pathSegments.length - 1] ?? trimmedPath;
+  return pathSegments.at(-1) ?? trimmedPath;
 }
 
 function getPaneRootPath(paneState) {
@@ -92,14 +92,14 @@ export default function useWorkspaceTabTitles(tabs = []) {
 
       setWorkspaceNameByRoot(previous => {
         const next = { ...previous };
-        resolvedEntries.forEach(([workspaceRoot, workspaceName]) => {
+        for (const [workspaceRoot, workspaceName] of resolvedEntries) {
           next[workspaceRoot] = workspaceName;
-        });
+        }
         return next;
       });
     }
 
-    void loadWorkspaceNames();
+    loadWorkspaceNames();
     return () => {
       isDisposed = true;
     };

@@ -1,37 +1,37 @@
 import "@testing-library/jest-dom/vitest";
 
-if (typeof globalThis.ResizeObserver === "undefined") {
+if (globalThis.ResizeObserver === undefined) {
   globalThis.ResizeObserver = class ResizeObserver {
-    observe() {}
+    observe() { /* no-op stub for jsdom */ }
 
-    unobserve() {}
+    unobserve() { /* no-op stub for jsdom */ }
 
-    disconnect() {}
+    disconnect() { /* no-op stub for jsdom */ }
   };
 }
 
 if (typeof HTMLCanvasElement !== "undefined") {
   const context2dStub = {
     canvas: null,
-    clearRect() {},
-    fillRect() {},
-    drawImage() {},
-    beginPath() {},
-    closePath() {},
-    moveTo() {},
-    lineTo() {},
-    stroke() {},
-    fillText() {},
-    setTransform() {},
-    save() {},
-    restore() {},
+    clearRect() { },
+    fillRect() { },
+    drawImage() { },
+    beginPath() { },
+    closePath() { },
+    moveTo() { },
+    lineTo() { },
+    stroke() { },
+    fillText() { },
+    setTransform() { },
+    save() { },
+    restore() { },
     measureText(text = "") {
       return { width: String(text).length * 8 };
     },
     getImageData() {
       return { data: new Uint8ClampedArray(0) };
     },
-    putImageData() {},
+    putImageData() { },
   };
 
   Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {

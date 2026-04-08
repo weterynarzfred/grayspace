@@ -47,7 +47,7 @@ function ContextMenuPopover({
 
     if (event.key !== "Enter") return;
     event.preventDefault();
-    const selectedCommand = commands[selectedIndex >= 0 ? selectedIndex : 0];
+    const selectedCommand = commands[Math.max(0, selectedIndex)];
     if (selectedCommand) onCommand?.(selectedCommand.id);
   };
 
