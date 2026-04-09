@@ -228,6 +228,31 @@ describe("executeCommand", () => {
     });
   });
 
+  it("dispatches filesystem navigation history command events", () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    const context = { source: "shortcut", activePaneId: "pane-1" };
+
+    const didExecuteBack = executeCommand(COMMAND_IDS.FILESYSTEM_NAVIGATE_BACK, { context });
+    const didExecuteForward = executeCommand(COMMAND_IDS.FILESYSTEM_NAVIGATE_FORWARD, { context });
+
+    expect(didExecuteBack).toBe(true);
+    expect(didExecuteForward).toBe(true);
+    expect(dispatchSpy).toHaveBeenCalledTimes(2);
+
+    const [backEvent] = dispatchSpy.mock.calls[0];
+    const [forwardEvent] = dispatchSpy.mock.calls[1];
+    expect(backEvent.type).toBe("grayspace-command");
+    expect(backEvent.detail).toEqual({
+      commandId: COMMAND_IDS.FILESYSTEM_NAVIGATE_BACK,
+      context,
+    });
+    expect(forwardEvent.type).toBe("grayspace-command");
+    expect(forwardEvent.detail).toEqual({
+      commandId: COMMAND_IDS.FILESYSTEM_NAVIGATE_FORWARD,
+      context,
+    });
+  });
+
   it("dispatches filesystem focus-breadcrumb command events", () => {
     const dispatchSpy = vi.spyOn(window, "dispatchEvent");
     const context = { source: "shortcut", activePaneId: "pane-1" };

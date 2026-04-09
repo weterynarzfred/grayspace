@@ -41,6 +41,8 @@ import shellStyles from "../PanelShell.module.scss";
 const UP_ENTRY_SELECTION_ID = "__up__";
 const ENTRY_WINDOWING_THRESHOLD = 200;
 const THUMBNAIL_SIZE_TOGGLE_TITLE = "Toggle icon/thumbnail size";
+const HISTORY_BACK_BUTTON_TITLE = "Go back in folder history";
+const HISTORY_FORWARD_BUTTON_TITLE = "Go forward in folder history";
 const NON_ENTRY_SELECTION_IDS = new Set([UP_ENTRY_SELECTION_ID]);
 
 function FilesystemPanel({
@@ -85,6 +87,8 @@ function FilesystemPanel({
     isLoadingMoreEntries,
     hasMoreEntries,
     totalEntriesCount,
+    canGoBack,
+    canGoForward,
     isMovingEntry,
     isDeletingEntries,
     isImportingExternal,
@@ -93,6 +97,8 @@ function FilesystemPanel({
     selectDrive,
     navigateToPath,
     loadMoreEntries,
+    goBack,
+    goForward,
     selectEntry,
     openEntry,
     moveEntries,
@@ -536,6 +542,8 @@ function FilesystemPanel({
           handleOpenSelectedEntryInNewTab();
         },
         [COMMAND_IDS.FILESYSTEM_GO_UP]: () => handleGoUpDoubleClick(),
+        [COMMAND_IDS.FILESYSTEM_NAVIGATE_BACK]: () => goBack(),
+        [COMMAND_IDS.FILESYSTEM_NAVIGATE_FORWARD]: () => goForward(),
         [COMMAND_IDS.FILESYSTEM_FOCUS_BREADCRUMB_INPUT]: () => requestBreadcrumbInputFocus(),
       };
 
@@ -556,6 +564,8 @@ function FilesystemPanel({
     handleGoUpDoubleClick,
     handleOpenSelectedEntryInNewTab,
     handlePasteEntries,
+    goBack,
+    goForward,
     paneId,
     requestBreadcrumbInputFocus,
     resolveCreateCommandOptions,
@@ -610,13 +620,31 @@ function FilesystemPanel({
         isImportingExternal={isImportingExternal}
         error={error}
       />
-      <button
-        type="button"
-        className={styles.thumbnailSizeToggle}
-        onClick={handleToggleThumbnailSize}
-        title={THUMBNAIL_SIZE_TOGGLE_TITLE}
-        aria-label={`Toggle icon and thumbnail size. Current: ${thumbnailSizePx}px`}
-      >{thumbnailSizePx}px</button>
+      <div>
+        <button
+          type="button"
+          className={styles.historyNavigationButton}
+          onClick={goBack}
+          title={HISTORY_BACK_BUTTON_TITLE}
+          aria-label={HISTORY_BACK_BUTTON_TITLE}
+          disabled={!canGoBack}
+        >←</button>
+        <button
+          type="button"
+          className={styles.historyNavigationButton}
+          onClick={goForward}
+          title={HISTORY_FORWARD_BUTTON_TITLE}
+          aria-label={HISTORY_FORWARD_BUTTON_TITLE}
+          disabled={!canGoForward}
+        >→</button>
+        <button
+          type="button"
+          className={styles.thumbnailSizeToggle}
+          onClick={handleToggleThumbnailSize}
+          title={THUMBNAIL_SIZE_TOGGLE_TITLE}
+          aria-label={`Toggle icon and thumbnail size. Current: ${thumbnailSizePx}px`}
+        >{thumbnailSizePx}px</button>
+      </div>
     </PanelHeader>
     <div
       ref={panelScrollRef}

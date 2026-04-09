@@ -187,6 +187,8 @@ describe("commandRegistry", () => {
     expect(getCommandIds(shortcutCommands)).toContain("filesystem.copy");
     expect(getCommandIds(shortcutCommands)).toContain("filesystem.cut");
     expect(getCommandIds(shortcutCommands)).toContain("filesystem.paste");
+    expect(getCommandIds(shortcutCommands)).toContain("filesystem.navigateBack");
+    expect(getCommandIds(shortcutCommands)).toContain("filesystem.navigateForward");
   });
 
   it("shows focus-breadcrumb command only when filesystem browsing is active", () => {
@@ -207,6 +209,19 @@ describe("commandRegistry", () => {
 
     expect(getCommandIds(browsingCommands)).toContain("filesystem.focusBreadcrumbInput");
     expect(getCommandIds(drivesCommands)).not.toContain("filesystem.focusBreadcrumbInput");
+  });
+
+  it("keeps back-forward navigation commands available in filesystem drives view", () => {
+    const commands = getCommandsForTrigger("shortcut", {
+      source: "shortcut",
+      activeTabId: "tab-1",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: false,
+    });
+
+    expect(getCommandIds(commands)).toContain("filesystem.navigateBack");
+    expect(getCommandIds(commands)).toContain("filesystem.navigateForward");
   });
 
   it("hides open-recent command when there is no active tab", () => {
@@ -363,6 +378,32 @@ describe("commandRegistry", () => {
       altKey: false,
       metaKey: false,
     })).toBe(true);
+  });
+
+  it("maps back-forward shortcuts to alt+arrowleft and alt+arrowright", () => {
+    expect(isCommandShortcutMatch("filesystem.navigateBack", {
+      key: "ArrowLeft",
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: true,
+      metaKey: false,
+    })).toBe(true);
+
+    expect(isCommandShortcutMatch("filesystem.navigateForward", {
+      key: "ArrowRight",
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: true,
+      metaKey: false,
+    })).toBe(true);
+
+    expect(isCommandShortcutMatch("filesystem.navigateBack", {
+      key: "ArrowLeft",
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    })).toBe(false);
   });
 
   it("uses trigger as source when context source is omitted", () => {

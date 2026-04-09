@@ -2484,6 +2484,91 @@ describe("FilesystemPanel", () => {
     expect(pathInput).toHaveFocus();
   });
 
+  it("navigates backward and forward from filesystem app command events", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-history-navigation",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.doubleClick(usersButton);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
+          commandId: "filesystem.navigateBack",
+          context: {
+            targetPaneId: "pane-event-history-navigation",
+          },
+        },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
+          commandId: "filesystem.navigateForward",
+          context: {
+            targetPaneId: "pane-event-history-navigation",
+          },
+        },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+  });
+
+  it("navigates backward and forward from header history buttons", async () => {
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const historyBackButton = await screen.findByRole("button", {
+      name: "Go back in folder history",
+    });
+    const historyForwardButton = screen.getByRole("button", {
+      name: "Go forward in folder history",
+    });
+    expect(historyBackButton).toBeEnabled();
+    expect(historyForwardButton).toBeDisabled();
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    fireEvent.doubleClick(usersButton);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(historyBackButton);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
+    });
+    expect(historyForwardButton).toBeEnabled();
+
+    fireEvent.click(historyBackButton);
+    await waitFor(() => {
+      expect(screen.getByText("Select a drive")).toBeInTheDocument();
+    });
+
+    fireEvent.click(historyForwardButton);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+    });
+  });
+
   it("creates a new text file from app command events and starts rename", async () => {
     renderFilesystemPanel({
       paneId: "pane-event-create-text",

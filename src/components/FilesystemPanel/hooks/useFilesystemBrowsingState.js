@@ -23,15 +23,45 @@ function mergeEntryPages(existingEntries, pageEntries) {
   return mergedEntries;
 }
 
+const MAX_BROWSING_HISTORY_ITEMS = 100;
+
+function resolveDriveFromPath(path, fallbackDrive = "") {
+  const normalizedPath = typeof path === "string" ? path.trim() : "";
+  if (!normalizedPath) return fallbackDrive;
+
+  const windowsDriveMatch = normalizedPath.match(/^([A-Za-z]:)(?:[\\/]|$)/);
+  if (windowsDriveMatch) return `${windowsDriveMatch[1]}\\`;
+  if (normalizedPath.startsWith("/")) return "/";
+  return fallbackDrive;
+}
+
+function normalizeBrowsingLocation(location, fallbackDrive = "") {
+  const currentPath = typeof location?.currentPath === "string" ? location.currentPath : "";
+  const rawDrive = typeof location?.currentDrive === "string" ? location.currentDrive : "";
+  return {
+    currentDrive: resolveDriveFromPath(currentPath, rawDrive || fallbackDrive || ""),
+    currentPath,
+  };
+}
+
+function areBrowsingLocationsEqual(leftLocation, rightLocation) {
+  return leftLocation.currentDrive === rightLocation.currentDrive
+    && leftLocation.currentPath === rightLocation.currentPath;
+}
+
 export default function useFilesystemBrowsingState({
   initialCurrentDrive = "",
   initialCurrentPath = "",
   clearSelection,
   keepSelectionOnlyInPathSet,
 }) {
+  const initialLocation = normalizeBrowsingLocation({
+    currentDrive: initialCurrentDrive,
+    currentPath: initialCurrentPath,
+  });
   const [drives, setDrives] = useState([]);
-  const [currentDrive, setCurrentDrive] = useState(initialCurrentDrive);
-  const [currentPath, setCurrentPath] = useState(initialCurrentPath);
+  const [currentDrive, setCurrentDrive] = useState(initialLocation.currentDrive);
+  const [currentPath, setCurrentPath] = useState(initialLocation.currentPath);
   const [entries, setEntries] = useState([]);
   const [isLoadingDrives, setIsLoadingDrives] = useState(true);
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
@@ -39,9 +69,13 @@ export default function useFilesystemBrowsingState({
   const [hasMoreEntries, setHasMoreEntries] = useState(false);
   const [totalEntriesCount, setTotalEntriesCount] = useState(0);
   const [error, setError] = useState("");
-  const currentPathRef = useRef(initialCurrentPath);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
+  const currentPathRef = useRef(initialLocation.currentPath);
   const entriesRef = useRef([]);
   const loadMoreInFlightRef = useRef(false);
+  const historyStackRef = useRef([initialLocation]);
+  const historyIndexRef = useRef(0);
 
   currentPathRef.current = currentPath;
   entriesRef.current = entries;
@@ -51,6 +85,53 @@ export default function useFilesystemBrowsingState({
     const visibleEntryPathSet = new Set(nextEntries.map((entry) => entry.path));
     keepSelectionOnlyInPathSet(visibleEntryPathSet);
   }, [keepSelectionOnlyInPathSet]);
+
+  const updateHistoryAvailability = useCallback(() => {
+    const currentIndex = historyIndexRef.current;
+    const historyLength = historyStackRef.current.length;
+    const nextCanGoBack = currentIndex > 0;
+    const nextCanGoForward = currentIndex < historyLength - 1;
+    setCanGoBack(previous => (previous === nextCanGoBack ? previous : nextCanGoBack));
+    setCanGoForward(previous => (previous === nextCanGoForward ? previous : nextCanGoForward));
+  }, []);
+
+  const pushLocationToHistory = useCallback((nextLocation) => {
+    const normalizedLocation = normalizeBrowsingLocation(nextLocation);
+    const currentHistory = historyStackRef.current;
+    const currentIndex = historyIndexRef.current;
+    const currentLocation = currentHistory[currentIndex] ?? {
+      currentDrive: "",
+      currentPath: "",
+    };
+    if (areBrowsingLocationsEqual(currentLocation, normalizedLocation)) {
+      return normalizedLocation;
+    }
+
+    const nextHistory = [
+      ...currentHistory.slice(0, currentIndex + 1),
+      normalizedLocation,
+    ];
+    if (nextHistory.length > MAX_BROWSING_HISTORY_ITEMS) {
+      nextHistory.splice(0, nextHistory.length - MAX_BROWSING_HISTORY_ITEMS);
+    }
+    historyStackRef.current = nextHistory;
+    historyIndexRef.current = nextHistory.length - 1;
+    updateHistoryAvailability();
+    return normalizedLocation;
+  }, [updateHistoryAvailability]);
+
+  const applyBrowsingLocation = useCallback((nextLocation, options = {}) => {
+    const { recordHistory = true } = options;
+    const normalizedLocation = recordHistory
+      ? pushLocationToHistory(nextLocation)
+      : normalizeBrowsingLocation(nextLocation);
+
+    setCurrentDrive(normalizedLocation.currentDrive);
+    setCurrentPath(normalizedLocation.currentPath);
+    clearSelection();
+    setError("");
+    return normalizedLocation;
+  }, [clearSelection, pushLocationToHistory]);
 
   const loadEntriesUpToCount = useCallback(async (pathToLoad, targetCount, options = {}) => {
     const { refresh = false } = options;
@@ -122,16 +203,16 @@ export default function useFilesystemBrowsingState({
     setError(getNavigationErrorMessage(watchError, "Failed to refresh folder."));
   }, []);
 
-  const clearBrowsingState = useCallback(() => {
-    setCurrentPath("");
-    setCurrentDrive("");
+  const clearBrowsingState = useCallback((options = {}) => {
+    applyBrowsingLocation({
+      currentDrive: "",
+      currentPath: "",
+    }, options);
     setEntries([]);
     setHasMoreEntries(false);
     setTotalEntriesCount(0);
     setIsLoadingMoreEntries(false);
-    clearSelection();
-    setError("");
-  }, [clearSelection]);
+  }, [applyBrowsingLocation]);
 
   useEffect(() => {
     async function loadDrives() {
@@ -245,17 +326,19 @@ export default function useFilesystemBrowsingState({
       return;
     }
 
-    setCurrentPath(nextPath);
-    clearSelection();
-    setError("");
-  }, [clearBrowsingState, clearSelection]);
+    applyBrowsingLocation({
+      currentDrive,
+      currentPath: nextPath,
+    });
+  }, [applyBrowsingLocation, clearBrowsingState, currentDrive]);
 
   const selectDrive = useCallback((path) => {
-    setCurrentDrive(path);
-    setCurrentPath(path);
-    clearSelection();
-    setError("");
-  }, [clearSelection]);
+    const nextDrive = typeof path === "string" ? path : "";
+    applyBrowsingLocation({
+      currentDrive: nextDrive,
+      currentPath: nextDrive,
+    });
+  }, [applyBrowsingLocation]);
 
   const goUp = useCallback(async () => {
     if (!currentPath) return;
@@ -275,13 +358,42 @@ export default function useFilesystemBrowsingState({
         return;
       }
 
-      setCurrentPath(parent);
-      clearSelection();
-      setError("");
+      applyBrowsingLocation({
+        currentDrive,
+        currentPath: parent,
+      });
     } catch (loadError) {
       setError(getNavigationErrorMessage(loadError, "Failed to navigate to parent folder."));
     }
-  }, [clearBrowsingState, clearSelection, currentDrive, currentPath]);
+  }, [applyBrowsingLocation, clearBrowsingState, currentDrive, currentPath]);
+
+  const goBack = useCallback(() => {
+    if (historyIndexRef.current <= 0) return false;
+
+    const nextIndex = historyIndexRef.current - 1;
+    historyIndexRef.current = nextIndex;
+    const nextLocation = historyStackRef.current[nextIndex] ?? {
+      currentDrive: "",
+      currentPath: "",
+    };
+    applyBrowsingLocation(nextLocation, { recordHistory: false });
+    updateHistoryAvailability();
+    return true;
+  }, [applyBrowsingLocation, updateHistoryAvailability]);
+
+  const goForward = useCallback(() => {
+    if (historyIndexRef.current >= historyStackRef.current.length - 1) return false;
+
+    const nextIndex = historyIndexRef.current + 1;
+    historyIndexRef.current = nextIndex;
+    const nextLocation = historyStackRef.current[nextIndex] ?? {
+      currentDrive: "",
+      currentPath: "",
+    };
+    applyBrowsingLocation(nextLocation, { recordHistory: false });
+    updateHistoryAvailability();
+    return true;
+  }, [applyBrowsingLocation, updateHistoryAvailability]);
 
   return {
     drives,
@@ -295,11 +407,14 @@ export default function useFilesystemBrowsingState({
     hasMoreEntries,
     totalEntriesCount,
     error,
-    setCurrentPath,
+    canGoBack,
+    canGoForward,
     setError,
     navigateToPath,
     selectDrive,
     goUp,
+    goBack,
+    goForward,
     refreshEntriesForPath,
     loadMoreEntries,
   };

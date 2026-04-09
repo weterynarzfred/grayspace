@@ -18,6 +18,8 @@ export const COMMAND_IDS = {
   FILESYSTEM_REDO: "filesystem.redo",
   FILESYSTEM_OPEN_SELECTED_FOLDER_IN_NEW_TAB: "filesystem.openSelectedFolderInNewTab",
   FILESYSTEM_GO_UP: "filesystem.goUp",
+  FILESYSTEM_NAVIGATE_BACK: "filesystem.navigateBack",
+  FILESYSTEM_NAVIGATE_FORWARD: "filesystem.navigateForward",
   FILESYSTEM_DELETE_SELECTED: "filesystem.deleteSelected",
   FILESYSTEM_RENAME_SELECTED: "filesystem.renameSelected",
   FILESYSTEM_BULK_RENAME: "filesystem.bulkRename",
@@ -352,6 +354,36 @@ export const COMMANDS = [
       && !event.shiftKey
       && !event.metaKey
       && event.key === "ArrowUp",
+  },
+  {
+    id: COMMAND_IDS.FILESYSTEM_NAVIGATE_BACK,
+    title: "Go Back in Folder History",
+    shortcut: "Alt+ArrowLeft",
+    triggers: ["shortcut", "palette"],
+    scope: "filesystem",
+    whenText: "activePanelType === \"Filesystem\"",
+    when: context => isFilesystemPanelActive(context),
+    shortcutMatcher: event =>
+      event.altKey
+      && !event.ctrlKey
+      && !event.shiftKey
+      && !event.metaKey
+      && event.key === "ArrowLeft",
+  },
+  {
+    id: COMMAND_IDS.FILESYSTEM_NAVIGATE_FORWARD,
+    title: "Go Forward in Folder History",
+    shortcut: "Alt+ArrowRight",
+    triggers: ["shortcut", "palette"],
+    scope: "filesystem",
+    whenText: "activePanelType === \"Filesystem\"",
+    when: context => isFilesystemPanelActive(context),
+    shortcutMatcher: event =>
+      event.altKey
+      && !event.ctrlKey
+      && !event.shiftKey
+      && !event.metaKey
+      && event.key === "ArrowRight",
   },
   {
     id: COMMAND_IDS.FILESYSTEM_DELETE_SELECTED,

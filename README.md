@@ -59,6 +59,8 @@ npm run tauri_dev
   * `Arrow Right/Left` expand/collapse selected folder
   * `Enter` open selected item(s)
   * `Ctrl+Enter` open selected folder in new tab
+  * `Alt+ArrowLeft` go back in folder history
+  * `Alt+ArrowRight` go forward in folder history
   * `Alt+Arrow Up` go one folder up (with workspace-exit confirmation when needed)
   * `Delete` delete selected item(s)
   * `F2` rename selected file/folder
@@ -66,6 +68,7 @@ npm run tauri_dev
   * `Ctrl+Shift+N` create folder and rename immediately
   * `Ctrl+Z` undo filesystem action
   * `Ctrl+Y` redo filesystem action
+  * `Ctrl+L` or `Alt+D` focus breadcrumb path input
   * mouse: middle-click folder or `Ctrl+DoubleClick` folder opens it in a new tab
 
 ### planned (inactive)
@@ -112,7 +115,7 @@ npm run tauri_dev
 * [x] new folder / new file shortcuts
 * [x] tab switching shortcuts
 * [x] panel switching shortcuts
-* [ ] folder history search (ctrl + r)
+* [x] folder history search / recent folders popover (`Ctrl+R`)
 
 ### filesystem (ctrl + shift + e)
 
@@ -137,14 +140,13 @@ npm run tauri_dev
 * [x] undo (ctrl+z)
 * [x] keyboard navigation
 * [x] path input / navigation
-* [ ] back/forward history
+* [x] back/forward history
 * [ ] search + filtering
 * [ ] "open with"
 * [ ] drag between tabs
 * [ ] history
 * [x] thumbnail sizing
 * [ ] filters (incl. custom JS)
-* [ ] bulk rename (regex)
 * [ ] archive (zip, rar, 7z, etc) operations
 * [ ] add middle click on breadcrumbs, drives, and ".."
 * [ ] figure out what a "main" filesystem panel is, because when there's multiple, they fight
@@ -191,7 +193,7 @@ npm run tauri_dev
 * [ ] custom metadata (sidecar files)
 * [ ] bulk properties when multiple files are selected
 
-### external UI (ctrl + shift + g)
+### external UI (ctrl + shift + u)
 
 * [x] load URL from `.grayspace/folder.json` (`externalUI`) inside panel
 * [ ] load HTML files

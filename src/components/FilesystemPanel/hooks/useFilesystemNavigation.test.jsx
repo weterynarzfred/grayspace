@@ -837,6 +837,143 @@ describe("useFilesystemNavigation", () => {
     expect(result.current.error).toBe("");
   });
 
+  it("tracks back-forward history across folder navigation and clears forward history on new navigation", async () => {
+    const directoryState = {
+      "C:\\": [{ name: "Users", path: "C:\\Users", is_dir: true }],
+      "C:\\Users": [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }],
+      "C:\\Projects": [{ name: "readme.md", path: "C:\\Projects\\readme.md", is_dir: false }],
+      "C:\\Temp": [],
+    };
+
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives")
+        return [{ name: "C:", path: "C:\\" }];
+
+      if (command === "list_directory_page") {
+        const path = payload?.path ?? "";
+        const entries = (directoryState[path] ?? []).map((entry) => ({ ...entry }));
+        const offset = payload?.offset ?? 0;
+        const limit = payload?.limit ?? entries.length;
+        const pageEntries = entries.slice(offset, offset + limit);
+        return {
+          entries: pageEntries,
+          hasMore: offset + pageEntries.length < entries.length,
+          totalCount: entries.length,
+        };
+      }
+
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
+        return null;
+
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+
+    const { result } = renderHook(() => useFilesystemNavigation({
+      currentDrive: "C:\\",
+      currentPath: "C:\\",
+    }));
+
+    await waitFor(() => {
+      expect(result.current.currentPath).toBe("C:\\");
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users"]);
+    });
+    expect(result.current.canGoBack).toBe(false);
+    expect(result.current.canGoForward).toBe(false);
+
+    act(() => {
+      result.current.navigateToPath("C:\\Users");
+    });
+    await waitFor(() => {
+      expect(result.current.currentPath).toBe("C:\\Users");
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
+    });
+    expect(result.current.canGoBack).toBe(true);
+    expect(result.current.canGoForward).toBe(false);
+
+    act(() => {
+      result.current.navigateToPath("C:\\Projects");
+    });
+    await waitFor(() => {
+      expect(result.current.currentPath).toBe("C:\\Projects");
+      expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Projects\\readme.md"]);
+    });
+
+    let didGoBack = false;
+    act(() => {
+      didGoBack = result.current.goBack();
+    });
+    expect(didGoBack).toBe(true);
+    await waitFor(() => {
+      expect(result.current.currentPath).toBe("C:\\Users");
+    });
+    expect(result.current.canGoBack).toBe(true);
+    expect(result.current.canGoForward).toBe(true);
+
+    act(() => {
+      result.current.navigateToPath("C:\\Temp");
+    });
+    await waitFor(() => {
+      expect(result.current.currentPath).toBe("C:\\Temp");
+      expect(result.current.entries).toEqual([]);
+    });
+
+    let didGoForward = true;
+    act(() => {
+      didGoForward = result.current.goForward();
+    });
+    expect(didGoForward).toBe(false);
+    expect(result.current.canGoBack).toBe(true);
+    expect(result.current.canGoForward).toBe(false);
+  });
+
+  it("adds go-up transitions to history and supports back-forward from drives view", async () => {
+    mockFilesystemInvoke();
+
+    const { result } = renderHook(() => useFilesystemNavigation({
+      currentDrive: "C:\\",
+      currentPath: "C:\\",
+    }));
+
+    await waitFor(() => {
+      expect(result.current.currentPath).toBe("C:\\");
+      expect(result.current.entries.length).toBe(1);
+    });
+
+    await act(async () => {
+      await result.current.goUp();
+    });
+    await waitFor(() => {
+      expect(result.current.currentPath).toBe("");
+      expect(result.current.currentDrive).toBe("");
+    });
+    expect(result.current.canGoBack).toBe(true);
+    expect(result.current.canGoForward).toBe(false);
+
+    let didGoBack = false;
+    act(() => {
+      didGoBack = result.current.goBack();
+    });
+    expect(didGoBack).toBe(true);
+    await waitFor(() => {
+      expect(result.current.currentPath).toBe("C:\\");
+      expect(result.current.currentDrive).toBe("C:\\");
+    });
+    expect(result.current.canGoBack).toBe(false);
+    expect(result.current.canGoForward).toBe(true);
+
+    let didGoForward = false;
+    act(() => {
+      didGoForward = result.current.goForward();
+    });
+    expect(didGoForward).toBe(true);
+    await waitFor(() => {
+      expect(result.current.currentPath).toBe("");
+      expect(result.current.currentDrive).toBe("");
+    });
+    expect(result.current.canGoBack).toBe(true);
+    expect(result.current.canGoForward).toBe(false);
+  });
+
   it("loads additional directory pages on demand", async () => {
     const pagedEntries = [
       { name: "a.txt", path: "C:\\a.txt", is_dir: false },

@@ -60,7 +60,7 @@ export default function useFilesystemEntryOperations({
   clearSelection,
   removeSelectionPaths,
   refreshEntriesForPath,
-  setCurrentPath,
+  navigateToPath,
   setError,
   setIsMovingEntry,
   setIsDeletingEntries,
@@ -301,9 +301,7 @@ export default function useFilesystemEntryOperations({
         return;
       }
 
-      setCurrentPath(entry.path);
-      clearSelection();
-      setError("");
+      navigateToPath(entry.path);
       return;
     }
 
@@ -312,7 +310,7 @@ export default function useFilesystemEntryOperations({
     } catch (openError) {
       setError(getNavigationErrorMessage(openError, "Failed to open file."));
     }
-  }, [clearSelection, resolveWorkspaceRootForPath, setCurrentPath, setError, tabId, tabWorkspaceRoot]);
+  }, [clearSelection, navigateToPath, resolveWorkspaceRootForPath, setError, tabId, tabWorkspaceRoot]);
 
   const moveEntries = useCallback(async (sourcePaths, destinationDir) => {
     const normalizedSourcePaths = uniqueNonEmptyPaths(sourcePaths);
