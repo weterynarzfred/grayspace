@@ -166,6 +166,7 @@ function Breadcrumbs({
   const folderSuggestionRequestIdRef = useRef(0);
   const lastFocusRequestKeyRef = useRef(0);
   const pathInputRef = useRef(null);
+  const suggestionListRef = useRef(null);
   const crumbs = buildBreadcrumbs(currentPath, currentDrive);
   const hasDropTargets = typeof getDropIdForPath === "function";
   const normalizedRecentFolders = useMemo(
@@ -284,6 +285,20 @@ function Breadcrumbs({
     });
   }, [isPathEditing, visibleSuggestions.length]);
 
+  useEffect(() => {
+    if (!isPathEditing || !isPathInputFocused) return;
+    if (selectedSuggestionIndex < 0 || selectedSuggestionIndex >= visibleSuggestions.length) return;
+    const selectedSuggestionButton = suggestionListRef.current?.querySelector(
+      `[data-suggestion-index="${selectedSuggestionIndex}"]`,
+    );
+    selectedSuggestionButton?.scrollIntoView?.({ block: "nearest" });
+  }, [
+    isPathEditing,
+    isPathInputFocused,
+    selectedSuggestionIndex,
+    visibleSuggestions.length,
+  ]);
+
   const handleStartPathEditing = useCallback((event) => {
     event.stopPropagation();
     if (isPathEditing) return;
@@ -321,14 +336,12 @@ function Breadcrumbs({
     onPathSubmit?.(nextPath);
   }, [arePathsEquivalent, currentPath, onPathSubmit, pathDraft, visibleSuggestions]);
   const handlePathInputBlur = useCallback(() => {
-    const normalizedDraft = pathDraft.trim();
-    const normalizedCurrentPath = (currentPath ?? "").trim();
+    setIsPathEditing(false);
     setIsPathInputFocused(false);
     setSelectedSuggestionIndex(-1);
-    if (normalizedDraft === normalizedCurrentPath) {
-      setIsPathEditing(false);
-    }
-  }, [currentPath, pathDraft]);
+    setPathDraft(currentPath ?? "");
+    setPathSearchQuery("");
+  }, [currentPath]);
 
   const handlePathInputKeyDown = useCallback((event) => {
     if (event.key === "Escape") {
@@ -420,10 +433,11 @@ function Breadcrumbs({
       </nav>}
     </div>
 
-    {shouldShowSuggestions ? <ul className={styles.recentFolderList}>
+    {shouldShowSuggestions ? <ul ref={suggestionListRef} className={styles.recentFolderList}>
       {visibleSuggestions.map((entry, index) => <li key={entry.path} className={styles.recentFolderItem}>
         <button
           type="button"
+          data-suggestion-index={index}
           className={`${styles.recentFolderButton} ${selectedSuggestionIndex === index ? styles.recentFolderButtonSelected : ""}`.trim()}
           onMouseDown={event => event.preventDefault()}
           onMouseEnter={() => handleSuggestionMouseEnter(index)}

@@ -2,6 +2,10 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import Breadcrumbs, { buildBreadcrumbs } from "./Breadcrumbs";
 
 describe("Breadcrumbs", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders breadcrumb items and separators", () => {
     render(<Breadcrumbs currentPath={"C:\\Users"} currentDrive={"C:\\"} onSelect={vi.fn()} />);
 
@@ -129,7 +133,7 @@ describe("Breadcrumbs", () => {
     expect(screen.getByRole("navigation", { name: "Current path" })).toBeInTheDocument();
   });
 
-  it("keeps path input open on blur when path was changed", () => {
+  it("closes path input on blur and clears any typed draft", () => {
     render(
       <Breadcrumbs
         currentPath={"C:\\Users"}
@@ -139,11 +143,16 @@ describe("Breadcrumbs", () => {
     );
 
     fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
-    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
-    fireEvent.change(pathInput, { target: { value: "C:\\Temp" } });
-    fireEvent.blur(pathInput);
+    const initialPathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    fireEvent.change(initialPathInput, { target: { value: "C:\\Temp" } });
+    fireEvent.blur(initialPathInput);
 
-    expect(screen.getByRole("textbox", { name: "Current folder path" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Current folder path" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Current path" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const reopenedPathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    expect(reopenedPathInput).toHaveValue("C:\\Users");
   });
 
   it("shows recent folders and selects one when clicked", () => {
@@ -196,6 +205,47 @@ describe("Breadcrumbs", () => {
 
     fireEvent.keyDown(pathInput, { key: "ArrowUp" });
     expect(pathInput).toHaveValue("C:\\Users");
+  });
+
+  it("scrolls the selected suggestion into view during keyboard navigation", () => {
+    const scrollIntoViewMock = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: scrollIntoViewMock,
+    });
+
+    try {
+      render(
+        <Breadcrumbs
+          currentPath={"C:\\Users"}
+          currentDrive={"C:\\"}
+          onSelect={vi.fn()}
+          recentFoldersEntries={[
+            { path: "C:\\Users", openedAtMs: 1710806400000, isWorkspace: false },
+            { path: "D:\\Work", openedAtMs: 1710892800000, isWorkspace: true },
+          ]}
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+      const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+      pathInput.focus();
+      fireEvent.keyDown(pathInput, { key: "ArrowDown" });
+
+      expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: "nearest" });
+    } finally {
+      if (typeof originalScrollIntoView === "function") {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+          configurable: true,
+          writable: true,
+          value: originalScrollIntoView,
+        });
+      } else {
+        delete HTMLElement.prototype.scrollIntoView;
+      }
+    }
   });
 
   it("filters recent folder suggestions based on typed query", () => {

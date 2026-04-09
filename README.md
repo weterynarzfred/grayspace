@@ -2,6 +2,8 @@
 
 grayspace is a workspace-oriented file browser for Windows using Tauri (Rust + React JS). It is a file manager, but each folder can act as a configurable workspace with panels, scripts, and local tooling.
 
+It's a personal project, don't expect it to replace Windows file explorer for you anytime soon.
+
 ## what is there
 
 Usable scaffolding, but missing core file-manager features.

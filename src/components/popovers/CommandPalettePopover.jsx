@@ -11,6 +11,7 @@ function CommandPalettePopover({
   onClose = undefined,
 }) {
   const inputRef = useRef(null);
+  const commandListRef = useRef(null);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const visibleCommands = useMemo(() => fuzzyFilterEntries(
@@ -34,6 +35,15 @@ function CommandPalettePopover({
       return Math.min(current, visibleCommands.length - 1);
     });
   }, [open, visibleCommands.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (selectedIndex < 0 || selectedIndex >= visibleCommands.length) return;
+    const selectedCommandButton = commandListRef.current?.querySelector(
+      `[data-command-index="${selectedIndex}"]`,
+    );
+    selectedCommandButton?.scrollIntoView?.({ block: "nearest" });
+  }, [open, selectedIndex, visibleCommands.length]);
 
   const handleInputKeyDown = (event) => {
     if (visibleCommands.length === 0) {
@@ -82,10 +92,11 @@ function CommandPalettePopover({
         onBlur={() => onClose?.()}
       />
     </label>
-    <ul className={styles.commandList}>
+    <ul ref={commandListRef} className={styles.commandList}>
       {visibleCommands.map((command, index) => <li key={command.id} className={styles.commandItem}>
         <button
           type="button"
+          data-command-index={index}
           className={`${styles.commandRow} ${selectedIndex === index ? styles.commandRowSelected : ""}`.trim()}
           onMouseDown={event => event.preventDefault()}
           onMouseEnter={() => setSelectedIndex(index)}

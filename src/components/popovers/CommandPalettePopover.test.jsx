@@ -10,6 +10,10 @@ function createCommands() {
 }
 
 describe("CommandPalettePopover", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("runs the first command on Enter by default", () => {
     const onCommand = vi.fn();
     render(<CommandPalettePopover open commands={createCommands()} onCommand={onCommand} />);
@@ -52,5 +56,34 @@ describe("CommandPalettePopover", () => {
 
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onCommand).toHaveBeenCalledWith("two");
+  });
+
+  it("scrolls the selected command into view when navigating with arrow keys", () => {
+    const scrollIntoViewMock = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: scrollIntoViewMock,
+    });
+
+    try {
+      render(<CommandPalettePopover open commands={createCommands()} onCommand={vi.fn()} />);
+      const input = screen.getByPlaceholderText("Type a command");
+
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+
+      expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: "nearest" });
+    } finally {
+      if (typeof originalScrollIntoView === "function") {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+          configurable: true,
+          writable: true,
+          value: originalScrollIntoView,
+        });
+      } else {
+        delete HTMLElement.prototype.scrollIntoView;
+      }
+    }
   });
 });

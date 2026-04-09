@@ -10,6 +10,10 @@ function createEntries() {
 }
 
 describe("RecentFoldersPopover", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("selects the first entry on Enter by default", () => {
     const onSelect = vi.fn();
     render(<RecentFoldersPopover open entries={createEntries()} onSelect={onSelect} />);
@@ -45,5 +49,34 @@ describe("RecentFoldersPopover", () => {
 
     expect(screen.getByText("2024-03-19")).toBeInTheDocument();
     expect(screen.getByText("C:\\Projects").className).toContain("entryPathWorkspace");
+  });
+
+  it("scrolls the selected folder into view when navigating with arrow keys", () => {
+    const scrollIntoViewMock = vi.fn();
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      writable: true,
+      value: scrollIntoViewMock,
+    });
+
+    try {
+      render(<RecentFoldersPopover open entries={createEntries()} onSelect={vi.fn()} />);
+      const input = screen.getByPlaceholderText("Search folders");
+
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+
+      expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: "nearest" });
+    } finally {
+      if (typeof originalScrollIntoView === "function") {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+          configurable: true,
+          writable: true,
+          value: originalScrollIntoView,
+        });
+      } else {
+        delete HTMLElement.prototype.scrollIntoView;
+      }
+    }
   });
 });

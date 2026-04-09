@@ -483,6 +483,32 @@ describe("FilesystemPanel", () => {
     });
   });
 
+  it("normalizes lowercase drive letter when submitting breadcrumb path input", async () => {
+    const handleOpenFolderInCurrentTab = vi.fn().mockResolvedValue(undefined);
+
+    renderFilesystemPanel({
+      tabId: "tab-breadcrumb-normalize-drive",
+      onOpenFolderInCurrentTab: handleOpenFolderInCurrentTab,
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const breadcrumbsNav = await screen.findByRole("navigation", { name: "Current path" });
+    fireEvent.click(breadcrumbsNav);
+
+    const pathInput = await screen.findByRole("textbox", { name: "Current folder path" });
+    fireEvent.change(pathInput, { target: { value: "c:\\users" } });
+    fireEvent.submit(pathInput.closest("form"));
+
+    await waitFor(() => {
+      expect(handleOpenFolderInCurrentTab).toHaveBeenCalledWith(
+        "tab-breadcrumb-normalize-drive",
+        "C:\\users",
+      );
+    });
+  });
+
   it("falls back to the first breadcrumb suggestion when typed path open fails", async () => {
     const handleOpenFolderInCurrentTab = vi.fn()
       .mockResolvedValueOnce(false)
@@ -516,6 +542,47 @@ describe("FilesystemPanel", () => {
       expect(handleOpenFolderInCurrentTab).toHaveBeenNthCalledWith(2, "tab-breadcrumb-fallback", "C:\\Users", {
         suppressNotFoundNotification: false,
       });
+    });
+  });
+
+  it("normalizes lowercase drive letter for both typed and fallback breadcrumb paths", async () => {
+    const handleOpenFolderInCurrentTab = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    renderFilesystemPanel({
+      tabId: "tab-breadcrumb-fallback-normalize-drive",
+      onOpenFolderInCurrentTab: handleOpenFolderInCurrentTab,
+      recentFoldersEntries: [
+        { path: "c:\\users", openedAtMs: 1710806400000, isWorkspace: false },
+      ],
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const breadcrumbsNav = await screen.findByRole("navigation", { name: "Current path" });
+    fireEvent.click(breadcrumbsNav);
+
+    const pathInput = await screen.findByRole("textbox", { name: "Current folder path" });
+    fireEvent.change(pathInput, { target: { value: "c:\\use" } });
+    fireEvent.submit(pathInput.closest("form"));
+
+    await waitFor(() => {
+      expect(handleOpenFolderInCurrentTab).toHaveBeenNthCalledWith(
+        1,
+        "tab-breadcrumb-fallback-normalize-drive",
+        "C:\\use",
+        { suppressNotFoundNotification: true },
+      );
+    });
+    await waitFor(() => {
+      expect(handleOpenFolderInCurrentTab).toHaveBeenNthCalledWith(
+        2,
+        "tab-breadcrumb-fallback-normalize-drive",
+        "C:\\users",
+        { suppressNotFoundNotification: false },
+      );
     });
   });
 

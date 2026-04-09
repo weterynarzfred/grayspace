@@ -45,6 +45,18 @@ const HISTORY_BACK_BUTTON_TITLE = "Go back in folder history";
 const HISTORY_FORWARD_BUTTON_TITLE = "Go forward in folder history";
 const NON_ENTRY_SELECTION_IDS = new Set([UP_ENTRY_SELECTION_ID]);
 
+function normalizeDriveLetterPath(path) {
+  if (typeof path !== "string") return "";
+  const trimmedPath = path.trim();
+  if (!trimmedPath) return "";
+
+  return trimmedPath
+    .replace(/^(\\\\[?.]\\\\)([a-z]):/i, (_fullMatch, prefix, driveLetter) => (
+      `${prefix}${driveLetter.toUpperCase()}:`
+    ))
+    .replace(/^([a-z]):/, (_fullMatch, driveLetter) => `${driveLetter.toUpperCase()}:`);
+}
+
 function FilesystemPanel({
   tabId = "",
   paneId = "",
@@ -393,12 +405,12 @@ function FilesystemPanel({
     navigateToPath(nextPath);
   }, [confirmWorkspaceExitIfNeeded, navigateToPath]);
   const handleOpenFolderViaRecentSelection = useCallback(async (nextPath, options = {}) => {
-    const normalizedPath = typeof nextPath === "string" ? nextPath.trim() : "";
+    const normalizedPath = normalizeDriveLetterPath(nextPath);
     if (!normalizedPath) return;
     const fallbackPathRaw = typeof options?.fallbackPath === "string"
       ? options.fallbackPath
       : "";
-    const fallbackPath = fallbackPathRaw.trim();
+    const fallbackPath = normalizeDriveLetterPath(fallbackPathRaw);
     const hasFallbackPath = Boolean(fallbackPath) && !isSamePath(fallbackPath, normalizedPath);
 
     if (typeof onOpenFolderInCurrentTab === "function") {

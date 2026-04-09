@@ -16,6 +16,7 @@ function RecentFoldersPopover({
   onClose = undefined,
 }) {
   const inputRef = useRef(null);
+  const entryListRef = useRef(null);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
@@ -41,6 +42,15 @@ function RecentFoldersPopover({
       return Math.min(current, visibleEntries.length - 1);
     });
   }, [open, visibleEntries.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (selectedIndex < 0 || selectedIndex >= visibleEntries.length) return;
+    const selectedEntryButton = entryListRef.current?.querySelector(
+      `[data-entry-index="${selectedIndex}"]`,
+    );
+    selectedEntryButton?.scrollIntoView?.({ block: "nearest" });
+  }, [open, selectedIndex, visibleEntries.length]);
 
   const handleInputKeyDown = (event) => {
     if (visibleEntries.length === 0) {
@@ -91,10 +101,11 @@ function RecentFoldersPopover({
         onKeyDown={handleInputKeyDown}
       />
     </label>
-    <ul className={styles.entryList}>
+    <ul ref={entryListRef} className={styles.entryList}>
       {visibleEntries.map((entry, index) => <li key={entry.path} className={styles.entryItem}>
         <button
           type="button"
+          data-entry-index={index}
           className={`${styles.entryRow} ${selectedIndex === index ? styles.entryRowSelected : ""}`.trim()}
           onMouseDown={event => event.preventDefault()}
           onMouseEnter={() => setSelectedIndex(index)}
