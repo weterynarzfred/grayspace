@@ -4,6 +4,7 @@ import {
   formatRecentFolderOpenedAtLabel,
   normalizeRecentFolderEntries,
 } from "./recentFoldersShared";
+import { fuzzyFilterEntries } from "./fuzzySearch";
 import styles from "./RecentFoldersPopover.module.scss";
 
 function RecentFoldersPopover({
@@ -19,14 +20,18 @@ function RecentFoldersPopover({
   const [selectedIndex, setSelectedIndex] = useState(-1);
 
   const normalizedEntries = useMemo(() => normalizeRecentFolderEntries(entries), [entries]);
-  const visibleEntries = normalizedEntries;
+  const visibleEntries = useMemo(() => fuzzyFilterEntries(
+    normalizedEntries,
+    query,
+    (entry) => entry.searchText,
+  ), [normalizedEntries, query]);
 
   useEffect(() => {
     if (!open) return;
     setQuery("");
-    setSelectedIndex(visibleEntries.length > 0 ? 0 : -1);
+    setSelectedIndex(normalizedEntries.length > 0 ? 0 : -1);
     requestAnimationFrame(() => inputRef.current?.focus());
-  }, [open, visibleEntries.length]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -81,7 +86,7 @@ function RecentFoldersPopover({
         className={styles.searchInput}
         type="text"
         value={query}
-        placeholder="Search folders (coming soon)"
+        placeholder="Search folders"
         onChange={event => setQuery(event.target.value)}
         onKeyDown={handleInputKeyDown}
       />

@@ -40,4 +40,17 @@ describe("CommandPalettePopover", () => {
 
     expect(onCommand).toHaveBeenCalledWith("three");
   });
+
+  it("filters commands based on query and runs the filtered selection", () => {
+    const onCommand = vi.fn();
+    render(<CommandPalettePopover open commands={createCommands()} onCommand={onCommand} />);
+    const input = screen.getByPlaceholderText("Type a command");
+
+    fireEvent.change(input, { target: { value: "second" } });
+    expect(screen.getByRole("button", { name: /Second command/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /First command/i })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onCommand).toHaveBeenCalledWith("two");
+  });
 });

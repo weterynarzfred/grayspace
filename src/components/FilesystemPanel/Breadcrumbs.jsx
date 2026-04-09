@@ -4,6 +4,7 @@ import {
   formatRecentFolderOpenedAtLabel,
   normalizeRecentFolderEntries,
 } from "../popovers/recentFoldersShared";
+import { fuzzyFilterEntries } from "../popovers/fuzzySearch";
 import styles from "./Breadcrumbs.module.scss";
 
 export function buildBreadcrumbs(currentPath, currentDrive) {
@@ -98,9 +99,15 @@ function Breadcrumbs({
   isLoadingRecentFolders = false,
   onSelectRecentFolder,
 }) {
+  const arePathsEquivalent = useCallback((leftPath, rightPath) => {
+    const normalizedLeft = typeof leftPath === "string" ? leftPath.trim().toLowerCase() : "";
+    const normalizedRight = typeof rightPath === "string" ? rightPath.trim().toLowerCase() : "";
+    return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
+  }, []);
   const [isPathEditing, setIsPathEditing] = useState(false);
   const [isPathInputFocused, setIsPathInputFocused] = useState(false);
   const [pathDraft, setPathDraft] = useState("");
+  const [pathSearchQuery, setPathSearchQuery] = useState("");
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
   const pathInputRef = useRef(null);
   const crumbs = buildBreadcrumbs(currentPath, currentDrive);
@@ -109,12 +116,26 @@ function Breadcrumbs({
     () => normalizeRecentFolderEntries(recentFoldersEntries),
     [recentFoldersEntries],
   );
+  const visibleRecentFolders = useMemo(() => fuzzyFilterEntries(
+    normalizedRecentFolders,
+    pathSearchQuery,
+    (entry) => entry.searchText,
+  ), [normalizedRecentFolders, pathSearchQuery]);
 
   useEffect(() => {
     if (!isPathEditing) return;
     pathInputRef.current?.focus();
     pathInputRef.current?.select();
   }, [isPathEditing]);
+
+  useEffect(() => {
+    if (!isPathEditing) return;
+    setSelectedSuggestionIndex((current) => {
+      if (visibleRecentFolders.length === 0) return -1;
+      if (current < 0) return -1;
+      return Math.min(current, visibleRecentFolders.length - 1);
+    });
+  }, [isPathEditing, visibleRecentFolders.length]);
 
   const handleStartPathEditing = useCallback((event) => {
     event.stopPropagation();
@@ -127,6 +148,7 @@ function Breadcrumbs({
       if (event.target.closest("button")) return;
     }
     setPathDraft(currentPath ?? "");
+    setPathSearchQuery("");
     setIsPathEditing(true);
     setSelectedSuggestionIndex(-1);
   }, [currentPath, isPathEditing]);
@@ -134,12 +156,23 @@ function Breadcrumbs({
   const handleSubmitPath = useCallback((event) => {
     event.preventDefault();
     const nextPath = pathDraft.trim();
+    const firstSuggestedPath = visibleRecentFolders[0]?.path ?? "";
+    const shouldIncludeFallback = (
+      typeof firstSuggestedPath === "string"
+      && firstSuggestedPath.trim().length > 0
+      && !arePathsEquivalent(firstSuggestedPath, nextPath)
+    );
     setIsPathEditing(false);
     setIsPathInputFocused(false);
     setSelectedSuggestionIndex(-1);
+    setPathSearchQuery("");
     if (!nextPath || nextPath === currentPath) return;
+    if (shouldIncludeFallback) {
+      onPathSubmit?.(nextPath, { fallbackPath: firstSuggestedPath });
+      return;
+    }
     onPathSubmit?.(nextPath);
-  }, [currentPath, onPathSubmit, pathDraft]);
+  }, [arePathsEquivalent, currentPath, onPathSubmit, pathDraft, visibleRecentFolders]);
   const handlePathInputBlur = useCallback(() => {
     const normalizedDraft = pathDraft.trim();
     const normalizedCurrentPath = (currentPath ?? "").trim();
@@ -157,10 +190,11 @@ function Breadcrumbs({
       setIsPathInputFocused(false);
       setSelectedSuggestionIndex(-1);
       setPathDraft(currentPath ?? "");
+      setPathSearchQuery("");
       return;
     }
 
-    const suggestionCount = normalizedRecentFolders.length;
+    const suggestionCount = visibleRecentFolders.length;
     if (suggestionCount === 0) return;
 
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -174,20 +208,21 @@ function Breadcrumbs({
           : (selectedSuggestionIndex - 1 + suggestionCount) % suggestionCount;
       }
       setSelectedSuggestionIndex(nextIndex);
-      setPathDraft(normalizedRecentFolders[nextIndex]?.path ?? pathDraft);
+      setPathDraft(visibleRecentFolders[nextIndex]?.path ?? pathDraft);
     }
-  }, [currentPath, normalizedRecentFolders, pathDraft, selectedSuggestionIndex]);
+  }, [currentPath, pathDraft, selectedSuggestionIndex, visibleRecentFolders]);
   const shouldShowSuggestions = isPathEditing && isPathInputFocused;
   const handleSuggestionMouseEnter = useCallback((index) => {
-    if (index < 0 || index >= normalizedRecentFolders.length) return;
+    if (index < 0 || index >= visibleRecentFolders.length) return;
     setSelectedSuggestionIndex(index);
-  }, [normalizedRecentFolders.length]);
+  }, [visibleRecentFolders.length]);
   const handleSuggestionClick = useCallback((path) => {
     const normalizedPath = typeof path === "string" ? path.trim() : "";
     setPathDraft(normalizedPath);
     setSelectedSuggestionIndex(-1);
     setIsPathEditing(false);
     setIsPathInputFocused(false);
+    setPathSearchQuery("");
     if (!normalizedPath) return;
     onSelectRecentFolder?.(normalizedPath);
   }, [onSelectRecentFolder]);
@@ -208,6 +243,7 @@ function Breadcrumbs({
           value={pathDraft}
           onChange={(event) => {
             setPathDraft(event.target.value);
+            setPathSearchQuery(event.target.value);
             setSelectedSuggestionIndex(-1);
           }}
           onKeyDown={handlePathInputKeyDown}
@@ -238,7 +274,7 @@ function Breadcrumbs({
     </div>
 
     {shouldShowSuggestions ? <ul className={styles.recentFolderList}>
-      {normalizedRecentFolders.map((entry, index) => <li key={entry.path} className={styles.recentFolderItem}>
+      {visibleRecentFolders.map((entry, index) => <li key={entry.path} className={styles.recentFolderItem}>
         <button
           type="button"
           className={`${styles.recentFolderButton} ${selectedSuggestionIndex === index ? styles.recentFolderButtonSelected : ""}`.trim()}
@@ -256,7 +292,7 @@ function Breadcrumbs({
           </span>
         </button>
       </li>)}
-      {normalizedRecentFolders.length === 0 && !isLoadingRecentFolders ? <li className={styles.recentFolderEmpty}>
+      {visibleRecentFolders.length === 0 && !isLoadingRecentFolders ? <li className={styles.recentFolderEmpty}>
         No recent folders.
       </li> : null}
       {isLoadingRecentFolders ? <li className={styles.recentFolderEmpty}>

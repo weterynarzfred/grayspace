@@ -14,20 +14,30 @@ describe("RecentFoldersPopover", () => {
     const onSelect = vi.fn();
     render(<RecentFoldersPopover open entries={createEntries()} onSelect={onSelect} />);
 
-    fireEvent.keyDown(screen.getByPlaceholderText("Search folders (coming soon)"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByPlaceholderText("Search folders"), { key: "Enter" });
     expect(onSelect).toHaveBeenCalledWith("C:\\Projects");
   });
 
   it("moves selection with arrows and runs selected entry on Enter", () => {
     const onSelect = vi.fn();
     render(<RecentFoldersPopover open entries={createEntries()} onSelect={onSelect} />);
-    const input = screen.getByPlaceholderText("Search folders (coming soon)");
+    const input = screen.getByPlaceholderText("Search folders");
 
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(onSelect).toHaveBeenCalledWith("D:\\Archive");
+  });
+
+  it("filters entries using the search query", () => {
+    render(<RecentFoldersPopover open entries={createEntries()} />);
+    const input = screen.getByPlaceholderText("Search folders");
+
+    fireEvent.change(input, { target: { value: "archive" } });
+
+    expect(screen.getByRole("button", { name: /D:\\Archive/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /C:\\Projects/i })).not.toBeInTheDocument();
   });
 
   it("shows dates as YYYY-MM-DD and marks workspace entries", () => {

@@ -483,6 +483,42 @@ describe("FilesystemPanel", () => {
     });
   });
 
+  it("falls back to the first breadcrumb suggestion when typed path open fails", async () => {
+    const handleOpenFolderInCurrentTab = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+
+    renderFilesystemPanel({
+      tabId: "tab-breadcrumb-fallback",
+      onOpenFolderInCurrentTab: handleOpenFolderInCurrentTab,
+      recentFoldersEntries: [
+        { path: "H:\\short_lib", openedAtMs: 1710892800000, isWorkspace: false },
+        { path: "C:\\Users", openedAtMs: 1710806400000, isWorkspace: false },
+      ],
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const breadcrumbsNav = await screen.findByRole("navigation", { name: "Current path" });
+    fireEvent.click(breadcrumbsNav);
+
+    const pathInput = await screen.findByRole("textbox", { name: "Current folder path" });
+    fireEvent.change(pathInput, { target: { value: "H:\\short" } });
+    fireEvent.submit(pathInput.closest("form"));
+
+    await waitFor(() => {
+      expect(handleOpenFolderInCurrentTab).toHaveBeenNthCalledWith(1, "tab-breadcrumb-fallback", "H:\\short", {
+        suppressNotFoundNotification: true,
+      });
+    });
+    await waitFor(() => {
+      expect(handleOpenFolderInCurrentTab).toHaveBeenNthCalledWith(2, "tab-breadcrumb-fallback", "H:\\short_lib", {
+        suppressNotFoundNotification: false,
+      });
+    });
+  });
+
   it("single click selects but does not open a drive", async () => {
     renderFilesystemPanel();
 

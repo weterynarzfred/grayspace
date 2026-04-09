@@ -384,12 +384,27 @@ function FilesystemPanel({
     if (!await confirmWorkspaceExitIfNeeded(nextPath)) return;
     navigateToPath(nextPath);
   }, [confirmWorkspaceExitIfNeeded, navigateToPath]);
-  const handleOpenFolderViaRecentSelection = useCallback(async (nextPath) => {
+  const handleOpenFolderViaRecentSelection = useCallback(async (nextPath, options = {}) => {
     const normalizedPath = typeof nextPath === "string" ? nextPath.trim() : "";
     if (!normalizedPath) return;
+    const fallbackPathRaw = typeof options?.fallbackPath === "string"
+      ? options.fallbackPath
+      : "";
+    const fallbackPath = fallbackPathRaw.trim();
+    const hasFallbackPath = Boolean(fallbackPath) && !isSamePath(fallbackPath, normalizedPath);
 
     if (typeof onOpenFolderInCurrentTab === "function") {
-      await onOpenFolderInCurrentTab(tabId, normalizedPath);
+      if (!hasFallbackPath) {
+        await onOpenFolderInCurrentTab(tabId, normalizedPath);
+        return;
+      }
+      const openedPrimary = await onOpenFolderInCurrentTab(tabId, normalizedPath, {
+        suppressNotFoundNotification: true,
+      });
+      if (openedPrimary !== false) return;
+      await onOpenFolderInCurrentTab(tabId, fallbackPath, {
+        suppressNotFoundNotification: false,
+      });
       return;
     }
 
@@ -607,8 +622,8 @@ function FilesystemPanel({
           currentPath,
           currentDrive,
           onSelect: handleBreadcrumbSelect,
-          onPathSubmit: path => {
-            handleOpenFolderViaRecentSelection(path);
+          onPathSubmit: (path, options = {}) => {
+            handleOpenFolderViaRecentSelection(path, options);
           },
           activeDragPaths: effectiveActiveDragPaths,
           isMovingEntry,

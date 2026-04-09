@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import FloatingPopover from "./FloatingPopover";
+import { fuzzyFilterEntries } from "./fuzzySearch";
 import styles from "./CommandPalettePopover.module.scss";
 
 function CommandPalettePopover({
@@ -12,16 +13,30 @@ function CommandPalettePopover({
   const inputRef = useRef(null);
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const visibleCommands = useMemo(() => fuzzyFilterEntries(
+    commands,
+    query,
+    (command) => `${command.title} ${command.shortcut ?? ""} ${command.id}`,
+  ), [commands, query]);
 
   useEffect(() => {
     if (!open) return;
     setQuery("");
     setSelectedIndex(commands.length > 0 ? 0 : -1);
     requestAnimationFrame(() => inputRef.current?.focus());
-  }, [commands.length, open]);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedIndex((current) => {
+      if (visibleCommands.length === 0) return -1;
+      if (current < 0) return 0;
+      return Math.min(current, visibleCommands.length - 1);
+    });
+  }, [open, visibleCommands.length]);
 
   const handleInputKeyDown = (event) => {
-    if (commands.length === 0) {
+    if (visibleCommands.length === 0) {
       if (event.key === "Enter") event.preventDefault();
       return;
     }
@@ -29,20 +44,22 @@ function CommandPalettePopover({
     if (event.key === "ArrowDown") {
       event.preventDefault();
       setSelectedIndex((current) =>
-        current < 0 ? 0 : (current + 1) % commands.length);
+        current < 0 ? 0 : (current + 1) % visibleCommands.length);
       return;
     }
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
       setSelectedIndex((current) =>
-        current < 0 ? commands.length - 1 : (current - 1 + commands.length) % commands.length);
+        current < 0
+          ? visibleCommands.length - 1
+          : (current - 1 + visibleCommands.length) % visibleCommands.length);
       return;
     }
 
     if (event.key !== "Enter") return;
     event.preventDefault();
-    const command = commands[Math.max(0, selectedIndex)];
+    const command = visibleCommands[Math.max(0, selectedIndex)];
     if (command) onCommand?.(command.id);
   };
 
@@ -66,7 +83,7 @@ function CommandPalettePopover({
       />
     </label>
     <ul className={styles.commandList}>
-      {commands.map((command, index) => <li key={command.id} className={styles.commandItem}>
+      {visibleCommands.map((command, index) => <li key={command.id} className={styles.commandItem}>
         <button
           type="button"
           className={`${styles.commandRow} ${selectedIndex === index ? styles.commandRowSelected : ""}`.trim()}
@@ -78,7 +95,7 @@ function CommandPalettePopover({
           <span className={styles.commandShortcut}>{command.shortcut || ""}</span>
         </button>
       </li>)}
-      {commands.length === 0 ? <li className={styles.emptyRow}>No commands available</li> : null}
+      {visibleCommands.length === 0 ? <li className={styles.emptyRow}>No commands available</li> : null}
     </ul>
   </FloatingPopover>;
 }

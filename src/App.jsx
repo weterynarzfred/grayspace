@@ -370,7 +370,8 @@ function App() {
     closeCommandPalette();
     executeAppCommand(commandId, paletteContext);
   }, [closeCommandPalette, executeAppCommand, paletteContext]);
-  const openFolderInCurrentTabViaRecentFlow = useCallback(async (tabId, path) => {
+  const openFolderInCurrentTabViaRecentFlow = useCallback(async (tabId, path, options = {}) => {
+    const suppressNotFoundNotification = options?.suppressNotFoundNotification === true;
     const targetPath = typeof path === "string" ? path.trim() : "";
     if (!tabId || !targetPath) return false;
 
@@ -381,16 +382,18 @@ function App() {
     } catch (error) {
       const message = getErrorMessage(error);
       if (message === "Folder does not exist.") {
-        pushNotification?.({
-          title: "Folder no longer exists",
-          message: targetPath,
-          tone: "warning",
-        });
-        workspaceRecentFoldersRemove(targetPath).catch(() => {});
-        setRecentFoldersState((state) => ({
-          ...state,
-          entries: state.entries.filter((entry) => entry.path !== targetPath),
-        }));
+        if (!suppressNotFoundNotification) {
+          pushNotification?.({
+            title: "Folder no longer exists",
+            message: targetPath,
+            tone: "warning",
+          });
+          workspaceRecentFoldersRemove(targetPath).catch(() => {});
+          setRecentFoldersState((state) => ({
+            ...state,
+            entries: state.entries.filter((entry) => entry.path !== targetPath),
+          }));
+        }
         return false;
       }
 

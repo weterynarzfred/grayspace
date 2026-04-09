@@ -62,6 +62,30 @@ describe("Breadcrumbs", () => {
     expect(handlePathSubmit).toHaveBeenCalledWith("C:\\Temp");
   });
 
+  it("submits a fallback suggestion when top suggestion differs from typed path", () => {
+    const handlePathSubmit = vi.fn();
+
+    render(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={vi.fn()}
+        onPathSubmit={handlePathSubmit}
+        recentFoldersEntries={[
+          { path: "H:\\short_lib", openedAtMs: 1710892800000, isWorkspace: true },
+          { path: "C:\\Users", openedAtMs: 1710806400000, isWorkspace: false },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    fireEvent.change(pathInput, { target: { value: "H:\\short" } });
+    fireEvent.submit(pathInput.closest("form"));
+
+    expect(handlePathSubmit).toHaveBeenCalledWith("H:\\short", { fallbackPath: "H:\\short_lib" });
+  });
+
   it("collapses path input on blur when path is unchanged", () => {
     render(
       <Breadcrumbs
@@ -146,5 +170,27 @@ describe("Breadcrumbs", () => {
 
     fireEvent.keyDown(pathInput, { key: "ArrowUp" });
     expect(pathInput).toHaveValue("C:\\Users");
+  });
+
+  it("filters recent folder suggestions based on typed query", () => {
+    render(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={vi.fn()}
+        recentFoldersEntries={[
+          { path: "C:\\Users", openedAtMs: 1710806400000, isWorkspace: false },
+          { path: "D:\\Work", openedAtMs: 1710892800000, isWorkspace: true },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    pathInput.focus();
+    fireEvent.change(pathInput, { target: { value: "work" } });
+
+    expect(screen.getByRole("button", { name: /D:\\Work/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /C:\\Users/i })).not.toBeInTheDocument();
   });
 });
