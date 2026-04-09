@@ -189,6 +189,26 @@ describe("commandRegistry", () => {
     expect(getCommandIds(shortcutCommands)).toContain("filesystem.paste");
   });
 
+  it("shows focus-breadcrumb command only when filesystem browsing is active", () => {
+    const browsingCommands = getCommandsForTrigger("shortcut", {
+      source: "shortcut",
+      activeTabId: "tab-1",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+    });
+    const drivesCommands = getCommandsForTrigger("shortcut", {
+      source: "shortcut",
+      activeTabId: "tab-1",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: false,
+    });
+
+    expect(getCommandIds(browsingCommands)).toContain("filesystem.focusBreadcrumbInput");
+    expect(getCommandIds(drivesCommands)).not.toContain("filesystem.focusBreadcrumbInput");
+  });
+
   it("hides open-recent command when there is no active tab", () => {
     const commands = getCommandsForTrigger("shortcut", {
       source: "shortcut",
@@ -299,6 +319,32 @@ describe("commandRegistry", () => {
       altKey: false,
       metaKey: false,
     })).toBe(true);
+  });
+
+  it("maps focus-breadcrumb shortcut to ctrl+l and alt+d", () => {
+    expect(isCommandShortcutMatch("filesystem.focusBreadcrumbInput", {
+      key: "l",
+      ctrlKey: true,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+
+    expect(isCommandShortcutMatch("filesystem.focusBreadcrumbInput", {
+      key: "D",
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: true,
+      metaKey: false,
+    })).toBe(true);
+
+    expect(isCommandShortcutMatch("filesystem.focusBreadcrumbInput", {
+      key: "l",
+      ctrlKey: true,
+      shiftKey: true,
+      altKey: false,
+      metaKey: false,
+    })).toBe(false);
   });
 
   it("maps redo shortcut to both ctrl+y and ctrl+shift+z", () => {

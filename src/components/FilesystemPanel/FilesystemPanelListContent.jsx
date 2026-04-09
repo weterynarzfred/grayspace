@@ -39,6 +39,8 @@ export default function FilesystemPanelListContent({
     currentDrive = "",
     onSelect: onBreadcrumbSelect = undefined,
     onPathSubmit: onBreadcrumbPathSubmit = undefined,
+    loadSubfoldersForPath: loadSubfoldersForPath = undefined,
+    focusPathInputRequestKey: focusPathInputRequestKey = 0,
     activeDragPaths = [],
     isMovingEntry = false,
     getDropIdForPath: getBreadcrumbDropId = undefined,
@@ -113,6 +115,8 @@ export default function FilesystemPanelListContent({
         currentDrive={currentDrive}
         onSelect={onBreadcrumbSelect}
         onPathSubmit={onBreadcrumbPathSubmit}
+        loadSubfoldersForPath={loadSubfoldersForPath}
+        focusPathInputRequestKey={focusPathInputRequestKey}
         activeDragPaths={activeDragPaths}
         isMovingEntry={isMovingEntry}
         getDropIdForPath={getBreadcrumbDropId}

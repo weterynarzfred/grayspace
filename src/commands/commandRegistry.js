@@ -26,6 +26,7 @@ export const COMMAND_IDS = {
   FILESYSTEM_PASTE: "filesystem.paste",
   FILESYSTEM_FILTER_CURRENT_FOLDER: "filesystem.filterCurrentFolder",
   FILESYSTEM_SEARCH_CURRENT_SUBTREE: "filesystem.searchCurrentSubtree",
+  FILESYSTEM_FOCUS_BREADCRUMB_INPUT: "filesystem.focusBreadcrumbInput",
   FILESYSTEM_OPEN_RECENT_FOLDERS: "filesystem.openRecentFolders",
   FILESYSTEM_CREATE_TEXT_FILE: "filesystem.createTextFile",
   FILESYSTEM_CREATE_FOLDER: "filesystem.createFolder",
@@ -505,6 +506,30 @@ export const COMMANDS = [
     state: "planned",
     whenText: "activePanelType === \"Filesystem\" && isFilesystemBrowsing",
     when: context => isFilesystemPanelActive(context) && isFilesystemBrowsing(context),
+  },
+  {
+    id: COMMAND_IDS.FILESYSTEM_FOCUS_BREADCRUMB_INPUT,
+    title: "Focus Breadcrumb Input",
+    shortcut: "Ctrl+L / Alt+D",
+    triggers: ["shortcut", "palette"],
+    scope: "filesystem",
+    whenText: "activePanelType === \"Filesystem\" && isFilesystemBrowsing",
+    when: context => isFilesystemPanelActive(context) && isFilesystemBrowsing(context),
+    shortcutMatcher: event =>
+      (
+        event.ctrlKey
+        && !event.shiftKey
+        && !event.altKey
+        && !event.metaKey
+        && event.key.toLowerCase() === "l"
+      )
+      || (
+        !event.ctrlKey
+        && !event.shiftKey
+        && event.altKey
+        && !event.metaKey
+        && event.key.toLowerCase() === "d"
+      ),
   },
   {
     id: COMMAND_IDS.FILESYSTEM_OPEN_RECENT_FOLDERS,

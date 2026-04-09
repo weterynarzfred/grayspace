@@ -5,6 +5,7 @@ import {
   normalizeRecentFolderEntries,
 } from "../popovers/recentFoldersShared";
 import { fuzzyFilterEntries } from "../popovers/fuzzySearch";
+import { isSamePath } from "../../utils/pathWatch";
 import styles from "./Breadcrumbs.module.scss";
 
 export function buildBreadcrumbs(currentPath, currentDrive) {
@@ -98,17 +99,72 @@ function Breadcrumbs({
   recentFoldersEntries = [],
   isLoadingRecentFolders = false,
   onSelectRecentFolder,
+  loadSubfoldersForPath,
+  focusPathInputRequestKey = 0,
 }) {
   const arePathsEquivalent = useCallback((leftPath, rightPath) => {
     const normalizedLeft = typeof leftPath === "string" ? leftPath.trim().toLowerCase() : "";
     const normalizedRight = typeof rightPath === "string" ? rightPath.trim().toLowerCase() : "";
     return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
   }, []);
+  const hasPathLookupResult = useCallback((lookupByParent, parentPath) => (
+    Object.prototype.hasOwnProperty.call(lookupByParent, parentPath)
+  ), []);
+  const getPathLeafName = useCallback((path) => {
+    if (typeof path !== "string") return "";
+    const normalizedPath = path.trim().replace(/[\\/]+$/, "");
+    if (!normalizedPath) return "";
+    const separatorIndex = Math.max(
+      normalizedPath.lastIndexOf("\\"),
+      normalizedPath.lastIndexOf("/"),
+    );
+    if (separatorIndex < 0) return normalizedPath;
+    return normalizedPath.slice(separatorIndex + 1);
+  }, []);
+  const normalizeLookupParentPath = useCallback((rawParentPath) => {
+    if (typeof rawParentPath !== "string") return "";
+    const trimmedParentPath = rawParentPath.trim();
+    if (!trimmedParentPath) return "";
+    if (/^[A-Za-z]:[\\/]?$/.test(trimmedParentPath)) {
+      return `${trimmedParentPath.slice(0, 2)}\\`;
+    }
+    if (/^\/+$/.test(trimmedParentPath)) return "/";
+    return trimmedParentPath.replace(/[\\/]+$/, "");
+  }, []);
+  const parsePathLookupContext = useCallback((rawQuery) => {
+    const normalizedQuery = typeof rawQuery === "string" ? rawQuery.trim() : "";
+    if (!normalizedQuery) return null;
+    const separatorIndex = Math.max(
+      normalizedQuery.lastIndexOf("\\"),
+      normalizedQuery.lastIndexOf("/"),
+    );
+    if (separatorIndex < 0) return null;
+    const parentPath = normalizeLookupParentPath(normalizedQuery.slice(0, separatorIndex + 1));
+    if (!parentPath) return null;
+    return {
+      parentPath,
+      childQuery: normalizedQuery.slice(separatorIndex + 1).trim(),
+    };
+  }, [normalizeLookupParentPath]);
+  const normalizeFolderSuggestionPaths = useCallback((folderPaths = []) => {
+    const uniquePaths = [];
+    folderPaths.forEach((path) => {
+      if (typeof path !== "string") return;
+      const normalizedPath = path.trim();
+      if (!normalizedPath) return;
+      if (uniquePaths.some((candidatePath) => isSamePath(candidatePath, normalizedPath))) return;
+      uniquePaths.push(normalizedPath);
+    });
+    return uniquePaths;
+  }, []);
   const [isPathEditing, setIsPathEditing] = useState(false);
   const [isPathInputFocused, setIsPathInputFocused] = useState(false);
   const [pathDraft, setPathDraft] = useState("");
   const [pathSearchQuery, setPathSearchQuery] = useState("");
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(-1);
+  const [folderSuggestionsByParentPath, setFolderSuggestionsByParentPath] = useState({});
+  const folderSuggestionRequestIdRef = useRef(0);
+  const lastFocusRequestKeyRef = useRef(0);
   const pathInputRef = useRef(null);
   const crumbs = buildBreadcrumbs(currentPath, currentDrive);
   const hasDropTargets = typeof getDropIdForPath === "function";
@@ -121,6 +177,41 @@ function Breadcrumbs({
     pathSearchQuery,
     (entry) => entry.searchText,
   ), [normalizedRecentFolders, pathSearchQuery]);
+  const pathLookupContext = useMemo(
+    () => parsePathLookupContext(pathSearchQuery),
+    [parsePathLookupContext, pathSearchQuery],
+  );
+  const visiblePathFolderSuggestions = useMemo(() => {
+    if (!pathLookupContext?.parentPath) return [];
+    const folderPaths = folderSuggestionsByParentPath[pathLookupContext.parentPath];
+    if (!Array.isArray(folderPaths) || folderPaths.length === 0) return [];
+
+    const normalizedEntries = folderPaths.map((path) => ({
+      path,
+      openedAtMs: 0,
+      isWorkspace: workspaceFolderPathSet.has(path),
+      searchText: `${getPathLeafName(path)} ${path}`.trim().toLowerCase(),
+    }));
+    if (!pathLookupContext.childQuery) return normalizedEntries;
+    return fuzzyFilterEntries(
+      normalizedEntries,
+      pathLookupContext.childQuery,
+      (entry) => entry.searchText,
+    );
+  }, [
+    folderSuggestionsByParentPath,
+    getPathLeafName,
+    pathLookupContext,
+    workspaceFolderPathSet,
+  ]);
+  const visibleSuggestions = useMemo(() => {
+    const mergedSuggestions = [...visiblePathFolderSuggestions];
+    visibleRecentFolders.forEach((recentEntry) => {
+      if (mergedSuggestions.some((entry) => isSamePath(entry.path, recentEntry.path))) return;
+      mergedSuggestions.push(recentEntry);
+    });
+    return mergedSuggestions;
+  }, [visiblePathFolderSuggestions, visibleRecentFolders]);
 
   useEffect(() => {
     if (!isPathEditing) return;
@@ -129,13 +220,69 @@ function Breadcrumbs({
   }, [isPathEditing]);
 
   useEffect(() => {
+    if (!Number.isFinite(focusPathInputRequestKey) || focusPathInputRequestKey <= 0) return;
+    if (focusPathInputRequestKey === lastFocusRequestKeyRef.current) return;
+    lastFocusRequestKeyRef.current = focusPathInputRequestKey;
+
+    if (isPathEditing) {
+      pathInputRef.current?.focus();
+      pathInputRef.current?.select();
+      return;
+    }
+
+    setPathDraft(currentPath ?? "");
+    setPathSearchQuery("");
+    setSelectedSuggestionIndex(-1);
+    setIsPathEditing(true);
+  }, [currentPath, focusPathInputRequestKey, isPathEditing]);
+
+  useEffect(() => {
+    if (!isPathEditing) return;
+    if (!pathLookupContext?.parentPath) return;
+    if (typeof loadSubfoldersForPath !== "function") return;
+    if (hasPathLookupResult(folderSuggestionsByParentPath, pathLookupContext.parentPath)) return;
+
+    const requestId = folderSuggestionRequestIdRef.current + 1;
+    folderSuggestionRequestIdRef.current = requestId;
+    Promise.resolve(loadSubfoldersForPath(pathLookupContext.parentPath))
+      .then((folderPaths) => {
+        if (folderSuggestionRequestIdRef.current !== requestId) return;
+        const normalizedFolderPaths = normalizeFolderSuggestionPaths(folderPaths);
+        setFolderSuggestionsByParentPath((previous) => {
+          if (hasPathLookupResult(previous, pathLookupContext.parentPath)) return previous;
+          return {
+            ...previous,
+            [pathLookupContext.parentPath]: normalizedFolderPaths,
+          };
+        });
+      })
+      .catch(() => {
+        if (folderSuggestionRequestIdRef.current !== requestId) return;
+        setFolderSuggestionsByParentPath((previous) => {
+          if (hasPathLookupResult(previous, pathLookupContext.parentPath)) return previous;
+          return {
+            ...previous,
+            [pathLookupContext.parentPath]: [],
+          };
+        });
+      });
+  }, [
+    folderSuggestionsByParentPath,
+    hasPathLookupResult,
+    isPathEditing,
+    loadSubfoldersForPath,
+    normalizeFolderSuggestionPaths,
+    pathLookupContext,
+  ]);
+
+  useEffect(() => {
     if (!isPathEditing) return;
     setSelectedSuggestionIndex((current) => {
-      if (visibleRecentFolders.length === 0) return -1;
+      if (visibleSuggestions.length === 0) return -1;
       if (current < 0) return -1;
-      return Math.min(current, visibleRecentFolders.length - 1);
+      return Math.min(current, visibleSuggestions.length - 1);
     });
-  }, [isPathEditing, visibleRecentFolders.length]);
+  }, [isPathEditing, visibleSuggestions.length]);
 
   const handleStartPathEditing = useCallback((event) => {
     event.stopPropagation();
@@ -156,7 +303,7 @@ function Breadcrumbs({
   const handleSubmitPath = useCallback((event) => {
     event.preventDefault();
     const nextPath = pathDraft.trim();
-    const firstSuggestedPath = visibleRecentFolders[0]?.path ?? "";
+    const firstSuggestedPath = visibleSuggestions[0]?.path ?? "";
     const shouldIncludeFallback = (
       typeof firstSuggestedPath === "string"
       && firstSuggestedPath.trim().length > 0
@@ -172,7 +319,7 @@ function Breadcrumbs({
       return;
     }
     onPathSubmit?.(nextPath);
-  }, [arePathsEquivalent, currentPath, onPathSubmit, pathDraft, visibleRecentFolders]);
+  }, [arePathsEquivalent, currentPath, onPathSubmit, pathDraft, visibleSuggestions]);
   const handlePathInputBlur = useCallback(() => {
     const normalizedDraft = pathDraft.trim();
     const normalizedCurrentPath = (currentPath ?? "").trim();
@@ -194,7 +341,7 @@ function Breadcrumbs({
       return;
     }
 
-    const suggestionCount = visibleRecentFolders.length;
+    const suggestionCount = visibleSuggestions.length;
     if (suggestionCount === 0) return;
 
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -208,14 +355,14 @@ function Breadcrumbs({
           : (selectedSuggestionIndex - 1 + suggestionCount) % suggestionCount;
       }
       setSelectedSuggestionIndex(nextIndex);
-      setPathDraft(visibleRecentFolders[nextIndex]?.path ?? pathDraft);
+      setPathDraft(visibleSuggestions[nextIndex]?.path ?? pathDraft);
     }
-  }, [currentPath, pathDraft, selectedSuggestionIndex, visibleRecentFolders]);
+  }, [currentPath, pathDraft, selectedSuggestionIndex, visibleSuggestions]);
   const shouldShowSuggestions = isPathEditing && isPathInputFocused;
   const handleSuggestionMouseEnter = useCallback((index) => {
-    if (index < 0 || index >= visibleRecentFolders.length) return;
+    if (index < 0 || index >= visibleSuggestions.length) return;
     setSelectedSuggestionIndex(index);
-  }, [visibleRecentFolders.length]);
+  }, [visibleSuggestions.length]);
   const handleSuggestionClick = useCallback((path) => {
     const normalizedPath = typeof path === "string" ? path.trim() : "";
     setPathDraft(normalizedPath);
@@ -274,7 +421,7 @@ function Breadcrumbs({
     </div>
 
     {shouldShowSuggestions ? <ul className={styles.recentFolderList}>
-      {visibleRecentFolders.map((entry, index) => <li key={entry.path} className={styles.recentFolderItem}>
+      {visibleSuggestions.map((entry, index) => <li key={entry.path} className={styles.recentFolderItem}>
         <button
           type="button"
           className={`${styles.recentFolderButton} ${selectedSuggestionIndex === index ? styles.recentFolderButtonSelected : ""}`.trim()}
@@ -292,7 +439,7 @@ function Breadcrumbs({
           </span>
         </button>
       </li>)}
-      {visibleRecentFolders.length === 0 && !isLoadingRecentFolders ? <li className={styles.recentFolderEmpty}>
+      {visibleSuggestions.length === 0 && !isLoadingRecentFolders ? <li className={styles.recentFolderEmpty}>
         No recent folders.
       </li> : null}
       {isLoadingRecentFolders ? <li className={styles.recentFolderEmpty}>

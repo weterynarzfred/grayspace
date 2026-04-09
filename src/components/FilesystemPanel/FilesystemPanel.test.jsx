@@ -492,7 +492,7 @@ describe("FilesystemPanel", () => {
       tabId: "tab-breadcrumb-fallback",
       onOpenFolderInCurrentTab: handleOpenFolderInCurrentTab,
       recentFoldersEntries: [
-        { path: "H:\\short_lib", openedAtMs: 1710892800000, isWorkspace: false },
+        { path: "D:\\program-notes", openedAtMs: 1710892800000, isWorkspace: false },
         { path: "C:\\Users", openedAtMs: 1710806400000, isWorkspace: false },
       ],
     });
@@ -504,16 +504,16 @@ describe("FilesystemPanel", () => {
     fireEvent.click(breadcrumbsNav);
 
     const pathInput = await screen.findByRole("textbox", { name: "Current folder path" });
-    fireEvent.change(pathInput, { target: { value: "H:\\short" } });
+    fireEvent.change(pathInput, { target: { value: "C:\\Use" } });
     fireEvent.submit(pathInput.closest("form"));
 
     await waitFor(() => {
-      expect(handleOpenFolderInCurrentTab).toHaveBeenNthCalledWith(1, "tab-breadcrumb-fallback", "H:\\short", {
+      expect(handleOpenFolderInCurrentTab).toHaveBeenNthCalledWith(1, "tab-breadcrumb-fallback", "C:\\Use", {
         suppressNotFoundNotification: true,
       });
     });
     await waitFor(() => {
-      expect(handleOpenFolderInCurrentTab).toHaveBeenNthCalledWith(2, "tab-breadcrumb-fallback", "H:\\short_lib", {
+      expect(handleOpenFolderInCurrentTab).toHaveBeenNthCalledWith(2, "tab-breadcrumb-fallback", "C:\\Users", {
         suppressNotFoundNotification: false,
       });
     });
@@ -2456,6 +2456,32 @@ describe("FilesystemPanel", () => {
     });
 
     expect(await screen.findByRole("textbox")).toHaveValue("notes.txt");
+  });
+
+  it("focuses breadcrumb input from app command events", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-event-focus-breadcrumb",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    expect(await screen.findByRole("navigation", { name: "Current path" })).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Current folder path" })).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
+          commandId: "filesystem.focusBreadcrumbInput",
+          context: {
+            targetPaneId: "pane-event-focus-breadcrumb",
+          },
+        },
+      }));
+    });
+
+    const pathInput = await screen.findByRole("textbox", { name: "Current folder path" });
+    expect(pathInput).toHaveFocus();
   });
 
   it("creates a new text file from app command events and starts rename", async () => {

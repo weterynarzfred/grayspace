@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import Breadcrumbs, { buildBreadcrumbs } from "./Breadcrumbs";
 
 describe("Breadcrumbs", () => {
@@ -40,6 +40,32 @@ describe("Breadcrumbs", () => {
     fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
 
     expect(screen.getByRole("textbox", { name: "Current folder path" })).toBeInTheDocument();
+  });
+
+  it("opens path input when focus request key changes", () => {
+    const { rerender } = render(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={vi.fn()}
+        focusPathInputRequestKey={0}
+      />,
+    );
+
+    expect(screen.queryByRole("textbox", { name: "Current folder path" })).not.toBeInTheDocument();
+
+    rerender(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={vi.fn()}
+        focusPathInputRequestKey={1}
+      />,
+    );
+
+    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    expect(pathInput).toBeInTheDocument();
+    expect(pathInput).toHaveValue("C:\\Users");
   });
 
   it("submits edited path with onPathSubmit callback", () => {
@@ -192,5 +218,69 @@ describe("Breadcrumbs", () => {
 
     expect(screen.getByRole("button", { name: /D:\\Work/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /C:\\Users/i })).not.toBeInTheDocument();
+  });
+
+  it("adds matching subfolders above recent-folder suggestions when typed parent path exists", async () => {
+    const loadSubfoldersForPath = vi.fn().mockResolvedValue([
+      "H:\\programming",
+      "H:\\Program Files",
+      "H:\\tmp",
+    ]);
+
+    render(
+      <Breadcrumbs
+        currentPath={"H:\\"}
+        currentDrive={"H:\\"}
+        onSelect={vi.fn()}
+        loadSubfoldersForPath={loadSubfoldersForPath}
+        recentFoldersEntries={[
+          { path: "H:\\program-notes", openedAtMs: 1710892800000, isWorkspace: true },
+          { path: "C:\\Users", openedAtMs: 1710806400000, isWorkspace: false },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    pathInput.focus();
+    fireEvent.change(pathInput, { target: { value: "H:\\program" } });
+
+    await waitFor(() => {
+      expect(loadSubfoldersForPath).toHaveBeenCalledWith("H:\\");
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /H:\\programming/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /H:\\Program Files/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /H:\\program-notes/i })).toBeInTheDocument();
+    });
+
+    const suggestionList = screen.getByRole("list");
+    const suggestionButtons = within(suggestionList).getAllByRole("button");
+    expect(suggestionButtons[0].textContent).toContain("H:\\programming");
+    expect(suggestionButtons[1].textContent).toContain("H:\\Program Files");
+  });
+
+  it("does not query subfolders when typed value is not a path", () => {
+    const loadSubfoldersForPath = vi.fn().mockResolvedValue(["H:\\programming"]);
+
+    render(
+      <Breadcrumbs
+        currentPath={"H:\\"}
+        currentDrive={"H:\\"}
+        onSelect={vi.fn()}
+        loadSubfoldersForPath={loadSubfoldersForPath}
+        recentFoldersEntries={[
+          { path: "D:\\program-notes", openedAtMs: 1710892800000, isWorkspace: true },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    pathInput.focus();
+    fireEvent.change(pathInput, { target: { value: "program" } });
+
+    expect(loadSubfoldersForPath).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /D:\\program-notes/i })).toBeInTheDocument();
   });
 });

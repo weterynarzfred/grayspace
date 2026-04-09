@@ -1,4 +1,5 @@
 import { useDroppable } from "@dnd-kit/core";
+import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PanelHeader from "../PanelHeader";
 import { buildBreadcrumbs } from "./Breadcrumbs";
@@ -65,6 +66,7 @@ function FilesystemPanel({
   const [thumbnailSizePx, setThumbnailSizePx] = useState(
     initialFilesystemStateRef.current.thumbnailSizePx,
   );
+  const [breadcrumbFocusRequestKey, setBreadcrumbFocusRequestKey] = useState(0);
   const entryRowHeightPx = thumbnailSizePx;
   const { openConfirm, pushNotification } = useNotificationCenter();
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current, {
@@ -416,10 +418,30 @@ function FilesystemPanel({
     onOpenFolderInCurrentTab,
     tabId,
   ]);
+  const loadSubfoldersForPath = useCallback(async (parentPath) => {
+    const normalizedParentPath = typeof parentPath === "string"
+      ? parentPath.trim()
+      : "";
+    if (!normalizedParentPath) return [];
+
+    try {
+      const entries = await invoke("list_directory", { path: normalizedParentPath });
+      if (!Array.isArray(entries)) return [];
+      return entries
+        .filter((entry) => entry?.is_dir === true && typeof entry?.path === "string")
+        .map((entry) => entry.path.trim())
+        .filter(Boolean);
+    } catch {
+      return [];
+    }
+  }, []);
   const handleGoUpDoubleClick = useCallback(async () => {
     if (!await confirmWorkspaceExitIfNeeded(upDestinationPath)) return;
     navigateToPath(upDestinationPath);
   }, [confirmWorkspaceExitIfNeeded, navigateToPath, upDestinationPath]);
+  const requestBreadcrumbInputFocus = useCallback(() => {
+    setBreadcrumbFocusRequestKey((current) => current + 1);
+  }, []);
 
   useEffect(() => {
     onCurrentPathChangeRef.current = onCurrentPathChange;
@@ -514,6 +536,7 @@ function FilesystemPanel({
           handleOpenSelectedEntryInNewTab();
         },
         [COMMAND_IDS.FILESYSTEM_GO_UP]: () => handleGoUpDoubleClick(),
+        [COMMAND_IDS.FILESYSTEM_FOCUS_BREADCRUMB_INPUT]: () => requestBreadcrumbInputFocus(),
       };
 
       const commandHandler = commandHandlers[commandId];
@@ -534,6 +557,7 @@ function FilesystemPanel({
     handleOpenSelectedEntryInNewTab,
     handlePasteEntries,
     paneId,
+    requestBreadcrumbInputFocus,
     resolveCreateCommandOptions,
     redoEntries,
     undoEntries,
@@ -625,6 +649,8 @@ function FilesystemPanel({
           onPathSubmit: (path, options = {}) => {
             handleOpenFolderViaRecentSelection(path, options);
           },
+          loadSubfoldersForPath,
+          focusPathInputRequestKey: breadcrumbFocusRequestKey,
           activeDragPaths: effectiveActiveDragPaths,
           isMovingEntry,
           getDropIdForPath: dnd.getBreadcrumbDropId,
