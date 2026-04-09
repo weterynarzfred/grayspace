@@ -388,7 +388,7 @@ function App() {
             message: targetPath,
             tone: "warning",
           });
-          workspaceRecentFoldersRemove(targetPath).catch(() => {});
+          workspaceRecentFoldersRemove(targetPath).catch(() => { });
           setRecentFoldersState((state) => ({
             ...state,
             entries: state.entries.filter((entry) => entry.path !== targetPath),
@@ -475,7 +475,7 @@ function App() {
         />
       </DndContext>
 
-      <section className={styles.workspaceContent}>
+      <section className={`${styles.workspaceContent} workspaceContent`}>
         <PanelsDndLayer>
           <WorkspacePanelLayout
             tab={activeTab}

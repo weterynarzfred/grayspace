@@ -2,7 +2,6 @@
 @use "../../styles/mixins" as *;
 
 .panelContent {
-  background: $bg-panel;
   height: 100%;
   overflow: hidden;
   display: flex;

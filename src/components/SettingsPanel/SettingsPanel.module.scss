@@ -1,9 +1,5 @@
 @use "../../styles/variables" as *;
 
-.panelContent {
-  background: $bg-panel;
-}
-
 .panelBody {
   display: flex;
   flex-direction: column;
