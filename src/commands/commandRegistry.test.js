@@ -343,4 +343,191 @@ describe("commandRegistry", () => {
     expect(formatCommandWhen(plannedCommand)).toContain("workspace folder scripts");
     expect(formatCommandWhen({})).toBe("true");
   });
+
+  it("keeps delete/copy/cut hidden for non-entry context-menu targets", () => {
+    const commands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "panel",
+      targetPanelType: "Filesystem",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\notes.txt"],
+    });
+
+    const commandIds = getCommandIds(commands);
+    expect(commandIds).not.toContain("filesystem.deleteSelected");
+    expect(commandIds).not.toContain("filesystem.copy");
+    expect(commandIds).not.toContain("filesystem.cut");
+  });
+
+  it("shows delete/copy/cut for tree-entry context-menu targets with selection", () => {
+    const commands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "file",
+      targetScope: "tree-entry",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\notes.txt"],
+    });
+
+    const commandIds = getCommandIds(commands);
+    expect(commandIds).toContain("filesystem.deleteSelected");
+    expect(commandIds).toContain("filesystem.copy");
+    expect(commandIds).toContain("filesystem.cut");
+  });
+
+  it("hides open-folder-in-new-tab for single file selections", () => {
+    const commands = getCommandsForTrigger("palette", {
+      source: "palette",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\notes.txt"],
+      selectedEntryKinds: {
+        "C:\\notes.txt": "file",
+      },
+    });
+
+    expect(getCommandIds(commands)).not.toContain("filesystem.openSelectedFolderInNewTab");
+  });
+
+  it("normalizes duplicate path selections for rename availability", () => {
+    const commands = getCommandsForTrigger("palette", {
+      source: "palette",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["", "C:\\notes.txt", "C:\\notes.txt"],
+    });
+
+    expect(getCommandIds(commands)).toContain("filesystem.renameSelected");
+  });
+
+  it("hides paste in context menus when filesystem browsing is inactive", () => {
+    const commands = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "folder",
+      targetScope: "tree-entry",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: false,
+      selectedPaths: ["C:\\Users"],
+    });
+
+    expect(getCommandIds(commands)).not.toContain("filesystem.paste");
+  });
+
+  it("does not expose planned no-trigger commands through trigger queries", () => {
+    const paletteCommands = getCommandsForTrigger("palette", {
+      source: "palette",
+      activeTabId: "tab-1",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\notes.txt"],
+    });
+    const shortcutCommands = getCommandsForTrigger("shortcut", {
+      source: "shortcut",
+      activeTabId: "tab-1",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\notes.txt"],
+    });
+
+    expect(getCommandIds(paletteCommands)).not.toContain("workspace.runScript");
+    expect(getCommandIds(shortcutCommands)).not.toContain("workspace.runScript");
+  });
+
+  it("returns false for shortcut matching on unknown and no-shortcut commands", () => {
+    const event = {
+      key: "r",
+      ctrlKey: true,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    };
+
+    expect(isCommandShortcutMatch("workspace.runScript", event)).toBe(false);
+    expect(isCommandShortcutMatch("workspace.unknown", event)).toBe(false);
+  });
+
+  it("maps external-ui, undo, open-folder, and go-up shortcuts", () => {
+    expect(isCommandShortcutMatch("pane.switch.externalUi", {
+      key: "u",
+      ctrlKey: true,
+      shiftKey: true,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+
+    expect(isCommandShortcutMatch("filesystem.undo", {
+      key: "Z",
+      ctrlKey: true,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+
+    expect(isCommandShortcutMatch("filesystem.openSelectedFolderInNewTab", {
+      key: "Enter",
+      ctrlKey: true,
+      shiftKey: false,
+      altKey: false,
+      metaKey: false,
+    })).toBe(true);
+
+    expect(isCommandShortcutMatch("filesystem.goUp", {
+      key: "ArrowUp",
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: true,
+      metaKey: false,
+    })).toBe(true);
+  });
+
+  it("evaluates planned filesystem command predicates against filesystem context", () => {
+    const bulkRenameCommand = COMMANDS.find(command => command.id === "filesystem.bulkRename");
+    const filterCommand = COMMANDS.find(command => command.id === "filesystem.filterCurrentFolder");
+    const searchCommand = COMMANDS.find(command => command.id === "filesystem.searchCurrentSubtree");
+
+    expect(bulkRenameCommand.when({
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: ["C:\\one.txt", "C:\\two.txt"],
+    })).toBe(true);
+    expect(bulkRenameCommand.when({
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: [],
+    })).toBe(false);
+
+    expect(filterCommand.when({
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+    })).toBe(true);
+    expect(filterCommand.when({
+      activePanelType: "Terminal",
+      isFilesystemBrowsing: true,
+    })).toBe(false);
+
+    expect(searchCommand.when({
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+    })).toBe(true);
+    expect(searchCommand.when({
+      activePanelType: "Filesystem",
+      isFilesystemBrowsing: false,
+    })).toBe(false);
+  });
+
+  it("keeps run-script command predicate disabled by default", () => {
+    const runScriptCommand = COMMANDS.find(command => command.id === "workspace.runScript");
+    expect(runScriptCommand.when({
+      activeTabId: "tab-1",
+      activePaneId: "pane-1",
+    })).toBe(false);
+  });
 });

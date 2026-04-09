@@ -119,3 +119,6 @@ impl ThumbnailProvider for ImageThumbnailProvider {
     Ok(ThumbnailGenerateOutcome::Ready)
   }
 }
+
+#[cfg(test)]
+mod tests;

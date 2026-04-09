@@ -10,7 +10,8 @@
     "test_watch": "vitest",
     "test_rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "tauri_dev": "tauri dev",
-    "tauri_build": "tauri build"
+    "tauri_build": "tauri build",
+    "sonarqube": "..\\runSonar.bat"
   },
   "dependencies": {
     "@codemirror/language": "^6.12.3",
