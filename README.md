@@ -91,6 +91,7 @@ npm run tauri_dev
 * [ ] menu bar
 * [x] custom context menu
   * [ ] custom commands, global and per workspace
+  * [ ] multi-level entries
 * [x] command palette window (`Ctrl+Shift+P`)
 * [x] settings panel with read-only command list
 * [ ] global config system

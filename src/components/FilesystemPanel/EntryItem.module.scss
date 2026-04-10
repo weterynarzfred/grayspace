@@ -136,12 +136,11 @@
 .entryRenameInput {
   min-width: 0;
   flex: 1 1 auto;
-  height: 1.7rem;
-  padding: 0 0.35rem;
-  color: inherit;
+  padding: 0;
   background: $bg-panel;
-  border: 1px solid $border-hover;
+  color: inherit;
   font: inherit;
+  font-size: var(--entry-font-size, 0.8rem);
 }
 
 .configEntry {

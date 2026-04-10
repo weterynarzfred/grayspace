@@ -65,23 +65,6 @@ function ContextMenuPopover({
       tabIndex={-1}
       onKeyDown={handleKeyDown}
     >
-      <h2 className={styles.title}>Context Menu</h2>
-      <p className={styles.row}>
-        <span className={styles.label}>Type</span>
-        <span>{title}</span>
-      </p>
-      <p className={styles.row}>
-        <span className={styles.label}>Name</span>
-        <span>{target.label || "N/A"}</span>
-      </p>
-      <p className={styles.row}>
-        <span className={styles.label}>ID</span>
-        <span>{target.id || "N/A"}</span>
-      </p>
-      <p className={styles.row}>
-        <span className={styles.label}>Path</span>
-        <span className={styles.path}>{target.path || "N/A"}</span>
-      </p>
       <ul className={styles.commandList}>
         {commands.map((command, index) => <li key={command.id}>
           <button
