@@ -1,7 +1,7 @@
 use super::{
   apply_tab_workspace_root_change, find_workspace_root_for_path, infer_drive_from_path,
   normalize_recent_folder_path, recent_folder_dedupe_key, reset_tab_layout_to_default,
-  set_tab_filesystem_root,
+  set_tab_filesystem_root, workspace_read_folder_stylesheet,
 };
 use crate::commands::workspace::commands::basic_support::split_layout_leaf;
 use crate::commands::workspace::model::WorkspaceModel;
@@ -502,4 +502,95 @@ fn infer_drive_from_path_extracts_drive_or_root() {
     assert_eq!(infer_drive_from_path("/tmp/workspace/project"), "/");
     assert_eq!(infer_drive_from_path("relative/path"), "");
   }
+}
+
+#[test]
+fn workspace_read_folder_stylesheet_reads_css_file_from_workspace_root() {
+  let test_root = unique_test_root("workspace-read-stylesheet-css");
+  let workspace_root = test_root.join("WorkspaceRoot");
+  let stylesheet_path = workspace_root.join("user").join("styles.css");
+  fs::create_dir_all(
+    stylesheet_path
+      .parent()
+      .expect("stylesheet parent should exist"),
+  )
+  .expect("stylesheet directory should be created");
+  fs::write(&stylesheet_path, ".workspaceContent { color: hotpink; }")
+    .expect("stylesheet should be written");
+
+  let result = workspace_read_folder_stylesheet(
+    workspace_root.to_string_lossy().to_string(),
+    "user/styles.css".to_string(),
+  )
+  .expect("command should succeed");
+
+  assert_eq!(result.as_deref(), Some(".workspaceContent { color: hotpink; }"));
+  fs::remove_dir_all(&test_root).expect("test root should be removed");
+}
+
+#[test]
+fn workspace_read_folder_stylesheet_falls_back_to_scss_when_css_is_missing() {
+  let test_root = unique_test_root("workspace-read-stylesheet-scss-fallback");
+  let workspace_root = test_root.join("WorkspaceRoot");
+  let stylesheet_path = workspace_root.join("user").join("styles.scss");
+  fs::create_dir_all(
+    stylesheet_path
+      .parent()
+      .expect("stylesheet parent should exist"),
+  )
+  .expect("stylesheet directory should be created");
+  fs::write(&stylesheet_path, ".workspaceContent { color: springgreen; }")
+    .expect("stylesheet should be written");
+
+  let result = workspace_read_folder_stylesheet(
+    workspace_root.to_string_lossy().to_string(),
+    "user/styles.css".to_string(),
+  )
+  .expect("command should succeed");
+
+  assert_eq!(result.as_deref(), Some(".workspaceContent { color: springgreen; }"));
+  fs::remove_dir_all(&test_root).expect("test root should be removed");
+}
+
+#[test]
+fn workspace_read_folder_stylesheet_rejects_parent_dir_traversal() {
+  let test_root = unique_test_root("workspace-read-stylesheet-traversal");
+  let workspace_root = test_root.join("WorkspaceRoot");
+  fs::create_dir_all(workspace_root.join(".grayspace"))
+    .expect("workspace marker should be created");
+
+  let result = workspace_read_folder_stylesheet(
+    workspace_root.to_string_lossy().to_string(),
+    "../outside.css".to_string(),
+  );
+
+  assert_eq!(
+    result.expect_err("parent traversal should be rejected"),
+    "Stylesheet path must stay inside workspace root."
+  );
+  fs::remove_dir_all(&test_root).expect("test root should be removed");
+}
+
+#[test]
+fn workspace_read_folder_stylesheet_reads_grayspace_file_when_explicitly_requested() {
+  let test_root = unique_test_root("workspace-read-stylesheet-grayspace-path");
+  let workspace_root = test_root.join("WorkspaceRoot");
+  let stylesheet_path = workspace_root.join(".grayspace").join("user").join("styles.css");
+  fs::create_dir_all(
+    stylesheet_path
+      .parent()
+      .expect("stylesheet parent should exist"),
+  )
+  .expect("stylesheet directory should be created");
+  fs::write(&stylesheet_path, ".workspaceContent { color: dodgerblue; }")
+    .expect("stylesheet should be written");
+
+  let result = workspace_read_folder_stylesheet(
+    workspace_root.to_string_lossy().to_string(),
+    ".grayspace/user/styles.css".to_string(),
+  )
+  .expect("command should succeed");
+
+  assert_eq!(result.as_deref(), Some(".workspaceContent { color: dodgerblue; }"));
+  fs::remove_dir_all(&test_root).expect("test root should be removed");
 }

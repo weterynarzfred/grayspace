@@ -1229,6 +1229,72 @@ pub fn workspace_read_folder_config(workspace_root: String) -> Result<Option<Str
 }
 
 #[tauri::command]
+pub fn workspace_read_folder_stylesheet(
+  workspace_root: String,
+  stylesheet_path: String,
+) -> Result<Option<String>, String> {
+  let trimmed_workspace_root = workspace_root.trim();
+  if trimmed_workspace_root.is_empty() {
+    return Ok(None);
+  }
+
+  let workspace_root_path = PathBuf::from(trimmed_workspace_root);
+  if !workspace_root_path.is_dir() {
+    return Ok(None);
+  }
+
+  let trimmed_stylesheet_path = stylesheet_path.trim();
+  if trimmed_stylesheet_path.is_empty() {
+    return Ok(None);
+  }
+
+  let relative_stylesheet_path = PathBuf::from(trimmed_stylesheet_path);
+  if relative_stylesheet_path.is_absolute() {
+    return Err("Stylesheet path must be relative to workspace root.".to_string());
+  }
+  if relative_stylesheet_path.components().any(|component| {
+    matches!(
+      component,
+      std::path::Component::ParentDir
+        | std::path::Component::RootDir
+        | std::path::Component::Prefix(_)
+    )
+  }) {
+    return Err("Stylesheet path must stay inside workspace root.".to_string());
+  }
+
+  let mut stylesheet_candidates = vec![workspace_root_path.join(&relative_stylesheet_path)];
+  let has_path_separator_suffix = trimmed_stylesheet_path.ends_with('/')
+    || trimmed_stylesheet_path.ends_with('\\');
+  if !has_path_separator_suffix && trimmed_stylesheet_path.to_ascii_lowercase().ends_with(".css") {
+    let mut scss_relative_path = relative_stylesheet_path.clone();
+    scss_relative_path.set_extension("scss");
+    if scss_relative_path != relative_stylesheet_path {
+      stylesheet_candidates.push(workspace_root_path.join(scss_relative_path));
+    }
+  }
+
+  let canonical_workspace_root_path =
+    fs::canonicalize(&workspace_root_path).map_err(|error| error.to_string())?;
+  for candidate_path in stylesheet_candidates {
+    if !candidate_path.is_file() {
+      continue;
+    }
+
+    let canonical_candidate_path = fs::canonicalize(&candidate_path).map_err(|error| error.to_string())?;
+    if !canonical_candidate_path.starts_with(&canonical_workspace_root_path) {
+      return Err("Stylesheet path escapes workspace root.".to_string());
+    }
+
+    return fs::read_to_string(canonical_candidate_path)
+      .map(Some)
+      .map_err(|error| error.to_string());
+  }
+
+  Ok(None)
+}
+
+#[tauri::command]
 pub fn workspace_set_window_bounds(
   app_handle: AppHandle,
   state: State<WorkspaceState>,

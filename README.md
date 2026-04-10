@@ -106,7 +106,7 @@ npm run tauri_dev
 * [x] layout persistence
 * [ ] auto-run commands on open
 * [ ] UI for workspace config
-* [ ] pane-level config (e.g. styling)
+* [x] per-workspace css
 * [ ] folder preview and thumbnail
 * [x] add better scrollbars
 * [ ] persist scroll position on tab switch

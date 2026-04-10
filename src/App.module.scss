@@ -6,9 +6,15 @@
 }
 
 .workspaceContent {
+  position: relative;
   background-color: $bg-panel;
   flex: 1;
   min-height: 0;
+
+  > * {
+    position: relative;
+    z-index: 1;
+  }
 }
 
 .workspaceShell {

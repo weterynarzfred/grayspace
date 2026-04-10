@@ -20,6 +20,7 @@ import useTabDragDrop from "./workspace/useTabDragDrop";
 import useWorkspaceLifecycle from "./workspace/useWorkspaceLifecycle";
 import useWorkspaceActions from "./workspace/useWorkspaceActions";
 import useWorkspaceTabTitles from "./workspace/useWorkspaceTabTitles";
+import useWorkspaceFolderStyles from "./workspace/useWorkspaceFolderStyles";
 import { getErrorMessage } from "./workspace/appRuntime";
 import {
   workspaceRecentFoldersList,
@@ -133,6 +134,7 @@ function App() {
   })), [tabTitlesByTabId, tabs]);
   const activeTab = selectActiveTab(viewState.snapshot, currentWindow);
   const activePaneState = getActivePaneState(activeTab);
+  useWorkspaceFolderStyles({ activeTab, activePaneState });
   const activePaneSelectedPaths = useMemo(
     () => getSelectedPathsFromState(activePaneState?.filesystemState),
     [activePaneState?.filesystemState],
