@@ -200,7 +200,6 @@ export default function useFilesystemPanelInteractions({
 
   useExternalFilesystemDrag({
     dragPaths: dnd.externalDragPaths,
-    dragMode: dnd.externalDragMode,
     isEnabled: isExternalDragEnabled,
     onExternalDragStart: dnd.markExternalDragStart,
     onExternalDragError: dnd.clearExternalDragStart,

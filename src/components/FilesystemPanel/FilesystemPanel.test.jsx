@@ -1387,7 +1387,7 @@ describe("FilesystemPanel", () => {
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
         paths: ["C:\\notes.txt"],
-        mode: "move",
+        mode: "copy",
       });
     });
     cursorPosition.mockResolvedValue({ x: 100, y: 100 });
@@ -1404,7 +1404,7 @@ describe("FilesystemPanel", () => {
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 
-  it("starts an external drag in move mode when Shift is held", async () => {
+  it("starts an external drag in copy mode even when Shift is held", async () => {
     renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
@@ -1423,7 +1423,7 @@ describe("FilesystemPanel", () => {
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
         paths: ["C:\\notes.txt"],
-        mode: "move",
+        mode: "copy",
       });
     });
   });
@@ -1445,7 +1445,7 @@ describe("FilesystemPanel", () => {
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
         paths: ["C:\\notes.txt"],
-        mode: "move",
+        mode: "copy",
       });
     });
 
@@ -1508,7 +1508,7 @@ describe("FilesystemPanel", () => {
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
         paths: ["C:\\notes.txt"],
-        mode: "move",
+        mode: "copy",
       });
     });
 
@@ -1576,7 +1576,7 @@ describe("FilesystemPanel", () => {
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("start_external_drag", {
         paths: ["C:\\notes.txt"],
-        mode: "move",
+        mode: "copy",
       });
     });
     cursorPosition.mockResolvedValue({ x: 100, y: 100 });

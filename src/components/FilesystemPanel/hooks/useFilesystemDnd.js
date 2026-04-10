@@ -47,7 +47,6 @@ function useFilesystemDnd({
   const [ownedDragPaths, setOwnedDragPaths] = useState([]);
   const [activeDropDestinationPath, setActiveDropDestinationPath] = useState("");
   const [isCopyIntent, setIsCopyIntent] = useState(false);
-  const [externalDragMode, setExternalDragMode] = useState("move");
   const externalDragStartedRef = useRef(false);
   const pendingExternalDragSourcePathsRef = useRef([]);
   const pendingExternalDragStartedAtMsRef = useRef(0);
@@ -94,19 +93,16 @@ function useFilesystemDnd({
     const initialCopyIntent = Boolean(initialCtrlKey);
     copyModifierPressedRef.current = initialCopyIntent;
     setIsCopyIntent(initialCopyIntent);
-    setExternalDragMode(initialCopyIntent ? "copy" : "move");
     if (typeof window === "undefined") return;
 
     const updateModifier = (event) => {
       const nextCopyIntent = Boolean(event.ctrlKey);
       copyModifierPressedRef.current = nextCopyIntent;
       setIsCopyIntent(nextCopyIntent);
-      setExternalDragMode(nextCopyIntent ? "copy" : "move");
     };
     const clearModifier = () => {
       copyModifierPressedRef.current = false;
       setIsCopyIntent(false);
-      setExternalDragMode("move");
     };
 
     window.addEventListener("keydown", updateModifier, true);
@@ -126,7 +122,6 @@ function useFilesystemDnd({
     modifierTrackingCleanupRef.current = null;
     copyModifierPressedRef.current = false;
     setIsCopyIntent(false);
-    setExternalDragMode("move");
   }
 
   useEffect(() => {
@@ -358,7 +353,6 @@ function useFilesystemDnd({
     activeDragPaths,
     activeDropDestinationPath,
     isCopyIntent,
-    externalDragMode,
     externalDragPaths: ownedDragPaths,
     getBreadcrumbDropId: getBreadcrumbDndId,
     getPanelDropId: getPanelDndId,

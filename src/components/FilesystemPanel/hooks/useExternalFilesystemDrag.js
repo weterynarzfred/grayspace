@@ -20,7 +20,6 @@ function isCursorOutsideWindow(cursor, windowPosition, windowSize) {
 
 function useExternalFilesystemDrag({
   dragPaths = [],
-  dragMode = "copy",
   isEnabled = false,
   onExternalDragStart = undefined,
   onExternalDragError = undefined,
@@ -34,7 +33,6 @@ function useExternalFilesystemDrag({
     let isPolling = false;
     let didStartExternalDrag = false;
     let outsideSinceMs = null;
-    const normalizedMode = dragMode === "move" ? "move" : "copy";
 
     async function startExternalDrag() {
       if (didStartExternalDrag) return;
@@ -45,7 +43,7 @@ function useExternalFilesystemDrag({
       try {
         await invoke("start_external_drag", {
           paths: normalizedPaths,
-          mode: normalizedMode,
+          mode: "copy",
         });
       } catch (dragError) {
         didStartExternalDrag = false;
@@ -93,7 +91,7 @@ function useExternalFilesystemDrag({
       isDisposed = true;
       clearInterval(intervalId);
     };
-  }, [dragMode, dragPaths, isEnabled, onExternalDragError, onExternalDragStart]);
+  }, [dragPaths, isEnabled, onExternalDragError, onExternalDragStart]);
 }
 
 export default useExternalFilesystemDrag;

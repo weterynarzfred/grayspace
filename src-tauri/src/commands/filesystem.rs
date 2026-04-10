@@ -1262,7 +1262,7 @@ pub fn filesystem_clipboard_get() -> Result<FilesystemClipboardState, String> {
 pub fn start_external_drag(
   window: tauri::Window,
   paths: Vec<String>,
-  mode: Option<String>,
+  _mode: Option<String>,
 ) -> Result<(), String> {
   let normalized_paths: Vec<PathBuf> = paths
     .into_iter()
@@ -1278,12 +1278,10 @@ pub fn start_external_drag(
     drag_paths.push(fs::canonicalize(path).map_err(|error| error.to_string())?);
   }
 
-  let source_paths_for_cleanup = drag_paths.clone();
   let drag_item = drag::DragItem::Files(drag_paths);
   let preview_icon = drag::Image::Raw(include_bytes!("../../icons/32x32.png").to_vec());
-  let requested_move = mode.as_deref() == Some("move");
   let drag_options = drag::Options {
-    mode: drag::DragMode::CopyMove,
+    mode: drag::DragMode::Copy,
     ..drag::Options::default()
   };
   drag::start_drag(
@@ -1293,13 +1291,7 @@ pub fn start_external_drag(
     &window,
     drag_item,
     preview_icon,
-    move |drag_result, _cursor_position| {
-      if requested_move && matches!(drag_result, drag::DragResult::Dropped) {
-        for source_path in &source_paths_for_cleanup {
-          let _ = remove_source_path(source_path);
-        }
-      }
-    },
+    |_drag_result, _cursor_position| {},
     drag_options,
   )
   .map_err(|error| error.to_string())
