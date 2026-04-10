@@ -36,12 +36,15 @@
 }
 
 .textPreview :global(.cm-editor) {
-  background: $bg-panel;
+  background: transparent;
   font-size: $font-size-mono;
 }
 
-.textPreview :global(.cm-lineNumbers) {
-  background: $bg-panel;
+.textPreview {
+  :global(.cm-lineNumbers),
+  :global(.cm-gutters) {
+    background: transparent;
+  }
 }
 
 .textPreview :global(.cm-focused) {
