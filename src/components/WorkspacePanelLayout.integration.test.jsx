@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useState } from "react";
 import PanelsDndLayer from "./PanelsDndLayer";
 import WorkspacePanelLayout from "./WorkspacePanelLayout";
+import { getPaneIdsInLayoutOrder } from "./workspacePanelLayoutUtils";
 import { NotificationCenterProvider } from "../notifications/notificationCenter";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -101,6 +102,10 @@ function createInitialTabState() {
 
 function WorkspacePanelLayoutHarness() {
   const [tab, setTab] = useState(createInitialTabState);
+  const paneIdsInLayoutOrder = getPaneIdsInLayoutOrder(tab.layout);
+  const primaryFilesystemPaneId = paneIdsInLayoutOrder.find(
+    (paneId) => tab.paneStates[paneId]?.panelType === "Filesystem",
+  ) ?? "";
 
   function setPanelType(paneId, panelType) {
     setTab((previousTab) => ({
@@ -120,8 +125,8 @@ function WorkspacePanelLayoutHarness() {
       <button type="button" onClick={() => setPanelType("tab-integration-left", "Preview")}>
         set-left-preview
       </button>
-      <button type="button" onClick={() => setPanelType("tab-integration-left", "Scripts")}>
-        set-left-scripts
+      <button type="button" onClick={() => setPanelType("tab-integration-left", "Canvas")}>
+        set-left-canvas
       </button>
       <button type="button" onClick={() => setPanelType("tab-integration-right", "Filesystem")}>
         set-right-filesystem
@@ -136,6 +141,7 @@ function WorkspacePanelLayoutHarness() {
       <PanelsDndLayer>
         <WorkspacePanelLayout
           tab={tab}
+          primaryFilesystemPaneId={primaryFilesystemPaneId}
           onPanelTypeChange={(tabId, paneId, panelType) => {
             if (!tabId || !paneId || !panelType) return;
             setPanelType(paneId, panelType);
@@ -297,10 +303,9 @@ describe("WorkspacePanelLayout integration", () => {
     expect(screen.getByLabelText("Filesystem panel")).toBeInTheDocument();
     expect(await screen.findByText("Select a drive")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "set-left-scripts" }));
+    fireEvent.click(screen.getByRole("button", { name: "set-left-canvas" }));
     fireEvent.click(screen.getByRole("button", { name: "set-right-canvas" }));
-    expect(await screen.findByText("Scripts panel")).toBeInTheDocument();
-    expect(await screen.findByText("Canvas panel")).toBeInTheDocument();
+    expect((await screen.findAllByText("Canvas panel")).length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByLabelText("Preview panel")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "set-right-preview" }));

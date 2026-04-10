@@ -22,11 +22,52 @@
   color: $text-secondary;
 }
 
+.refreshButton {
+  border: 1px solid $border-default;
+  background: $bg-surface;
+  color: $text-secondary;
+  padding: 0 0.45rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.refreshButton:hover:not(:disabled) {
+  border-color: $border-hover;
+  color: $text-primary;
+}
+
+.refreshButton:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.emptyState {
+  margin: 0.9rem;
+  border: 1px solid $border-default;
+  background: $bg-surface;
+  padding: 0.85rem;
+}
+
+.emptyTitle {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+}
+
+.emptyMessage {
+  margin: 0;
+  color: $text-secondary;
+  font-size: $font-size-small;
+}
+
+.inlineCode {
+  font-family: $font-mono;
+  color: $text-primary;
+}
+
 .externalFrame {
   border: 0;
   width: 100%;
   height: 100%;
   flex: 1 1 auto;
   min-height: 0;
-  background: #fff;
 }

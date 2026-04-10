@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { jsonrepair } from "jsonrepair";
 import { useEffect, useMemo, useState } from "react";
+import { getPaneIdsInLayoutOrder } from "../components/workspacePanelLayoutUtils";
 
 const trimString = (value) => (typeof value === "string" ? value.trim() : "");
 
@@ -26,10 +27,13 @@ function getTabFolderRootPath(tab) {
     if (activePanePath) return activePanePath;
   }
 
-  const firstFilesystemPane = Object.values(paneStates).find(
-    (paneState) => paneState?.panelType === "Filesystem" && getPaneRootPath(paneState),
-  );
-  if (firstFilesystemPane) return getPaneRootPath(firstFilesystemPane);
+  const paneIdsInLayoutOrder = getPaneIdsInLayoutOrder(tab?.layout);
+  const paneStatesInPriorityOrder = paneIdsInLayoutOrder.length > 0
+    ? paneIdsInLayoutOrder.map((paneId) => paneStates[paneId])
+    : Object.values(paneStates);
+  const firstFilesystemPanePath = paneStatesInPriorityOrder
+    .find((paneState) => paneState?.panelType === "Filesystem" && getPaneRootPath(paneState));
+  if (firstFilesystemPanePath) return getPaneRootPath(firstFilesystemPanePath);
 
   return "";
 }

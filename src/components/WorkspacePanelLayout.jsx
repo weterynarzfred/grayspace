@@ -61,6 +61,7 @@ function getWorkspaceLayoutKey(workspaceRoot = "") {
 
 function WorkspacePanelLayout({
   tab,
+  primaryFilesystemPaneId = "",
   cwdHint = "",
   recentFoldersEntries = [],
   recentFoldersLoading = false,
@@ -94,7 +95,15 @@ function WorkspacePanelLayout({
     const paneState = paneStates[paneId];
     if (!paneState) return <div key={`missing-${nodePath}`} className={styles.paneViewport} />;
 
-    const panelType = paneState?.panelType ?? "Filesystem";
+    const requestedPanelType = paneState?.panelType ?? "Filesystem";
+    const panelType = PANEL_COMPONENTS[requestedPanelType]
+      ? requestedPanelType
+      : "Filesystem";
+    const isPrimaryFilesystemPane = panelType === "Filesystem"
+      && paneId === primaryFilesystemPaneId;
+    const panelLabel = panelType === "Filesystem" && !isPrimaryFilesystemPane
+      ? "Filesystem (sub)"
+      : panelType;
     const PanelComponent = PANEL_COMPONENTS[panelType] ?? PANEL_COMPONENTS.Filesystem;
     const isActivePane = Boolean(activePaneId && paneId === activePaneId);
     const paneHeaderActions = {
@@ -109,7 +118,7 @@ function WorkspacePanelLayout({
       data-contextmenu-boundary="panel"
       data-context-kind="panel"
       data-context-id={paneId}
-      data-context-label={panelType}
+      data-context-label={panelLabel}
       data-context-panel-type={panelType}
       data-pane-id={paneId}
       data-pane-active={isActivePane ? "true" : "false"}
@@ -140,10 +149,14 @@ function WorkspacePanelLayout({
           tabId={tabId}
           paneId={paneId}
           panelType={panelType}
+          panelLabel={panelLabel}
+          isPrimaryFilesystemPane={isPrimaryFilesystemPane}
           onPanelTypeChange={nextPanelType =>
             onPanelTypeChange?.(tabId, paneId, nextPanelType)
           }
-          onCurrentPathChange={path => onCurrentPathChange?.(tabId, paneId, path)}
+          onCurrentPathChange={isPrimaryFilesystemPane
+            ? path => onCurrentPathChange?.(tabId, paneId, path)
+            : undefined}
           onFilesystemStateChange={filesystemState =>
             onFilesystemStateChange?.(tabId, paneId, filesystemState)
           }
@@ -159,7 +172,9 @@ function WorkspacePanelLayout({
           cwdHint={cwdHint}
           recentFoldersEntries={recentFoldersEntries}
           recentFoldersLoading={recentFoldersLoading}
-          onOpenFolderInCurrentTab={onOpenFolderInCurrentTab}
+          onOpenFolderInCurrentTab={isPrimaryFilesystemPane
+            ? onOpenFolderInCurrentTab
+            : undefined}
           terminalSessionId={paneState?.terminalSessionId ?? ""}
         />
       </PaneHeaderActionsProvider>
@@ -182,6 +197,7 @@ function WorkspacePanelLayout({
     onTabSelectedFilesChange,
     paneCount,
     paneStates,
+    primaryFilesystemPaneId,
     recentFoldersEntries,
     recentFoldersLoading,
     splitPreview,

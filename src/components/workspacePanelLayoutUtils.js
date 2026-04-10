@@ -122,3 +122,24 @@ export function formatPercent(value) {
 export function getSplitDirectionFromDelta(deltaX, deltaY) {
   return Math.abs(deltaX) >= Math.abs(deltaY) ? "right" : "bottom";
 }
+
+function collectLayoutPaneIds(node, paneIds) {
+  if (!node || typeof node !== "object") return;
+  if (node.kind === "leaf") {
+    const paneId = getLayoutPaneId(node);
+    if (paneId) paneIds.push(paneId);
+    return;
+  }
+  if (node.kind !== "split") return;
+
+  collectLayoutPaneIds(node.first, paneIds);
+  collectLayoutPaneIds(node.second, paneIds);
+}
+
+export function getPaneIdsInLayoutOrder(layout) {
+  const tabLayout = getTabLayout(layout);
+  if (!tabLayout) return [];
+  const paneIds = [];
+  collectLayoutPaneIds(tabLayout, paneIds);
+  return paneIds;
+}

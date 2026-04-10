@@ -61,6 +61,8 @@ function FilesystemPanel({
   tabId = "",
   paneId = "",
   panelType = "Filesystem",
+  panelLabel = "",
+  isPrimaryFilesystemPane = true,
   tabWorkspaceRoot = "",
   onOpenFolderInCurrentTab = undefined,
   onPanelTypeChange = undefined,
@@ -386,9 +388,10 @@ function FilesystemPanel({
     return {};
   }, [currentPath]);
   const canLeaveWorkspaceWithoutConfirm = useCallback((nextPath) => {
+    if (!isPrimaryFilesystemPane) return true;
     if (!tabWorkspaceRoot) return true;
     return isPathInsideRoot(nextPath, tabWorkspaceRoot);
-  }, [tabWorkspaceRoot]);
+  }, [isPrimaryFilesystemPane, tabWorkspaceRoot]);
   const confirmWorkspaceExitIfNeeded = useCallback(async (nextPath) => {
     if (canLeaveWorkspaceWithoutConfirm(nextPath)) return true;
     const shouldLeaveWorkspace = await openConfirm({
@@ -428,8 +431,9 @@ function FilesystemPanel({
       return;
     }
 
-    if (!await confirmWorkspaceExitIfNeeded(normalizedPath)) return;
-    navigateToPath(normalizedPath);
+    const localTargetPath = hasFallbackPath ? fallbackPath : normalizedPath;
+    if (!await confirmWorkspaceExitIfNeeded(localTargetPath)) return;
+    navigateToPath(localTargetPath);
   }, [
     confirmWorkspaceExitIfNeeded,
     navigateToPath,
@@ -621,6 +625,7 @@ function FilesystemPanel({
   >
     <PanelHeader
       panelType={panelType}
+      panelLabel={panelLabel}
       onPanelTypeChange={onPanelTypeChange}
     >
       <FilesystemStatusMessages

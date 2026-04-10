@@ -56,8 +56,20 @@ describe("ExternalUiPanel", () => {
 
     render(<ExternalUiPanel cwdHint="C:\\Workspace" />);
 
-    expect(await screen.findByText(/No externalUI URL found/i)).toBeInTheDocument();
+    expect(await screen.findByText(/externalUI not set/i)).toBeInTheDocument();
     expect(screen.queryByTitle("External UI")).not.toBeInTheDocument();
+  });
+
+  it("shows refresh action when externalUI is configured", async () => {
+    invoke.mockImplementation(async (command) => {
+      if (command === "workspace_read_folder_config") return "{\"externalUI\":\"http://localhost:5173\"}";
+      throw new Error(`Unhandled invoke command: ${command}`);
+    });
+
+    render(<ExternalUiPanel cwdHint="C:\\Workspace" />);
+
+    await screen.findByTitle("External UI");
+    expect(screen.getByRole("button", { name: "Refresh external UI" })).toBeEnabled();
   });
 
   it("rejects unsafe URL schemes", async () => {

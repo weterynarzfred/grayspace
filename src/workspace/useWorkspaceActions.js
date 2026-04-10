@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { getErrorMessage } from "./appRuntime";
 import {
   workspaceCloseTab,
@@ -21,6 +22,18 @@ import {
 function resolveTabPaneId(tab = null) {
   if (tab?.activePaneId && tab?.paneStates?.[tab.activePaneId]) return tab.activePaneId;
   return Object.keys(tab?.paneStates ?? {})[0] ?? "";
+}
+
+function resolveTerminalSessionIdFromSplitResult(splitResult, tabId, paneId) {
+  const resolvedTabId = typeof tabId === "string" ? tabId : "";
+  const resolvedPaneId = typeof paneId === "string" ? paneId : "";
+  if (!resolvedTabId || !resolvedPaneId) return "";
+
+  const snapshot = splitResult?.snapshot;
+  const tabs = Array.isArray(snapshot?.tabs) ? snapshot.tabs : [];
+  const targetTab = tabs.find((tab) => tab?.tabId === resolvedTabId);
+  const targetPane = targetTab?.paneStates?.[resolvedPaneId];
+  return typeof targetPane?.terminalSessionId === "string" ? targetPane.terminalSessionId : "";
 }
 
 const getPaneStateKey = (tabId, paneId) => `${tabId}::${paneId}`;
@@ -208,6 +221,53 @@ export default function useWorkspaceActions({
     await workspaceReplaceTabFolder(tabId, path);
   }, []);
 
+  const handleRunWorkspaceScript = useCallback(async ({
+    tabId = activeTab?.tabId ?? "",
+    paneId = resolveTabPaneId(activeTab),
+    scriptName = "",
+    command = "",
+  } = {}) => {
+    const normalizedTabId = typeof tabId === "string" ? tabId : "";
+    const normalizedPaneId = typeof paneId === "string" ? paneId : "";
+    const normalizedCommand = typeof command === "string" ? command.trim() : "";
+    const normalizedScriptName = typeof scriptName === "string" ? scriptName.trim() : "";
+
+    if (!normalizedTabId || !normalizedPaneId || !normalizedCommand) return false;
+
+    try {
+      const splitResult = await workspaceSplitTabPane(
+        normalizedTabId,
+        normalizedPaneId,
+        "bottom",
+        "Terminal",
+      );
+      const newPaneId = typeof splitResult?.newPaneId === "string"
+        ? splitResult.newPaneId
+        : "";
+      const terminalSessionId = resolveTerminalSessionIdFromSplitResult(
+        splitResult,
+        normalizedTabId,
+        newPaneId,
+      );
+      if (!terminalSessionId) {
+        throw new Error("Terminal session unavailable for the newly created pane.");
+      }
+
+      await invoke("terminal_run_command", {
+        sessionId: terminalSessionId,
+        command: normalizedCommand,
+      });
+      return true;
+    } catch (error) {
+      const message = getErrorMessage(error);
+      if (message === "Tab not found." || message === "Pane not found.") return false;
+
+      const scriptDisplayName = normalizedScriptName || "workspace script";
+      showActionErrorNotification(`Failed to run "${scriptDisplayName}": ${message}`);
+      return false;
+    }
+  }, [activeTab, showActionErrorNotification]);
+
   return {
     handleWorkspaceCommandError,
     handleSetActiveTab,
@@ -225,5 +285,6 @@ export default function useWorkspaceActions({
     handleSetTabSelectedFiles,
     handleSplitActivePane,
     handleOpenFolderInCurrentTab,
+    handleRunWorkspaceScript,
   };
 }

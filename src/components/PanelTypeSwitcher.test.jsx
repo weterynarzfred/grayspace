@@ -50,4 +50,18 @@ describe("PanelTypeSwitcher", () => {
 
     expect(handlePanelTypeChange).toHaveBeenCalledWith("Terminal");
   });
+
+  it("shows panelLabel when provided", () => {
+    render(
+      <PanelTypeSwitcher
+        panelType="Filesystem"
+        panelLabel="Filesystem (sub)"
+        onPanelTypeChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Panel type switcher" })).toHaveTextContent(
+      "Filesystem (sub)",
+    );
+  });
 });

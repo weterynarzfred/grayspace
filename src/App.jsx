@@ -21,6 +21,7 @@ import useWorkspaceLifecycle from "./workspace/useWorkspaceLifecycle";
 import useWorkspaceActions from "./workspace/useWorkspaceActions";
 import useWorkspaceTabTitles from "./workspace/useWorkspaceTabTitles";
 import useWorkspaceFolderStyles from "./workspace/useWorkspaceFolderStyles";
+import useWorkspaceScripts from "./workspace/useWorkspaceScripts";
 import { getErrorMessage } from "./workspace/appRuntime";
 import {
   workspaceRecentFoldersList,
@@ -40,12 +41,25 @@ import {
 import executeCommand from "./commands/executeCommand";
 import { getSelectedPathsFromState } from "./utils/pathSelection";
 import isEditableKeyboardTarget from "./utils/isEditableKeyboardTarget";
+import { getPaneIdsInLayoutOrder } from "./components/workspacePanelLayoutUtils";
 
 import styles from "./App.module.scss";
 
 function getActivePaneState(activeTab) {
   const activePaneId = activeTab?.activePaneId ?? "";
   return activeTab?.paneStates?.[activePaneId] ?? null;
+}
+
+function resolvePrimaryFilesystemPaneId(tab = null) {
+  const paneStates = tab?.paneStates ?? {};
+  const paneIdsInLayoutOrder = getPaneIdsInLayoutOrder(tab?.layout);
+  const firstFilesystemPaneId = paneIdsInLayoutOrder.find((paneId) => (
+    paneStates[paneId]?.panelType === "Filesystem"
+  ));
+  if (firstFilesystemPaneId) return firstFilesystemPaneId;
+
+  return Object.keys(paneStates).find((paneId) => paneStates[paneId]?.panelType === "Filesystem")
+    ?? "";
 }
 
 function arePathListsEqual(leftPaths = [], rightPaths = []) {
@@ -66,6 +80,10 @@ function isTerminalKeyboardTarget(target) {
     target.closest("[data-terminal-shortcuts]")
     || target.closest(".xterm"),
   );
+}
+
+function createWorkspaceScriptCommandId(scriptName = "") {
+  return `${COMMAND_IDS.WORKSPACE_RUN_SCRIPT}:${encodeURIComponent(scriptName)}`;
 }
 
 function resolveContextMenuSelectedPaths(commandContext, target) {
@@ -133,6 +151,11 @@ function App() {
     title: tabTitlesByTabId[tab.tabId] ?? tab.title,
   })), [tabTitlesByTabId, tabs]);
   const activeTab = selectActiveTab(viewState.snapshot, currentWindow);
+  const workspaceScripts = useWorkspaceScripts(activeTab?.workspaceRoot ?? "");
+  const primaryFilesystemPaneId = useMemo(
+    () => resolvePrimaryFilesystemPaneId(activeTab),
+    [activeTab],
+  );
   const activePaneState = getActivePaneState(activeTab);
   useWorkspaceFolderStyles({ activeTab, activePaneState });
   const activePaneSelectedPaths = useMemo(
@@ -168,9 +191,28 @@ function App() {
     () => ({ ...commandContextBase, source: "palette" }),
     [commandContextBase],
   );
+  const workspaceScriptCommands = useMemo(
+    () => workspaceScripts.map((script) => ({
+      id: createWorkspaceScriptCommandId(script.name),
+      title: `workspace: ${script.name}`,
+      shortcut: "",
+      scriptName: script.name,
+      scriptCommand: script.command,
+    })),
+    [workspaceScripts],
+  );
+  const workspaceScriptByCommandId = useMemo(
+    () => Object.fromEntries(
+      workspaceScriptCommands.map((command) => [command.id, command]),
+    ),
+    [workspaceScriptCommands],
+  );
   const paletteCommands = useMemo(
-    () => getCommandsForTrigger("palette", paletteContext),
-    [paletteContext],
+    () => [
+      ...getCommandsForTrigger("palette", paletteContext),
+      ...workspaceScriptCommands,
+    ],
+    [paletteContext, workspaceScriptCommands],
   );
   const shortcutContext = useMemo(
     () => ({ ...commandContextBase, source: "shortcut" }),
@@ -370,8 +412,26 @@ function App() {
   }, [closeContextMenu, contextMenuState.context, executeAppCommand]);
   const handlePaletteCommand = useCallback((commandId) => {
     closeCommandPalette();
+    const workspaceScriptCommand = workspaceScriptByCommandId[commandId];
+    if (workspaceScriptCommand) {
+      workspaceActions.handleRunWorkspaceScript({
+        tabId: activeTab?.tabId ?? "",
+        paneId: activeTab?.activePaneId ?? "",
+        scriptName: workspaceScriptCommand.scriptName,
+        command: workspaceScriptCommand.scriptCommand,
+      });
+      return;
+    }
     executeAppCommand(commandId, paletteContext);
-  }, [closeCommandPalette, executeAppCommand, paletteContext]);
+  }, [
+    activeTab?.activePaneId,
+    activeTab?.tabId,
+    closeCommandPalette,
+    executeAppCommand,
+    paletteContext,
+    workspaceActions,
+    workspaceScriptByCommandId,
+  ]);
   const openFolderInCurrentTabViaRecentFlow = useCallback(async (tabId, path, options = {}) => {
     const suppressNotFoundNotification = options?.suppressNotFoundNotification === true;
     const targetPath = typeof path === "string" ? path.trim() : "";
@@ -481,6 +541,7 @@ function App() {
         <PanelsDndLayer>
           <WorkspacePanelLayout
             tab={activeTab}
+            primaryFilesystemPaneId={primaryFilesystemPaneId}
             cwdHint={activeTab.terminalCwdHint ?? ""}
             recentFoldersEntries={recentFoldersState.entries}
             recentFoldersLoading={recentFoldersState.isLoading}

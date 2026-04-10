@@ -9,7 +9,11 @@ const SAFE_PROTOCOLS = new Set(["http:", "https:"]);
 
 function parseExternalUiConfig(rawConfigText) {
   if (typeof rawConfigText !== "string" || !rawConfigText.trim()) {
-    return { url: "", status: "No .grayspace/folder.json found." };
+    return {
+      url: "",
+      status: "No .grayspace/folder.json found.",
+      statusKind: "missing-config",
+    };
   }
 
   try {
@@ -19,17 +23,29 @@ function parseExternalUiConfig(rawConfigText) {
       ? parsedConfig.externalUI.trim()
       : "";
     if (!externalUiValue) {
-      return { url: "", status: "No externalUI URL found in .grayspace/folder.json." };
+      return {
+        url: "",
+        status: "externalUI not set in .grayspace/folder.json.",
+        statusKind: "missing-external-ui",
+      };
     }
 
     const parsedUrl = new URL(externalUiValue);
     if (!SAFE_PROTOCOLS.has(parsedUrl.protocol)) {
-      return { url: "", status: "externalUI URL must use http or https." };
+      return {
+        url: "",
+        status: "externalUI URL must use http or https.",
+        statusKind: "invalid-url",
+      };
     }
 
-    return { url: parsedUrl.toString(), status: "" };
+    return { url: parsedUrl.toString(), status: "", statusKind: "ready" };
   } catch {
-    return { url: "", status: "Failed to parse .grayspace/folder.json." };
+    return {
+      url: "",
+      status: "Failed to parse .grayspace/folder.json.",
+      statusKind: "error",
+    };
   }
 }
 
@@ -47,6 +63,8 @@ function ExternalUiPanel({
 }) {
   const [externalUiUrl, setExternalUiUrl] = useState("");
   const [status, setStatus] = useState("Open a folder to load external UI.");
+  const [statusKind, setStatusKind] = useState("info");
+  const [refreshKey, setRefreshKey] = useState(0);
   const configRoot = tabWorkspaceRoot || cwdHint;
   const missingConfigStatus = useMemo(
     () => getMissingConfigStatus(tabWorkspaceRoot),
@@ -60,11 +78,13 @@ function ExternalUiPanel({
       if (!configRoot) {
         setExternalUiUrl("");
         setStatus("Open a folder to load external UI.");
+        setStatusKind("info");
         return;
       }
 
       setExternalUiUrl("");
       setStatus("Loading external UI...");
+      setStatusKind("loading");
 
       try {
         const rawFolderConfig = await invoke("workspace_read_folder_config", {
@@ -74,17 +94,20 @@ function ExternalUiPanel({
 
         if (typeof rawFolderConfig !== "string" || !rawFolderConfig.trim()) {
           setStatus(missingConfigStatus);
+          setStatusKind("missing-config");
           return;
         }
 
-        const { url, status: parsedStatus } = parseExternalUiConfig(rawFolderConfig);
+        const { url, status: parsedStatus, statusKind: parsedStatusKind } = parseExternalUiConfig(rawFolderConfig);
         setExternalUiUrl(url);
         setStatus(parsedStatus);
+        setStatusKind(parsedStatusKind);
       } catch (error) {
         if (isDisposed) return;
         setExternalUiUrl("");
         const errorMessage = error instanceof Error ? error.message : String(error);
         setStatus(`Failed to load external UI: ${errorMessage}`);
+        setStatusKind("error");
       }
     }
 
@@ -99,10 +122,25 @@ function ExternalUiPanel({
       <span className={styles.cwdLabel} title={cwdHint || "No folder selected"}>
         {cwdHint || "No folder selected"}
       </span>
+      <button
+        type="button"
+        className={styles.refreshButton}
+        title="Refresh external UI"
+        aria-label="Refresh external UI"
+        onClick={() => setRefreshKey((current) => current + 1)}
+        disabled={!externalUiUrl}
+      >↻</button>
     </PanelHeader>
     <div className={`${shellStyles.panelBody} ${styles.panelBody}`}>
-      {status ? <p className={styles.status}>{status}</p> : null}
+      {statusKind === "missing-external-ui" ? <div className={styles.emptyState}>
+        <h2 className={styles.emptyTitle}>externalUI not set</h2>
+        <p className={styles.emptyMessage}>
+          Add <code className={styles.inlineCode}>externalUI</code> in <code className={styles.inlineCode}>.grayspace/folder.json</code> to load a page here.
+        </p>
+      </div> : null}
+      {status && statusKind !== "missing-external-ui" ? <p className={styles.status}>{status}</p> : null}
       {externalUiUrl ? <iframe
+        key={`${externalUiUrl}::${refreshKey}`}
         title="External UI"
         className={styles.externalFrame}
         src={externalUiUrl}

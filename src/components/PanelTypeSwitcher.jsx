@@ -4,7 +4,11 @@ import FloatingPopover from "./popovers/FloatingPopover";
 import { PANEL_TYPES } from "./panelTypes";
 import styles from "./PanelTypeSwitcher.module.scss";
 
-export default function PanelTypeSwitcher({ panelType, onPanelTypeChange }) {
+export default function PanelTypeSwitcher({
+  panelType,
+  panelLabel = "",
+  onPanelTypeChange,
+}) {
   const triggerRef = useRef(null);
   const rowListRef = useRef(null);
   const [isOpen, setIsOpen] = useState(false);
@@ -14,6 +18,11 @@ export default function PanelTypeSwitcher({ panelType, onPanelTypeChange }) {
   const selectedType = useMemo(() => (
     PANEL_TYPES.find((type) => type.value === panelType) ?? PANEL_TYPES[0]
   ), [panelType]);
+  const resolvedLabel = useMemo(() => {
+    const explicitLabel = typeof panelLabel === "string" ? panelLabel.trim() : "";
+    if (explicitLabel) return explicitLabel;
+    return selectedType?.label || panelType || "Panel";
+  }, [panelLabel, panelType, selectedType?.label]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -111,7 +120,7 @@ export default function PanelTypeSwitcher({ panelType, onPanelTypeChange }) {
       onKeyDown={handleTriggerKeyDown}
     >
       <img src={placeholderIcon} alt="" className={styles.triggerIcon} draggable={false} />
-      <span className={styles.triggerLabel}>{selectedType?.label || panelType || "Panel"}</span>
+      <span className={styles.triggerLabel}>{resolvedLabel}</span>
       <span className={styles.triggerChevron} aria-hidden>▾</span>
     </button>
     <FloatingPopover

@@ -39,6 +39,15 @@
   :global(.xterm-scrollable-element) {
     background-color: transparent !important;
   }
+
+  :global(.xterm .xterm-viewport) {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
 }
 
 .cwdLabel {

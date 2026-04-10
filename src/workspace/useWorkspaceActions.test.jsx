@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
+import { invoke } from "@tauri-apps/api/core";
 import useWorkspaceActions from "./useWorkspaceActions";
 import {
   workspaceCloseTab,
@@ -17,6 +18,10 @@ import {
   workspaceSetTabWorkspaceRoot,
   workspaceSplitTabPane,
 } from "./workspaceApi";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+}));
 
 vi.mock("./workspaceApi", () => ({
   workspaceCloseTab: vi.fn(),
@@ -66,6 +71,8 @@ function createActiveTab(overrides = {}) {
 
 describe("useWorkspaceActions handleSetTabCwdHint", () => {
   beforeEach(() => {
+    invoke.mockReset();
+    invoke.mockResolvedValue(null);
     resolvedCommands.forEach((commandMock) => {
       commandMock.mockReset();
       commandMock.mockResolvedValue(null);
@@ -182,6 +189,8 @@ describe("useWorkspaceActions handleSetTabCwdHint", () => {
 
 describe("useWorkspaceActions basic commands", () => {
   beforeEach(() => {
+    invoke.mockReset();
+    invoke.mockResolvedValue(null);
     resolvedCommands.forEach((commandMock) => {
       commandMock.mockReset();
       commandMock.mockResolvedValue(null);
@@ -409,6 +418,8 @@ describe("useWorkspaceActions basic commands", () => {
 
 describe("useWorkspaceActions safety and error flows", () => {
   beforeEach(() => {
+    invoke.mockReset();
+    invoke.mockResolvedValue(null);
     resolvedCommands.forEach((commandMock) => {
       commandMock.mockReset();
       commandMock.mockResolvedValue(null);
@@ -568,5 +579,42 @@ describe("useWorkspaceActions safety and error flows", () => {
     });
 
     expect(workspaceSetTabActivePane).not.toHaveBeenCalled();
+  });
+
+  it("runs a workspace script in a newly split terminal pane", async () => {
+    workspaceSplitTabPane.mockResolvedValueOnce({
+      newPaneId: "pane-2",
+      snapshot: {
+        tabs: [{
+          tabId: "tab-1",
+          paneStates: {
+            "pane-2": {
+              terminalSessionId: "term-2",
+            },
+          },
+        }],
+      },
+    });
+    const { result } = renderHook(() => useWorkspaceActions({
+      currentWindow: { windowId: "window-1" },
+      activeTab: createActiveTab(),
+    }));
+
+    let didRun = false;
+    await act(async () => {
+      didRun = await result.current.handleRunWorkspaceScript({
+        tabId: "tab-1",
+        paneId: "pane-1",
+        scriptName: "dev",
+        command: "npm run dev",
+      });
+    });
+
+    expect(didRun).toBe(true);
+    expect(workspaceSplitTabPane).toHaveBeenCalledWith("tab-1", "pane-1", "bottom", "Terminal");
+    expect(invoke).toHaveBeenCalledWith("terminal_run_command", {
+      sessionId: "term-2",
+      command: "npm run dev",
+    });
   });
 });

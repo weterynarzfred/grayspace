@@ -99,6 +99,7 @@ describe("WorkspacePanelLayout", () => {
 
     render(
       <WorkspacePanelLayout
+        primaryFilesystemPaneId={paneId}
         tab={{
           tabId: "tab-1",
           layout: {
@@ -163,6 +164,70 @@ describe("WorkspacePanelLayout", () => {
     });
     expect(onPanelTypeChange).toHaveBeenCalledWith("tab-1", paneId, "Terminal");
     expect(onPaneActivate).toHaveBeenCalledWith("tab-1", paneId);
+  });
+
+  it("forwards current path updates only for the primary filesystem pane", () => {
+    const onCurrentPathChange = vi.fn();
+
+    render(
+      <WorkspacePanelLayout
+        primaryFilesystemPaneId="pane-a"
+        tab={{
+          tabId: "tab-primary-filesystem",
+          layout: {
+            kind: "split",
+            axis: "row",
+            ratio: 50,
+            first: {
+              kind: "leaf",
+              paneId: "pane-a",
+            },
+            second: {
+              kind: "leaf",
+              paneId: "pane-b",
+            },
+          },
+          activePaneId: "pane-a",
+          selectedFiles: {
+            selectedPaths: [],
+          },
+          paneStates: {
+            "pane-a": {
+              paneId: "pane-a",
+              panelType: "Filesystem",
+              terminalSessionId: "term-a",
+              filesystemState: {
+                currentDrive: "",
+                currentPath: "",
+                scrollTop: 0,
+              },
+            },
+            "pane-b": {
+              paneId: "pane-b",
+              panelType: "Filesystem",
+              terminalSessionId: "term-b",
+              filesystemState: {
+                currentDrive: "",
+                currentPath: "",
+                scrollTop: 0,
+              },
+            },
+          },
+        }}
+        onCurrentPathChange={onCurrentPathChange}
+      />,
+    );
+
+    const filesystemButtons = screen.getAllByRole("button", { name: "FilesystemMock" });
+    fireEvent.click(filesystemButtons[0]);
+    fireEvent.click(filesystemButtons[1]);
+
+    expect(onCurrentPathChange).toHaveBeenCalledTimes(1);
+    expect(onCurrentPathChange).toHaveBeenCalledWith(
+      "tab-primary-filesystem",
+      "pane-a",
+      "C:\\Mock",
+    );
   });
 
   it("renders pane controls and forwards split/close actions", () => {

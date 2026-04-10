@@ -98,7 +98,7 @@ npm run tauri_dev
 * [ ] when closing a tab, first check if any panels don't require a confirmation
 * [ ] when closing a window, first check if tabs don't require a confirmation
 * [ ] trigger thumbnail cache pruning
-* [ ] remember last windows size and position
+* [ ] remember last window's size and position
 
 ### workspaces
 
@@ -111,6 +111,7 @@ npm run tauri_dev
 * [x] add better scrollbars
 * [ ] persist scroll position on tab switch
 * [ ] refresh the panel when `folder.json` is edited
+* [x] add custom scripts to command palette
 
 ### QOL
 
@@ -151,7 +152,7 @@ npm run tauri_dev
 * [ ] filters (incl. custom JS)
 * [ ] archive (zip, rar, 7z, etc) operations
 * [ ] add middle click on breadcrumbs, drives, and ".."
-* [ ] figure out what a "main" filesystem panel is, because when there's multiple, they fight
+* [x] allow "sub" filesystem panels that don't hijack the workspace context
 * [x] deselect file on empty space click
 * [x] virtualize file lists in large folders
 
@@ -161,12 +162,6 @@ npm run tauri_dev
 * [x] multiple instances
 * [ ] shell selection
 * [ ] better coupling/decoupling from filesystem
-
-### scripts
-
-* [x] load from config
-* [x] run via UI buttons
-* [ ] move toward **command palette-based execution** and remove the panel (scaffold ready)
 
 ### preview (ctrl + shift + v)
 
