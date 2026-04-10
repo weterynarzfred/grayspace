@@ -50,7 +50,7 @@ fn update_pane_filesystem_state_detects_real_changes() {
     },
   ));
   assert_eq!(active_pane.filesystem_state.scroll_top, 0.0);
-  assert_eq!(active_pane.filesystem_state.thumbnail_size_px, 32);
+  assert_eq!(active_pane.filesystem_state.thumbnail_size_px, 22);
 }
 
 #[test]

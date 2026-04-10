@@ -819,6 +819,12 @@ describe("FilesystemPanel", () => {
     }
 
     await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(22);
+    });
+
+    fireEvent.click(sizeButton);
+    expect(sizeButton).toHaveTextContent("32px");
+    await waitFor(() => {
       expect(getLatestThumbnailSizeHint()).toBe(32);
     });
 
@@ -838,6 +844,12 @@ describe("FilesystemPanel", () => {
     expect(sizeButton).toHaveTextContent("256px");
     await waitFor(() => {
       expect(getLatestThumbnailSizeHint()).toBe(256);
+    });
+
+    fireEvent.click(sizeButton);
+    expect(sizeButton).toHaveTextContent("22px");
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(22);
     });
 
     fireEvent.click(sizeButton);
@@ -868,7 +880,7 @@ describe("FilesystemPanel", () => {
 
     await waitFor(() => {
       const latestState = onFilesystemStateChange.mock.calls.at(-1)?.[0];
-      expect(latestState?.thumbnailSizePx).toBe(64);
+      expect(latestState?.thumbnailSizePx).toBe(32);
     });
   });
 
@@ -1918,7 +1930,7 @@ describe("FilesystemPanel", () => {
     expect(screen.queryByRole("button", { name: /file-04\d\d\.txt/i })).not.toBeInTheDocument();
 
     const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
-    scrollContainer.scrollTop = 12000;
+    scrollContainer.scrollTop = 7000;
     fireEvent.scroll(scrollContainer);
 
     await waitFor(() => {

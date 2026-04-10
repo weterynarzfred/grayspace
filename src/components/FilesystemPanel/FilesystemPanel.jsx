@@ -611,6 +611,7 @@ function FilesystemPanel({
     });
   }, []);
   const panelStyle = useMemo(() => ({
+    "--entry-font-size": `var(${thumbnailSizePx <= 32 ? "--font-size-small" : "--font-size-base"})`,
     "--entry-thumbnail-size": `${thumbnailSizePx}px`,
     "--entry-row-height": `${entryRowHeightPx}px`,
   }), [entryRowHeightPx, thumbnailSizePx]);

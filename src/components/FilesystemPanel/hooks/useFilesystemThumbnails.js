@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 
 const THUMBNAIL_UPDATE_EVENT = "thumbnail:update";
-const DEFAULT_THUMBNAIL_SIZE_HINT_PX = 32;
+const DEFAULT_THUMBNAIL_SIZE_HINT_PX = 22;
 const LARGER_THUMBNAIL_BUCKET_MIN_SIZE_PX = 128;
 const THUMBNAIL_REQUEST_DEBOUNCE_MS = 40;
 

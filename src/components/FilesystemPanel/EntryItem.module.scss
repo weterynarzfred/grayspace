@@ -62,8 +62,8 @@
 .entryExpander,
 .entryExpanderSpacer {
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
+  width: min(var(--entry-row-height, 32px), 32px);
+  height: var(--entry-row-height, 32px);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -130,6 +130,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   padding-left: 0.2em;
+  font-size: var(--entry-font-size, 0.8rem);
 }
 
 .entryRenameInput {

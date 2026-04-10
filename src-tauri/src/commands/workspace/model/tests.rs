@@ -51,7 +51,7 @@ fn ensure_window_bootstrap_creates_default_tab() {
   assert_eq!(active_pane.filesystem_state.current_path, "");
   assert!(active_pane.filesystem_state.selected_paths.is_empty());
   assert_eq!(active_pane.filesystem_state.scroll_top, 0.0);
-  assert_eq!(active_pane.filesystem_state.thumbnail_size_px, 32);
+  assert_eq!(active_pane.filesystem_state.thumbnail_size_px, 22);
 
   assert!(tab.selected_files.selected_paths.is_empty());
 }

@@ -4,7 +4,7 @@ use super::super::types::{
 };
 use std::collections::HashSet;
 
-const FILESYSTEM_THUMBNAIL_SIZE_STEPS: [u32; 4] = [32, 64, 128, 256];
+const FILESYSTEM_THUMBNAIL_SIZE_STEPS: [u32; 5] = [22, 32, 64, 128, 256];
 const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX: u32 = FILESYSTEM_THUMBNAIL_SIZE_STEPS[0];
 
 pub(super) struct PanePanelTypeUpdate {

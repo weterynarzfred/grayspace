@@ -7,7 +7,7 @@ pub const DEFAULT_WINDOW_HEIGHT: u32 = 780;
 pub const DEFAULT_LEFT_PANEL_TYPE: &str = "Filesystem";
 pub const DEFAULT_RIGHT_PANEL_TYPE: &str = "Preview";
 pub const DEFAULT_SPLIT_RATIO: u8 = 50;
-pub const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX: u32 = 32;
+pub const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX: u32 = 22;
 
 fn default_filesystem_thumbnail_size_px() -> u32 {
   DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX

@@ -10,6 +10,10 @@ fn thumbnail_bucket_from_size_hint_uses_expected_buckets() {
     ThumbnailBucket::Px64
   );
   assert_eq!(
+    ThumbnailBucket::from_size_hint(Some(22)),
+    ThumbnailBucket::Px64
+  );
+  assert_eq!(
     ThumbnailBucket::from_size_hint(Some(64)),
     ThumbnailBucket::Px64
   );
