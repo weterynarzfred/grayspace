@@ -99,6 +99,11 @@ function PreviewTabItem({
       sourcePreviewTabPath: tab.path,
     },
   });
+  const dragAttributes = useMemo(() => {
+    const nextAttributes = { ...(attributes ?? {}) };
+    delete nextAttributes.role;
+    return nextAttributes;
+  }, [attributes]);
   const leftDropId = useMemo(
     () => getPreviewTabDropId(paneId, tab.path, "left"),
     [paneId, tab.path],
@@ -140,7 +145,7 @@ function PreviewTabItem({
       title={titleParts.join(" | ")}
       onClick={() => handlePreviewTabActivate(tab.path)}
       onDoubleClick={() => handlePreviewTabUnpin(tab.path)}
-      {...attributes}
+      {...dragAttributes}
       {...listeners}
     >{renderedTabLabel}</button>
     <button

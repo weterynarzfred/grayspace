@@ -178,6 +178,10 @@ describe("PreviewPanel", () => {
     );
 
     await screen.findByTestId("preview-text-content");
+    await waitFor(() => {
+      const readCalls = invoke.mock.calls.filter(([command]) => command === "preview_read_file");
+      expect(readCalls).toHaveLength(1);
+    });
     const tabButton = screen.getByRole("tab", { name: "notes.txt" });
     expect(tabButton.getAttribute("title")).toContain("ephemeral");
 
@@ -185,6 +189,10 @@ describe("PreviewPanel", () => {
     expect(await screen.findByText("Unsaved changes.")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /notes\.txt \*/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /notes\.txt \*/i }).getAttribute("title")).not.toContain("ephemeral");
+    await waitFor(() => {
+      const readCalls = invoke.mock.calls.filter(([command]) => command === "preview_read_file");
+      expect(readCalls).toHaveLength(1);
+    });
 
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => {

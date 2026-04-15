@@ -56,6 +56,7 @@ const PANE_DROP_ZONE_DIRECTION = Object.freeze({
   top: "top",
   bottom: "bottom",
 });
+const PREVIEW_TOP_DROP_ZONE_INSET_PX = 23;
 
 function normalizeDraggedPaths(event) {
   return getDraggedPathsFromDndEvent(event);
@@ -89,7 +90,14 @@ function PaneDropZones({
   tabId = "",
   paneId = "",
   isEnabled = false,
+  topInsetPx = 0,
 }) {
+  const resolvedTopInsetPx = Number.isFinite(topInsetPx) && topInsetPx > 0
+    ? topInsetPx
+    : 0;
+  const dropZonesStyle = resolvedTopInsetPx > 0
+    ? { "--pane-drop-zone-top-inset-px": `${resolvedTopInsetPx}px` }
+    : undefined;
   const leftDropZoneId = useMemo(
     () => getPaneDropZoneId(tabId, paneId, "left"),
     [tabId, paneId],
@@ -148,7 +156,11 @@ function PaneDropZones({
     },
   });
 
-  return <div className={`${styles.paneDropZones} ${isEnabled ? styles.paneDropZonesVisible : ""}`} aria-hidden="true">
+  return <div
+    className={`${styles.paneDropZones} ${isEnabled ? styles.paneDropZonesVisible : ""}`}
+    aria-hidden="true"
+    style={dropZonesStyle}
+  >
     <span
       ref={setLeftNodeRef}
       className={`${styles.paneDropZone} ${styles.paneDropZoneLeft} ${isOverLeft ? styles.paneDropZoneActive : ""}`}
@@ -173,7 +185,7 @@ function getSplitPreviewClassName(direction) {
   return `${styles.splitPreview} ${direction === "right"
     ? styles.splitPreviewVertical
     : styles.splitPreviewHorizontal
-  }`;
+    }`;
 }
 
 function getWorkspaceLayoutKey(workspaceRoot = "") {
@@ -362,6 +374,9 @@ function WorkspacePanelLayout({
     const isPrimaryFilesystemPane = panelType === "Filesystem"
       && paneId === primaryFilesystemPaneId;
     const arePaneDropZonesEnabled = hasDraggedPaths && panelType !== "Filesystem";
+    const paneDropZoneTopInsetPx = panelType === "Preview"
+      ? PREVIEW_TOP_DROP_ZONE_INSET_PX
+      : 0;
     const panelLabel = panelType === "Filesystem" && !isPrimaryFilesystemPane
       ? "Filesystem (sub)"
       : panelType;
@@ -395,6 +410,7 @@ function WorkspacePanelLayout({
         tabId={tabId}
         paneId={paneId}
         isEnabled={arePaneDropZonesEnabled}
+        topInsetPx={paneDropZoneTopInsetPx}
       />
       <div className={styles.cornerHandles}>
         {CORNER_HANDLES.map(handle => <button

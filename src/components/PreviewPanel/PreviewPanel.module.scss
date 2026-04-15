@@ -26,6 +26,7 @@
   overflow-x: auto;
   overflow-y: hidden;
   position: relative;
+  z-index: 5;
 }
 
 .previewTab {
@@ -106,6 +107,7 @@
 
 .previewTabDropZoneActive {
   background: $bg-selected;
+  box-shadow: inset 0 -2px 0 $accent-active;
 }
 
 .headerMeta {

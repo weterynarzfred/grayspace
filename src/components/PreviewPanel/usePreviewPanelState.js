@@ -228,8 +228,6 @@ function usePreviewPanelState({
     loadPreview();
     return () => { cancelled = true; };
   }, [
-    activePreviewTabDirty,
-    activePreviewTabDraftContent,
     previewPath,
     previewReloadVersion,
   ]);

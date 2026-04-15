@@ -74,19 +74,32 @@ function resolvePrimaryFilesystemPaneId(tab = null) {
     ?? "";
 }
 
-function resolvePreviewPaneId(tab = null) {
+function getPreviewPaneIds(tab = null) {
   const paneStates = tab?.paneStates ?? {};
+  const paneIdsInLayoutOrder = getPaneIdsInLayoutOrder(tab?.layout);
+  const orderedPreviewPaneIds = paneIdsInLayoutOrder.filter((paneId) => (
+    paneStates[paneId]?.panelType === "Preview"
+  ));
+  const unorderedPreviewPaneIds = Object.keys(paneStates).filter((paneId) => (
+    paneStates[paneId]?.panelType === "Preview"
+    && !orderedPreviewPaneIds.includes(paneId)
+  ));
+  return [...orderedPreviewPaneIds, ...unorderedPreviewPaneIds];
+}
+
+function resolvePreviewPaneId(tab = null, preferredPaneId = "") {
+  const paneStates = tab?.paneStates ?? {};
+  if (preferredPaneId && paneStates[preferredPaneId]?.panelType === "Preview") {
+    return preferredPaneId;
+  }
+
   const activePaneId = tab?.activePaneId ?? "";
   if (paneStates[activePaneId]?.panelType === "Preview") return activePaneId;
 
-  const paneIdsInLayoutOrder = getPaneIdsInLayoutOrder(tab?.layout);
-  const firstPreviewPaneId = paneIdsInLayoutOrder.find((paneId) => (
-    paneStates[paneId]?.panelType === "Preview"
-  ));
+  const firstPreviewPaneId = getPreviewPaneIds(tab)[0];
   if (firstPreviewPaneId) return firstPreviewPaneId;
 
-  return Object.keys(paneStates).find((paneId) => paneStates[paneId]?.panelType === "Preview")
-    ?? "";
+  return "";
 }
 
 function resolveSelectedFilePath(selectedPaths = [], selectedEntryKinds = {}) {
@@ -207,6 +220,9 @@ function App() {
   const currentWindowIdRef = useRef("");
   const lastPointerPositionRef = useRef({ x: 24, y: 24 });
   const recentFoldersRequestIdRef = useRef(0);
+  const lastPreviewPaneIdByTabIdRef = useRef(new Map());
+  const autoClosingPreviewPaneKeysRef = useRef(new Set());
+  const previewSplitGraceUntilByPaneKeyRef = useRef(new Map());
   const {
     activeNotification,
     pushNotification,
@@ -319,6 +335,46 @@ function App() {
     pushNotification,
     openConfirm,
   });
+  const rememberPreviewPaneId = useCallback((tabId, paneId) => {
+    if (!tabId || !paneId) return;
+    lastPreviewPaneIdByTabIdRef.current.set(tabId, paneId);
+  }, []);
+  const resolveTabById = useCallback((tabId) => {
+    if (!tabId) return null;
+    if (activeTab?.tabId === tabId) return activeTab;
+    const tabs = Array.isArray(viewState.snapshot?.tabs) ? viewState.snapshot.tabs : [];
+    return tabs.find((tab) => tab?.tabId === tabId) ?? null;
+  }, [activeTab, viewState.snapshot?.tabs]);
+  const handlePaneActivate = useCallback((tabId, paneId) => {
+    if (!tabId || !paneId) return;
+    const tabForPane = resolveTabById(tabId);
+    if (tabForPane?.paneStates?.[paneId]?.panelType === "Preview") {
+      rememberPreviewPaneId(tabId, paneId);
+    }
+    workspaceActions.handleSetActivePane(tabId, paneId);
+  }, [rememberPreviewPaneId, resolveTabById, workspaceActions.handleSetActivePane]);
+  const handleSplitPaneWithPanelType = useCallback(async (
+    tabId,
+    paneId,
+    direction,
+    newPanelType = null,
+  ) => {
+    const splitResult = await workspaceActions.handleSplitPaneWithPanelType(
+      tabId,
+      paneId,
+      direction,
+      newPanelType,
+    );
+    const newPaneId = typeof splitResult?.newPaneId === "string"
+      ? splitResult.newPaneId
+      : "";
+    if (!tabId || !newPaneId || newPanelType !== "Preview") return splitResult;
+
+    rememberPreviewPaneId(tabId, newPaneId);
+    const graceUntil = Date.now() + 1200;
+    previewSplitGraceUntilByPaneKeyRef.current.set(`${tabId}::${newPaneId}`, graceUntil);
+    return splitResult;
+  }, [rememberPreviewPaneId, workspaceActions.handleSplitPaneWithPanelType]);
   const updatePreviewPaneState = useCallback((tabId, paneId, updater) => {
     if (!tabId || !paneId || typeof updater !== "function") return;
 
@@ -350,25 +406,29 @@ function App() {
   }, []);
   const handleOpenPreviewPath = useCallback((tabId, paneId, path, options = {}) => {
     if (!tabId || !paneId || !path) return;
+    rememberPreviewPaneId(tabId, paneId);
     const openAsEphemeral = options?.openMode !== "pinned";
     updatePreviewPaneState(tabId, paneId, (paneState) => openPathInPreviewPaneState(
       paneState,
       path,
       { openAsEphemeral },
     ));
-  }, [updatePreviewPaneState]);
+  }, [rememberPreviewPaneId, updatePreviewPaneState]);
   const handleActivatePreviewTab = useCallback((tabId, paneId, path) => {
     if (!tabId || !paneId || !path) return;
+    rememberPreviewPaneId(tabId, paneId);
     updatePreviewPaneState(tabId, paneId, paneState => setActivePreviewTab(paneState, path));
-  }, [updatePreviewPaneState]);
+  }, [rememberPreviewPaneId, updatePreviewPaneState]);
   const handleClosePreviewTab = useCallback((tabId, paneId, path) => {
     if (!tabId || !paneId || !path) return;
+    rememberPreviewPaneId(tabId, paneId);
     updatePreviewPaneState(tabId, paneId, paneState => closePreviewTab(paneState, path));
-  }, [updatePreviewPaneState]);
+  }, [rememberPreviewPaneId, updatePreviewPaneState]);
   const handleUpdatePreviewTab = useCallback((tabId, paneId, path, patch = {}) => {
     if (!tabId || !paneId || !path || !patch || typeof patch !== "object") return;
+    rememberPreviewPaneId(tabId, paneId);
     updatePreviewPaneState(tabId, paneId, paneState => updatePreviewTab(paneState, path, patch));
-  }, [updatePreviewPaneState]);
+  }, [rememberPreviewPaneId, updatePreviewPaneState]);
   const handleMovePreviewTabs = useCallback((
     tabId,
     sourcePaneId,
@@ -379,6 +439,7 @@ function App() {
     if (!tabId || !sourcePaneId || !targetPaneId) return;
     const normalizedPaths = uniqueNonEmptyPaths(paths);
     if (normalizedPaths.length === 0) return;
+    rememberPreviewPaneId(tabId, targetPaneId);
 
     setPreviewPaneStateByTabId((previous) => {
       const previousTabState = previous[tabId] ?? {};
@@ -431,12 +492,69 @@ function App() {
         [tabId]: nextTabState,
       };
     });
-  }, []);
+  }, [rememberPreviewPaneId]);
   useEffect(() => {
     setPreviewPaneStateByTabId(previous => (
       prunePreviewPaneStateBySnapshot(previous, viewState.snapshot)
     ));
   }, [viewState.snapshot]);
+  useEffect(() => {
+    const tabs = Array.isArray(viewState.snapshot?.tabs) ? viewState.snapshot.tabs : [];
+    if (tabs.length === 0) {
+      lastPreviewPaneIdByTabIdRef.current.clear();
+      return;
+    }
+
+    const tabsById = new Map(tabs.map((tab) => [tab?.tabId ?? "", tab]));
+    const rememberedPreviewPanes = lastPreviewPaneIdByTabIdRef.current;
+    Array.from(rememberedPreviewPanes.entries()).forEach(([tabId, paneId]) => {
+      const paneState = tabsById.get(tabId)?.paneStates?.[paneId];
+      if (paneState?.panelType !== "Preview") {
+        rememberedPreviewPanes.delete(tabId);
+      }
+    });
+  }, [viewState.snapshot?.tabs]);
+  useEffect(() => {
+    const tabId = activeTab?.tabId ?? "";
+    if (!tabId) return;
+
+    const previewPaneIds = getPreviewPaneIds(activeTab);
+    if (previewPaneIds.length <= 1) return;
+
+    const previewPaneStateById = previewPaneStateByTabId[tabId] ?? {};
+    const now = Date.now();
+    const graceEntries = previewSplitGraceUntilByPaneKeyRef.current;
+    Array.from(graceEntries.entries()).forEach(([key, graceUntil]) => {
+      if (graceUntil <= now) graceEntries.delete(key);
+    });
+
+    const emptyPreviewPaneIds = previewPaneIds.filter((paneId) => {
+      const paneState = normalizePreviewPaneState(previewPaneStateById[paneId]);
+      return paneState.tabs.length === 0;
+    });
+    if (emptyPreviewPaneIds.length === 0) return;
+
+    let closablePreviewPaneIds = emptyPreviewPaneIds.filter((paneId) => (
+      paneId !== activeTab?.activePaneId
+    ));
+    closablePreviewPaneIds = closablePreviewPaneIds.filter((paneId) => {
+      const paneKey = `${tabId}::${paneId}`;
+      const graceUntil = graceEntries.get(paneKey) ?? 0;
+      return graceUntil <= now;
+    });
+    if (closablePreviewPaneIds.length === 0) return;
+
+    const maxClosures = previewPaneIds.length - 1;
+    closablePreviewPaneIds.slice(0, maxClosures).forEach((paneId) => {
+      const closeKey = `${tabId}::${paneId}`;
+      if (autoClosingPreviewPaneKeysRef.current.has(closeKey)) return;
+      autoClosingPreviewPaneKeysRef.current.add(closeKey);
+      Promise.resolve(workspaceActions.handleClosePane(tabId, paneId))
+        .finally(() => {
+          autoClosingPreviewPaneKeysRef.current.delete(closeKey);
+        });
+    });
+  }, [activeTab, previewPaneStateByTabId, workspaceActions.handleClosePane]);
   const handleSetActiveTab = useCallback((tabId) => {
     window.dispatchEvent(new CustomEvent(FILESYSTEM_FLUSH_STATE_EVENT));
     workspaceActions.handleSetActiveTab(tabId);
@@ -584,11 +702,11 @@ function App() {
 
     const selectedFilePath = resolveSelectedFilePath(selectedPaths, nextSelectedEntryKinds);
     if (selectedFilePath) {
-      const tabForSelection = activeTab?.tabId === tabId
-        ? activeTab
-        : viewState.snapshot?.tabs?.find((tab) => tab?.tabId === tabId);
-      const targetPreviewPaneId = resolvePreviewPaneId(tabForSelection);
+      const tabForSelection = resolveTabById(tabId);
+      const preferredPreviewPaneId = lastPreviewPaneIdByTabIdRef.current.get(tabId) ?? "";
+      const targetPreviewPaneId = resolvePreviewPaneId(tabForSelection, preferredPreviewPaneId);
       if (targetPreviewPaneId) {
+        rememberPreviewPaneId(tabId, targetPreviewPaneId);
         const openMode = selectedFiles?.previewOpenMode === "pinned"
           ? "pinned"
           : "ephemeral";
@@ -624,7 +742,7 @@ function App() {
         },
       };
     });
-  }, [activeTab, handleOpenPreviewPath, viewState.snapshot?.tabs, workspaceActions]);
+  }, [handleOpenPreviewPath, rememberPreviewPaneId, resolveTabById, workspaceActions]);
   const handleTabMiddleClick = useCallback((tabId) => {
     if (!tabId) return;
     executeAppCommand(COMMAND_IDS.TAB_CLOSE, {
@@ -779,7 +897,7 @@ function App() {
             onFilesystemStateChange={workspaceActions.handleSetPaneFilesystemState}
             onTabSelectedFilesChange={handleTabSelectedFilesChange}
             onPanelTypeChange={workspaceActions.handleChangePanelType}
-            onPaneActivate={workspaceActions.handleSetActivePane}
+            onPaneActivate={handlePaneActivate}
             onPaneSplit={workspaceActions.handleSplitPane}
             onPaneClose={workspaceActions.handleClosePane}
             onPaneDirtyStateChange={workspaceActions.handlePaneDirtyStateChange}
@@ -788,7 +906,7 @@ function App() {
             onActivatePreviewTab={handleActivatePreviewTab}
             onClosePreviewTab={handleClosePreviewTab}
             onUpdatePreviewTab={handleUpdatePreviewTab}
-            onSplitPaneWithPanelType={workspaceActions.handleSplitPaneWithPanelType}
+            onSplitPaneWithPanelType={handleSplitPaneWithPanelType}
             onMovePreviewTabs={handleMovePreviewTabs}
           />
         </PanelsDndLayer>

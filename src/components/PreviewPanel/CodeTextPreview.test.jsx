@@ -37,6 +37,9 @@ vi.mock("@codemirror/lang-markdown", () => ({
 }));
 
 vi.mock("@codemirror/view", () => ({
+  keymap: {
+    of: vi.fn((bindings) => ({ keymap: bindings })),
+  },
   EditorView: {
     theme: () => ({ theme: "preview" }),
     lineWrapping: { extension: "lineWrapping" },
