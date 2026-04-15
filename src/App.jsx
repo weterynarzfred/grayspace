@@ -42,6 +42,7 @@ import executeCommand from "./commands/executeCommand";
 import { getSelectedPathsFromState } from "./utils/pathSelection";
 import isEditableKeyboardTarget from "./utils/isEditableKeyboardTarget";
 import { getPaneIdsInLayoutOrder } from "./components/workspacePanelLayoutUtils";
+import { FILESYSTEM_FLUSH_STATE_EVENT } from "./components/FilesystemPanel/filesystemPanelEvents";
 
 import styles from "./App.module.scss";
 
@@ -233,6 +234,14 @@ function App() {
     pushNotification,
     openConfirm,
   });
+  const handleSetActiveTab = useCallback((tabId) => {
+    window.dispatchEvent(new CustomEvent(FILESYSTEM_FLUSH_STATE_EVENT));
+    workspaceActions.handleSetActiveTab(tabId);
+  }, [workspaceActions]);
+  const workspaceActionsForCommands = useMemo(() => ({
+    ...workspaceActions,
+    handleSetActiveTab,
+  }), [handleSetActiveTab, workspaceActions]);
 
   const {
     activeDragTabId,
@@ -351,11 +360,11 @@ function App() {
       context,
       currentWindow,
       activeTab,
-      workspaceActions,
+      workspaceActions: workspaceActionsForCommands,
       openCommandPalette,
       openRecentFolders,
     },
-  ), [activeTab, currentWindow, openCommandPalette, openRecentFolders, workspaceActions]);
+  ), [activeTab, currentWindow, openCommandPalette, openRecentFolders, workspaceActionsForCommands]);
   const handleTabSelectedFilesChange = useCallback((tabId, selectedFiles) => {
     workspaceActions.handleSetTabSelectedFiles(tabId, selectedFiles);
     if (!tabId) return;
@@ -530,7 +539,7 @@ function App() {
           tabs={titledTabs}
           activeTabId={currentWindow.activeTabId}
           activeDragTabId={activeDragTabId}
-          onActivateTab={workspaceActions.handleSetActiveTab}
+          onActivateTab={handleSetActiveTab}
           onCloseTab={workspaceActions.handleCloseTab}
           onMiddleClickTab={handleTabMiddleClick}
           onCreateTab={workspaceActions.handleCreateTab}

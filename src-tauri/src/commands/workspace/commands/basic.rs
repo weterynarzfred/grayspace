@@ -308,6 +308,16 @@ fn persist_workspace_panels_config_for_tab(tab: &WorkspaceTab) {
   let _ = fs::write(panels_config_path, serialized_panels_config);
 }
 
+fn should_persist_workspace_panels_for_filesystem_state_change(
+  previous_state: &FilesystemPaneState,
+  next_state: &FilesystemPaneState,
+) -> bool {
+  previous_state.current_drive != next_state.current_drive
+    || previous_state.current_path != next_state.current_path
+    || previous_state.expanded_paths != next_state.expanded_paths
+    || previous_state.thumbnail_size_px != next_state.thumbnail_size_px
+}
+
 fn apply_filesystem_root_to_pane(pane: &mut PaneState, root_path: &str) {
   pane.filesystem_state.current_drive = infer_drive_from_path(root_path);
   pane.filesystem_state.current_path = root_path.to_string();
@@ -316,17 +326,32 @@ fn apply_filesystem_root_to_pane(pane: &mut PaneState, root_path: &str) {
   pane.filesystem_state.scroll_top = 0.0;
 }
 
-fn set_tab_filesystem_root(tab: &mut WorkspaceTab, root_path: &str) {
-  let mut has_filesystem_pane = false;
-  tab.pane_states.values_mut().for_each(|pane| {
-    if pane.panel_type != "Filesystem" {
-      return;
-    }
-    apply_filesystem_root_to_pane(pane, root_path);
-    has_filesystem_pane = true;
-  });
+fn resolve_primary_filesystem_pane_id(tab: &WorkspaceTab) -> Option<String> {
+  let mut pane_ids_in_layout_order = Vec::new();
+  collect_layout_pane_ids(&tab.layout, &mut pane_ids_in_layout_order);
 
-  if has_filesystem_pane {
+  pane_ids_in_layout_order
+    .into_iter()
+    .find(|pane_id| {
+      tab
+        .pane_states
+        .get(pane_id)
+        .is_some_and(|pane| pane.panel_type == "Filesystem")
+    })
+    .or_else(|| {
+      tab
+        .pane_states
+        .iter()
+        .find(|(_, pane)| pane.panel_type == "Filesystem")
+        .map(|(pane_id, _)| pane_id.clone())
+    })
+}
+
+fn set_tab_filesystem_root(tab: &mut WorkspaceTab, root_path: &str) {
+  if let Some(primary_filesystem_pane_id) = resolve_primary_filesystem_pane_id(tab) {
+    if let Some(primary_filesystem_pane) = tab.pane_states.get_mut(&primary_filesystem_pane_id) {
+      apply_filesystem_root_to_pane(primary_filesystem_pane, root_path);
+    }
     return;
   }
 
@@ -708,11 +733,14 @@ pub fn workspace_set_tab_pane_filesystem_state(
         .ok_or_else(|| "Tab not found.".to_string())?;
       let workspace_has_root = tab.workspace_root.is_some();
       let target_pane = select_tab_pane_mut(tab, &payload.pane_id)?;
-      let previous_thumbnail_size_px = target_pane.filesystem_state.thumbnail_size_px;
+      let previous_filesystem_state = target_pane.filesystem_state.clone();
       let filesystem_state_changed = update_pane_filesystem_state(target_pane, payload.filesystem_state);
       let persist_workspace_panels = filesystem_state_changed
         && workspace_has_root
-        && target_pane.filesystem_state.thumbnail_size_px != previous_thumbnail_size_px;
+        && should_persist_workspace_panels_for_filesystem_state_change(
+          &previous_filesystem_state,
+          &target_pane.filesystem_state,
+        );
       (filesystem_state_changed, persist_workspace_panels)
     };
 

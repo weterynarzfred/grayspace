@@ -68,6 +68,7 @@ export default function useFilesystemBrowsingState({
   const [isLoadingMoreEntries, setIsLoadingMoreEntries] = useState(false);
   const [hasMoreEntries, setHasMoreEntries] = useState(false);
   const [totalEntriesCount, setTotalEntriesCount] = useState(0);
+  const [hasLoadedCurrentPath, setHasLoadedCurrentPath] = useState(initialLocation.currentPath === "");
   const [error, setError] = useState("");
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
@@ -231,6 +232,7 @@ export default function useFilesystemBrowsingState({
 
   useEffect(() => {
     if (!currentPath) {
+      setHasLoadedCurrentPath(true);
       setEntries([]);
       setHasMoreEntries(false);
       setTotalEntriesCount(0);
@@ -243,6 +245,7 @@ export default function useFilesystemBrowsingState({
     let cancelled = false;
 
     async function loadDirectory() {
+      setHasLoadedCurrentPath(false);
       setIsLoadingEntries(true);
       setIsLoadingMoreEntries(false);
       setError("");
@@ -263,7 +266,10 @@ export default function useFilesystemBrowsingState({
           setTotalEntriesCount(0);
         }
       } finally {
-        if (!cancelled) setIsLoadingEntries(false);
+        if (!cancelled) {
+          setIsLoadingEntries(false);
+          setHasLoadedCurrentPath(true);
+        }
       }
     }
 
@@ -406,6 +412,7 @@ export default function useFilesystemBrowsingState({
     isLoadingMoreEntries,
     hasMoreEntries,
     totalEntriesCount,
+    hasLoadedCurrentPath,
     error,
     canGoBack,
     canGoForward,

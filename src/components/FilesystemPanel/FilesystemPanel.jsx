@@ -35,6 +35,7 @@ import { getParentDirectoryPath, isSamePath } from "../../utils/pathWatch";
 import { COMMAND_IDS, isCommandShortcutMatch } from "../../commands/commandRegistry";
 import { APP_COMMAND_EVENT } from "../../commands/commandEvents";
 import executeCommand from "../../commands/executeCommand";
+import { FILESYSTEM_FLUSH_STATE_EVENT } from "./filesystemPanelEvents";
 import styles from "./FilesystemPanel.module.scss";
 import shellStyles from "../PanelShell.module.scss";
 
@@ -101,6 +102,7 @@ function FilesystemPanel({
     isLoadingMoreEntries,
     hasMoreEntries,
     totalEntriesCount,
+    hasLoadedCurrentPath,
     canGoBack,
     canGoForward,
     isMovingEntry,
@@ -125,12 +127,16 @@ function FilesystemPanel({
     undoEntries,
     redoEntries,
   } = nav;
-  const { handlePanelListScroll } = useFilesystemStatePersistence({
+  const { handlePanelListScroll, flushFilesystemState } = useFilesystemStatePersistence({
     tabId,
     paneId,
     onFilesystemStateChange,
     panelListRef: panelScrollRef,
     initialFilesystemState: initialFilesystemStateRef.current,
+    isLoadingEntries,
+    isLoadingMoreEntries,
+    hasMoreEntries,
+    hasLoadedCurrentPath,
     currentDrive,
     currentPath,
     selectedPaths,
@@ -472,6 +478,17 @@ function FilesystemPanel({
   useEffect(() => {
     onCurrentPathChangeRef.current?.(currentPath);
   }, [currentPath]);
+
+  useEffect(() => {
+    const handleFilesystemFlushRequest = () => {
+      flushFilesystemState();
+    };
+
+    window.addEventListener(FILESYSTEM_FLUSH_STATE_EVENT, handleFilesystemFlushRequest);
+    return () => {
+      window.removeEventListener(FILESYSTEM_FLUSH_STATE_EVENT, handleFilesystemFlushRequest);
+    };
+  }, [flushFilesystemState]);
 
   useEffect(() => {
     const handleUndoRedoShortcut = (event) => {

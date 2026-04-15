@@ -110,7 +110,7 @@ npm run tauri_dev
 * [x] per-workspace css
 * [ ] folder preview and thumbnail
 * [x] add better scrollbars
-* [ ] persist scroll position on tab switch
+* [x] persist scroll position on tab switch
 * [ ] refresh the panel when `folder.json` is edited
 * [x] add custom scripts to command palette
 

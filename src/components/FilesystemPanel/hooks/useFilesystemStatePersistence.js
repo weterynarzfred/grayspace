@@ -4,14 +4,16 @@ import {
   normalizeFilesystemPaneState,
 } from "../filesystemPaneState";
 
-const SCROLL_PERSIST_DEBOUNCE_MS = 450;
-
 export default function useFilesystemStatePersistence({
   tabId = "",
   paneId = "",
   onFilesystemStateChange,
   panelListRef,
   initialFilesystemState,
+  isLoadingEntries = false,
+  isLoadingMoreEntries = false,
+  hasMoreEntries = false,
+  hasLoadedCurrentPath = false,
   currentDrive = "",
   currentPath = "",
   selectedPaths = [],
@@ -31,7 +33,23 @@ export default function useFilesystemStatePersistence({
     thumbnailSizePx,
   });
   const latestScrollTopRef = useRef(initialFilesystemStateRef.current.scrollTop);
-  const scrollPersistTimeoutRef = useRef(null);
+  const pendingInitialScrollRestoreRef = useRef(true);
+  const initialScrollTopRef = useRef(Math.max(0, Math.round(initialFilesystemStateRef.current.scrollTop)));
+  const scrollPersistRafRef = useRef(null);
+
+  useEffect(() => {
+    const normalizedInitialState = normalizeFilesystemPaneState(initialFilesystemState);
+    initialFilesystemStateRef.current = normalizedInitialState;
+    lastPersistedStateRef.current = normalizedInitialState;
+    latestScrollTopRef.current = normalizedInitialState.scrollTop;
+    initialScrollTopRef.current = Math.max(0, Math.round(normalizedInitialState.scrollTop));
+    pendingInitialScrollRestoreRef.current = true;
+
+    if (scrollPersistRafRef.current !== null) {
+      cancelAnimationFrame(scrollPersistRafRef.current);
+      scrollPersistRafRef.current = null;
+    }
+  }, [paneId, tabId]);
 
   useEffect(() => {
     onFilesystemStateChangeRef.current = onFilesystemStateChange;
@@ -85,11 +103,35 @@ export default function useFilesystemStatePersistence({
   }, [persistFilesystemState]);
 
   useEffect(() => {
-    if (!panelListRef?.current) return;
+    const panelList = panelListRef?.current;
+    if (!panelList || !pendingInitialScrollRestoreRef.current) return;
+    if (isLoadingEntries || isLoadingMoreEntries) return;
 
-    panelListRef.current.scrollTop = initialFilesystemStateRef.current.scrollTop;
-    latestScrollTopRef.current = panelListRef.current.scrollTop;
-  }, [panelListRef]);
+    const targetScrollTop = initialScrollTopRef.current;
+    if (targetScrollTop > 0 && !hasLoadedCurrentPath) return;
+
+    if (targetScrollTop <= 0) {
+      latestScrollTopRef.current = panelList.scrollTop;
+      pendingInitialScrollRestoreRef.current = false;
+      return;
+    }
+
+    panelList.scrollTop = targetScrollTop;
+
+    const reachedTargetScroll = panelList.scrollTop >= targetScrollTop;
+    const cannotRestoreFurther = !hasMoreEntries && panelList.scrollTop < targetScrollTop;
+    if (reachedTargetScroll || cannotRestoreFurther) {
+      latestScrollTopRef.current = panelList.scrollTop;
+      pendingInitialScrollRestoreRef.current = false;
+    }
+  }, [
+    currentPath,
+    hasLoadedCurrentPath,
+    hasMoreEntries,
+    isLoadingEntries,
+    isLoadingMoreEntries,
+    panelListRef,
+  ]);
 
   useEffect(() => {
     persistCurrentFilesystemState();
@@ -104,29 +146,40 @@ export default function useFilesystemStatePersistence({
 
   useEffect(() => {
     return () => {
-      if (scrollPersistTimeoutRef.current) {
-        clearTimeout(scrollPersistTimeoutRef.current);
-        scrollPersistTimeoutRef.current = null;
+      if (scrollPersistRafRef.current !== null) {
+        cancelAnimationFrame(scrollPersistRafRef.current);
+        scrollPersistRafRef.current = null;
       }
       persistCurrentFilesystemState();
     };
   }, [persistCurrentFilesystemState]);
 
   const handlePanelListScroll = useCallback((event) => {
+    if (pendingInitialScrollRestoreRef.current) {
+      pendingInitialScrollRestoreRef.current = false;
+    }
+
     const nextScrollTop = Math.max(0, Math.round(event.currentTarget.scrollTop));
     latestScrollTopRef.current = nextScrollTop;
 
-    if (scrollPersistTimeoutRef.current) {
-      clearTimeout(scrollPersistTimeoutRef.current);
-      scrollPersistTimeoutRef.current = null;
-    }
-    scrollPersistTimeoutRef.current = setTimeout(() => {
-      scrollPersistTimeoutRef.current = null;
+    if (scrollPersistRafRef.current !== null) return;
+
+    scrollPersistRafRef.current = requestAnimationFrame(() => {
+      scrollPersistRafRef.current = null;
       persistCurrentFilesystemState();
-    }, SCROLL_PERSIST_DEBOUNCE_MS);
+    });
+  }, [persistCurrentFilesystemState]);
+
+  const flushFilesystemState = useCallback(() => {
+    if (scrollPersistRafRef.current !== null) {
+      cancelAnimationFrame(scrollPersistRafRef.current);
+      scrollPersistRafRef.current = null;
+    }
+    persistCurrentFilesystemState();
   }, [persistCurrentFilesystemState]);
 
   return {
     handlePanelListScroll,
+    flushFilesystemState,
   };
 }

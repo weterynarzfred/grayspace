@@ -1819,7 +1819,7 @@ describe("FilesystemPanel", () => {
     });
   });
 
-  it("debounces rapid scroll updates and persists only the latest scroll position", async () => {
+  it("persists rapid scroll updates and keeps the latest scroll position", async () => {
     const onFilesystemStateChange = vi.fn();
     renderFilesystemPanel({
       tabId: "tab-2",
@@ -1856,12 +1856,8 @@ describe("FilesystemPanel", () => {
         expect.objectContaining({ scrollTop: 133 }),
       );
     });
-    expect(onFilesystemStateChange).not.toHaveBeenCalledWith(
-      expect.objectContaining({ scrollTop: 41 }),
-    );
-    expect(onFilesystemStateChange).not.toHaveBeenCalledWith(
-      expect.objectContaining({ scrollTop: 89 }),
-    );
+    const latestPersistedState = onFilesystemStateChange.mock.calls.at(-1)?.[0];
+    expect(latestPersistedState).toEqual(expect.objectContaining({ scrollTop: 133 }));
   });
 
   it("window-renders only visible entries in large folders", async () => {

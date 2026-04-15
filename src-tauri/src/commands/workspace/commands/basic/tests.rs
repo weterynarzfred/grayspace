@@ -1,12 +1,13 @@
 use super::{
   apply_tab_workspace_root_change, find_workspace_root_for_path, infer_drive_from_path,
   normalize_recent_folder_path, recent_folder_dedupe_key, reset_tab_layout_to_default,
-  set_tab_filesystem_root, workspace_read_folder_stylesheet,
+  set_tab_filesystem_root, should_persist_workspace_panels_for_filesystem_state_change,
+  workspace_read_folder_stylesheet,
 };
 use crate::commands::workspace::commands::basic_support::split_layout_leaf;
 use crate::commands::workspace::model::WorkspaceModel;
 use crate::commands::workspace::types::{
-  LayoutAxis, SplitDirection, TabLayoutNode, DEFAULT_SPLIT_RATIO,
+  FilesystemPaneState, LayoutAxis, SplitDirection, TabLayoutNode, DEFAULT_SPLIT_RATIO,
 };
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -275,7 +276,7 @@ fn find_workspace_root_for_path_returns_none_without_workspace_marker() {
 }
 
 #[test]
-fn set_tab_filesystem_root_updates_all_filesystem_panes() {
+fn set_tab_filesystem_root_updates_only_primary_filesystem_pane() {
   let mut model = WorkspaceModel::default();
   let mut tab = model.create_default_tab();
   let left_pane_id = tab.active_pane_id.clone();
@@ -293,6 +294,7 @@ fn set_tab_filesystem_root_updates_all_filesystem_panes() {
       .expect("right pane should exist");
     right_pane.panel_type = "Filesystem".to_string();
     right_pane.filesystem_state.current_path = "C:\\OldRight".to_string();
+    right_pane.filesystem_state.current_drive = "C:\\".to_string();
   }
   {
     let left_pane = tab
@@ -300,7 +302,9 @@ fn set_tab_filesystem_root_updates_all_filesystem_panes() {
       .get_mut(&left_pane_id)
       .expect("left pane should exist");
     left_pane.filesystem_state.current_path = "C:\\OldLeft".to_string();
+    left_pane.filesystem_state.current_drive = "C:\\".to_string();
   }
+  tab.active_pane_id = right_pane_id.clone();
 
   set_tab_filesystem_root(&mut tab, "C:\\Workspace\\Nested");
 
@@ -313,7 +317,7 @@ fn set_tab_filesystem_root_updates_all_filesystem_panes() {
     .get(&right_pane_id)
     .expect("right pane should exist");
   assert_eq!(left_pane.filesystem_state.current_path, "C:\\Workspace\\Nested");
-  assert_eq!(right_pane.filesystem_state.current_path, "C:\\Workspace\\Nested");
+  assert_eq!(right_pane.filesystem_state.current_path, "C:\\OldRight");
   assert_eq!(left_pane.filesystem_state.current_drive, "C:\\");
   assert_eq!(right_pane.filesystem_state.current_drive, "C:\\");
 }
@@ -593,4 +597,51 @@ fn workspace_read_folder_stylesheet_reads_grayspace_file_when_explicitly_request
 
   assert_eq!(result.as_deref(), Some(".workspaceContent { color: dodgerblue; }"));
   fs::remove_dir_all(&test_root).expect("test root should be removed");
+}
+
+#[test]
+fn workspace_panels_persist_only_for_durable_filesystem_state_changes() {
+  let previous_state = FilesystemPaneState {
+    current_drive: "C:\\".to_string(),
+    current_path: "C:\\Workspace".to_string(),
+    selected_paths: vec!["C:\\Workspace\\a.txt".to_string()],
+    expanded_paths: vec!["C:\\Workspace".to_string()],
+    scroll_top: 20.0,
+    thumbnail_size_px: 64,
+  };
+
+  let mut next_state = previous_state.clone();
+  next_state.scroll_top = 120.0;
+  assert!(!should_persist_workspace_panels_for_filesystem_state_change(
+    &previous_state,
+    &next_state,
+  ));
+
+  next_state = previous_state.clone();
+  next_state.selected_paths = vec!["C:\\Workspace\\b.txt".to_string()];
+  assert!(!should_persist_workspace_panels_for_filesystem_state_change(
+    &previous_state,
+    &next_state,
+  ));
+
+  next_state = previous_state.clone();
+  next_state.current_path = "C:\\Workspace\\sub".to_string();
+  assert!(should_persist_workspace_panels_for_filesystem_state_change(
+    &previous_state,
+    &next_state,
+  ));
+
+  next_state = previous_state.clone();
+  next_state.expanded_paths.push("C:\\Workspace\\sub".to_string());
+  assert!(should_persist_workspace_panels_for_filesystem_state_change(
+    &previous_state,
+    &next_state,
+  ));
+
+  next_state = previous_state.clone();
+  next_state.thumbnail_size_px = 128;
+  assert!(should_persist_workspace_panels_for_filesystem_state_change(
+    &previous_state,
+    &next_state,
+  ));
 }
