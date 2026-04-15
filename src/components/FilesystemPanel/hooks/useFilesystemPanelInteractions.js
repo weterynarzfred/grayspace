@@ -233,7 +233,7 @@ export default function useFilesystemPanelInteractions({
   ), [internalActiveDragPathSet, treeData.entries]);
   const activeDragEntry = activeDragEntries[0] ?? null;
 
-  const emitTabSelectedFiles = useCallback((nextSelectedPaths) => {
+  const emitTabSelectedFiles = useCallback((nextSelectedPaths, options = {}) => {
     if (!tabId) return;
     const normalizedPaths = uniqueNonEmptyPaths(nextSelectedPaths);
     const selectedEntryKinds = {};
@@ -242,9 +242,13 @@ export default function useFilesystemPanelInteractions({
       if (!entry) return;
       selectedEntryKinds[path] = entry.is_dir ? "folder" : "file";
     });
+    const previewOpenMode = options?.previewOpenMode === "pinned"
+      ? "pinned"
+      : "ephemeral";
     onTabSelectedFilesChange?.({
       selectedPaths: normalizedPaths,
       selectedEntryKinds,
+      previewOpenMode,
     });
   }, [onTabSelectedFilesChange, tabId, treeData.entryByPath]);
   const clearSelectedEntries = useCallback(() => {
@@ -278,14 +282,25 @@ export default function useFilesystemPanelInteractions({
   }, [openEntry, workspaceFolderPathSet]);
 
   const handleEntryMiddleClick = useCallback((entry, event) => {
-    if (!entry?.is_dir || event.button !== 1) return;
+    if (!entry || event.button !== 1) return;
     event.preventDefault();
     event.stopPropagation();
+
+    if (!entry.is_dir) {
+      const nextSelectedEntryPaths = selectEntry(entry.path, {
+        entryPaths: treeData.entryPaths,
+      });
+      emitTabSelectedFiles(nextSelectedEntryPaths, {
+        previewOpenMode: "pinned",
+      });
+      return;
+    }
+
     openEntry(entry, {
       forceOpenInNewTab: true,
       isWorkspaceFolder: workspaceFolderPathSet.has(entry.path),
     });
-  }, [openEntry, workspaceFolderPathSet]);
+  }, [emitTabSelectedFiles, openEntry, selectEntry, treeData.entryPaths, workspaceFolderPathSet]);
   const handleEntryContextMenu = useCallback((entryPath) => {
     if (selectedEntryPathSet.has(entryPath)) return;
     const nextSelectedEntryPaths = selectEntry(entryPath, {

@@ -1,11 +1,14 @@
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
+import { isSamePath } from "../../utils/pathWatch";
 import CodeTextPreview from "./CodeTextPreview";
 import usePreviewPanelState from "./usePreviewPanelState";
+import { getPathDisplayName } from "./previewPanelUtils";
 import styles from "./PreviewPanel.module.scss";
 
-function renderHeaderStatus(previewPath, previewState, saveStatusMessage, saveStatus) {
-  if (!previewPath) return <p className={styles.muted}>Select a file to preview.</p>;
+function renderHeaderStatus(previewPath, previewTabs, previewState, saveStatusMessage, saveStatus) {
+  if (previewTabs.length === 0) return <p className={styles.muted}>Select a file to preview.</p>;
+  if (!previewPath) return <p className={styles.muted}>Select a tab to preview.</p>;
   if (previewState.status === "loading") return <p className={styles.muted}>Loading preview...</p>;
   if (previewState.status === "error") return <p className={styles.error}>{previewState.error}</p>;
   if (saveStatusMessage) {
@@ -33,28 +36,6 @@ function renderMediaPreview(previewKind, previewPath, previewLabel, mediaPreview
   return null;
 }
 
-function renderPreviewLabel(previewLabel, isLocked) {
-  if (!previewLabel) return null;
-  return <p className={styles.previewLabel}>{isLocked ? previewLabel : <em>{previewLabel}</em>}</p>;
-}
-
-function renderPreviewActions(previewPath, isLocked, isTextPreviewReady, isTextEditable, saveStatus, handleToggleLock, handleSaveNow) {
-  if (!previewPath) return null;
-  return <div className={styles.previewActions}>
-    <button
-      type="button"
-      className={`${styles.lockButton} ${isLocked ? styles.lockButtonLocked : ""}`}
-      onClick={handleToggleLock}
-    >{isLocked ? "unlock" : "lock"}</button>
-    {isTextPreviewReady ? <button
-      type="button"
-      className={styles.saveButton}
-      onClick={handleSaveNow}
-      disabled={!isTextEditable || saveStatus === "saving"}
-    >save</button> : null}
-  </div>;
-}
-
 function renderTextPreview(previewPath, previewState, textContent, isTextEditable, handleTextContentChange, handleSaveNow) {
   if (!previewPath || previewState.status !== "ready" || previewState.preview?.kind !== "text") return null;
   return <>
@@ -72,19 +53,70 @@ function renderTextPreview(previewPath, previewState, textContent, isTextEditabl
   </>;
 }
 
+function renderPreviewTabs({
+  previewTabs,
+  previewPath,
+  handlePreviewTabActivate,
+  handlePreviewTabClose,
+  handlePreviewTabUnpin,
+}) {
+  if (!Array.isArray(previewTabs) || previewTabs.length === 0) return null;
+
+  return <div className={styles.previewTabs} role="tablist" aria-label="Open preview files">
+    {previewTabs.map((tab) => {
+      const isActive = isSamePath(tab.path, previewPath);
+      const tabLabel = getPathDisplayName(tab.path);
+      const dirtySuffix = tab.isDirty ? " *" : "";
+      const titleParts = [tab.path];
+      if (tab.isEphemeral) titleParts.push("ephemeral");
+      if (tab.isDirty) titleParts.push("dirty");
+      const renderedTabLabel = tab.isEphemeral
+        ? <em className={styles.previewTabLabelEphemeral}>{tabLabel}{dirtySuffix}</em>
+        : <>{tabLabel}{dirtySuffix}</>;
+
+      return <div
+        key={tab.path}
+        className={`${styles.previewTab} ${isActive ? styles.previewTabActive : ""}`}
+        data-testid={`preview-tab-${tab.path}`}
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={isActive}
+          className={styles.previewTabSelect}
+          title={titleParts.join(" | ")}
+          onClick={() => handlePreviewTabActivate(tab.path)}
+          onDoubleClick={() => handlePreviewTabUnpin(tab.path)}
+        >{renderedTabLabel}</button>
+        <button
+          type="button"
+          className={styles.previewTabClose}
+          title={`Close ${tabLabel}`}
+          aria-label={`Close ${tabLabel}`}
+          onClick={() => handlePreviewTabClose(tab.path)}
+        >&times;</button>
+      </div>;
+    })}
+  </div>;
+}
+
 function PreviewPanel({
   paneId = "",
   panelType = "Preview",
   onPanelTypeChange = undefined,
-  tabSelectedFiles = undefined,
+  previewPaneState = undefined,
+  onOpenPreviewPath = undefined,
+  onActivatePreviewTab = undefined,
+  onClosePreviewTab = undefined,
+  onUpdatePreviewTab = undefined,
   onPaneDirtyStateChange = undefined,
 }) {
   const {
     mediaPreviewSrc,
     isDropOver,
-    isLocked,
     isTextEditable,
     isTextPreviewReady,
+    previewTabs,
     previewLabel,
     previewPath,
     previewState,
@@ -92,12 +124,18 @@ function PreviewPanel({
     saveStatusMessage,
     setDropNodeRef,
     textContent,
+    handlePreviewTabActivate,
+    handlePreviewTabClose,
+    handlePreviewTabUnpin,
     handleSaveNow,
     handleTextContentChange,
-    handleToggleLock,
   } = usePreviewPanelState({
     paneId,
-    tabSelectedFiles,
+    previewPaneState,
+    onOpenPreviewPath,
+    onActivatePreviewTab,
+    onClosePreviewTab,
+    onUpdatePreviewTab,
     onPaneDirtyStateChange,
   });
   const isReady = previewState.status === "ready";
@@ -111,9 +149,24 @@ function PreviewPanel({
     aria-label="Preview panel"
   >
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
-      {renderPreviewLabel(previewLabel, isLocked)}
-      {renderHeaderStatus(previewPath, previewState, saveStatusMessage, saveStatus)}
-      {renderPreviewActions(previewPath, isLocked, isTextPreviewReady, isTextEditable, saveStatus, handleToggleLock, handleSaveNow)}
+      <div className={styles.headerContent}>
+        {renderPreviewTabs({
+          previewTabs,
+          previewPath,
+          handlePreviewTabActivate,
+          handlePreviewTabClose,
+          handlePreviewTabUnpin,
+        })}
+        <div className={styles.headerMeta}>
+          {renderHeaderStatus(previewPath, previewTabs, previewState, saveStatusMessage, saveStatus)}
+          {isTextPreviewReady && previewPath ? <button
+            type="button"
+            className={styles.saveButton}
+            onClick={handleSaveNow}
+            disabled={!isTextEditable || saveStatus === "saving"}
+          >save</button> : null}
+        </div>
+      </div>
     </PanelHeader>
     <div className={`${shellStyles.panelBody} ${styles.panelBody}`}>
       {renderTextPreview(previewPath, previewState, textContent, isTextEditable, handleTextContentChange, handleSaveNow)}

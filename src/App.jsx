@@ -43,6 +43,14 @@ import { getSelectedPathsFromState } from "./utils/pathSelection";
 import isEditableKeyboardTarget from "./utils/isEditableKeyboardTarget";
 import { getPaneIdsInLayoutOrder } from "./components/workspacePanelLayoutUtils";
 import { FILESYSTEM_FLUSH_STATE_EVENT } from "./components/FilesystemPanel/filesystemPanelEvents";
+import {
+  arePreviewPaneStatesEqual,
+  closePreviewTab,
+  normalizePreviewPaneState,
+  openPathInPreviewPaneState,
+  setActivePreviewTab,
+  updatePreviewTab,
+} from "./components/PreviewPanel/previewPaneState";
 
 import styles from "./App.module.scss";
 
@@ -61,6 +69,75 @@ function resolvePrimaryFilesystemPaneId(tab = null) {
 
   return Object.keys(paneStates).find((paneId) => paneStates[paneId]?.panelType === "Filesystem")
     ?? "";
+}
+
+function resolvePreviewPaneId(tab = null) {
+  const paneStates = tab?.paneStates ?? {};
+  const activePaneId = tab?.activePaneId ?? "";
+  if (paneStates[activePaneId]?.panelType === "Preview") return activePaneId;
+
+  const paneIdsInLayoutOrder = getPaneIdsInLayoutOrder(tab?.layout);
+  const firstPreviewPaneId = paneIdsInLayoutOrder.find((paneId) => (
+    paneStates[paneId]?.panelType === "Preview"
+  ));
+  if (firstPreviewPaneId) return firstPreviewPaneId;
+
+  return Object.keys(paneStates).find((paneId) => paneStates[paneId]?.panelType === "Preview")
+    ?? "";
+}
+
+function resolveSelectedFilePath(selectedPaths = [], selectedEntryKinds = {}) {
+  if (!Array.isArray(selectedPaths) || selectedPaths.length === 0) return "";
+  const filePath = selectedPaths.find((path) => selectedEntryKinds[path] === "file");
+  if (filePath) return filePath;
+  return "";
+}
+
+function prunePreviewPaneStateBySnapshot(previousState = {}, snapshot = null) {
+  const previousEntries = Object.entries(previousState);
+  if (previousEntries.length === 0) return previousState;
+
+  const tabs = Array.isArray(snapshot?.tabs) ? snapshot.tabs : [];
+  const tabsById = new Map(tabs.map(tab => [tab?.tabId ?? "", tab]));
+  const nextState = {};
+  let changed = false;
+
+  previousEntries.forEach(([tabId, paneStateById]) => {
+    const tab = tabsById.get(tabId);
+    if (!tab || !paneStateById || typeof paneStateById !== "object") {
+      changed = true;
+      return;
+    }
+
+    const nextPaneStateById = {};
+    Object.entries(paneStateById).forEach(([paneId, paneState]) => {
+      if (tab?.paneStates?.[paneId]?.panelType !== "Preview") {
+        changed = true;
+        return;
+      }
+
+      const normalizedPaneState = normalizePreviewPaneState(paneState);
+      if (normalizedPaneState.tabs.length === 0) {
+        changed = true;
+        return;
+      }
+
+      if (!arePreviewPaneStatesEqual(paneState, normalizedPaneState)) changed = true;
+      nextPaneStateById[paneId] = normalizedPaneState;
+    });
+
+    const paneCount = Object.keys(nextPaneStateById).length;
+    if (paneCount === 0) {
+      changed = true;
+      return;
+    }
+
+    if (paneCount !== Object.keys(paneStateById).length) changed = true;
+    nextState[tabId] = nextPaneStateById;
+  });
+
+  if (!changed && Object.keys(nextState).length !== previousEntries.length) changed = true;
+  return changed ? nextState : previousState;
 }
 
 function arePathListsEqual(leftPaths = [], rightPaths = []) {
@@ -107,6 +184,7 @@ function resolveContextMenuSelectedPaths(commandContext, target) {
 function App() {
   const [viewState, dispatch] = useReducer(workspaceReducer, initialWorkspaceViewState);
   const [tabSelectionMetaByTabId, setTabSelectionMetaByTabId] = useState({});
+  const [previewPaneStateByTabId, setPreviewPaneStateByTabId] = useState({});
   const [commandPaletteState, setCommandPaletteState] = useState({
     isOpen: false,
     position: { x: 24, y: 24 },
@@ -153,6 +231,10 @@ function App() {
   })), [tabTitlesByTabId, tabs]);
   const activeTab = selectActiveTab(viewState.snapshot, currentWindow);
   const workspaceScripts = useWorkspaceScripts(activeTab?.workspaceRoot ?? "");
+  const activeTabPreviewPaneStateById = useMemo(
+    () => (activeTab?.tabId ? (previewPaneStateByTabId[activeTab.tabId] ?? {}) : {}),
+    [activeTab?.tabId, previewPaneStateByTabId],
+  );
   const primaryFilesystemPaneId = useMemo(
     () => resolvePrimaryFilesystemPaneId(activeTab),
     [activeTab],
@@ -234,6 +316,61 @@ function App() {
     pushNotification,
     openConfirm,
   });
+  const updatePreviewPaneState = useCallback((tabId, paneId, updater) => {
+    if (!tabId || !paneId || typeof updater !== "function") return;
+
+    setPreviewPaneStateByTabId((previous) => {
+      const previousTabState = previous[tabId] ?? {};
+      const previousPaneState = normalizePreviewPaneState(previousTabState[paneId]);
+      const nextPaneState = normalizePreviewPaneState(updater(previousPaneState));
+      if (arePreviewPaneStatesEqual(previousPaneState, nextPaneState)) return previous;
+
+      const nextTabState = { ...previousTabState };
+      if (nextPaneState.tabs.length === 0) {
+        delete nextTabState[paneId];
+      } else {
+        nextTabState[paneId] = nextPaneState;
+      }
+
+      if (Object.keys(nextTabState).length === 0) {
+        if (!(tabId in previous)) return previous;
+        const nextState = { ...previous };
+        delete nextState[tabId];
+        return nextState;
+      }
+
+      return {
+        ...previous,
+        [tabId]: nextTabState,
+      };
+    });
+  }, []);
+  const handleOpenPreviewPath = useCallback((tabId, paneId, path, options = {}) => {
+    if (!tabId || !paneId || !path) return;
+    const openAsEphemeral = options?.openMode !== "pinned";
+    updatePreviewPaneState(tabId, paneId, (paneState) => openPathInPreviewPaneState(
+      paneState,
+      path,
+      { openAsEphemeral },
+    ));
+  }, [updatePreviewPaneState]);
+  const handleActivatePreviewTab = useCallback((tabId, paneId, path) => {
+    if (!tabId || !paneId || !path) return;
+    updatePreviewPaneState(tabId, paneId, paneState => setActivePreviewTab(paneState, path));
+  }, [updatePreviewPaneState]);
+  const handleClosePreviewTab = useCallback((tabId, paneId, path) => {
+    if (!tabId || !paneId || !path) return;
+    updatePreviewPaneState(tabId, paneId, paneState => closePreviewTab(paneState, path));
+  }, [updatePreviewPaneState]);
+  const handleUpdatePreviewTab = useCallback((tabId, paneId, path, patch = {}) => {
+    if (!tabId || !paneId || !path || !patch || typeof patch !== "object") return;
+    updatePreviewPaneState(tabId, paneId, paneState => updatePreviewTab(paneState, path, patch));
+  }, [updatePreviewPaneState]);
+  useEffect(() => {
+    setPreviewPaneStateByTabId(previous => (
+      prunePreviewPaneStateBySnapshot(previous, viewState.snapshot)
+    ));
+  }, [viewState.snapshot]);
   const handleSetActiveTab = useCallback((tabId) => {
     window.dispatchEvent(new CustomEvent(FILESYSTEM_FLUSH_STATE_EVENT));
     workspaceActions.handleSetActiveTab(tabId);
@@ -379,6 +516,22 @@ function App() {
       });
     }
 
+    const selectedFilePath = resolveSelectedFilePath(selectedPaths, nextSelectedEntryKinds);
+    if (selectedFilePath) {
+      const tabForSelection = activeTab?.tabId === tabId
+        ? activeTab
+        : viewState.snapshot?.tabs?.find((tab) => tab?.tabId === tabId);
+      const targetPreviewPaneId = resolvePreviewPaneId(tabForSelection);
+      if (targetPreviewPaneId) {
+        const openMode = selectedFiles?.previewOpenMode === "pinned"
+          ? "pinned"
+          : "ephemeral";
+        handleOpenPreviewPath(tabId, targetPreviewPaneId, selectedFilePath, {
+          openMode,
+        });
+      }
+    }
+
     setTabSelectionMetaByTabId((previous) => {
       const previousMeta = previous[tabId];
       const hasSelection = selectedPaths.length > 0;
@@ -405,7 +558,7 @@ function App() {
         },
       };
     });
-  }, [workspaceActions]);
+  }, [activeTab, handleOpenPreviewPath, viewState.snapshot?.tabs, workspaceActions]);
   const handleTabMiddleClick = useCallback((tabId) => {
     if (!tabId) return;
     executeAppCommand(COMMAND_IDS.TAB_CLOSE, {
@@ -550,6 +703,7 @@ function App() {
         <PanelsDndLayer>
           <WorkspacePanelLayout
             tab={activeTab}
+            previewPaneStateById={activeTabPreviewPaneStateById}
             primaryFilesystemPaneId={primaryFilesystemPaneId}
             cwdHint={activeTab.terminalCwdHint ?? ""}
             recentFoldersEntries={recentFoldersState.entries}
@@ -564,6 +718,10 @@ function App() {
             onPaneClose={workspaceActions.handleClosePane}
             onPaneDirtyStateChange={workspaceActions.handlePaneDirtyStateChange}
             onSplitRatioChange={workspaceActions.handleSetSplitRatio}
+            onOpenPreviewPath={handleOpenPreviewPath}
+            onActivatePreviewTab={handleActivatePreviewTab}
+            onClosePreviewTab={handleClosePreviewTab}
+            onUpdatePreviewTab={handleUpdatePreviewTab}
           />
         </PanelsDndLayer>
       </section>

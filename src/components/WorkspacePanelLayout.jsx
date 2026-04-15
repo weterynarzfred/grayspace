@@ -61,6 +61,7 @@ function getWorkspaceLayoutKey(workspaceRoot = "") {
 
 function WorkspacePanelLayout({
   tab,
+  previewPaneStateById = {},
   primaryFilesystemPaneId = "",
   cwdHint = "",
   recentFoldersEntries = [],
@@ -75,6 +76,10 @@ function WorkspacePanelLayout({
   onPaneClose = undefined,
   onPaneDirtyStateChange = undefined,
   onSplitRatioChange = undefined,
+  onOpenPreviewPath = undefined,
+  onActivatePreviewTab = undefined,
+  onClosePreviewTab = undefined,
+  onUpdatePreviewTab = undefined,
 }) {
   const paneStates = tab?.paneStates ?? {};
   const paneCount = Object.keys(paneStates).length;
@@ -167,6 +172,15 @@ function WorkspacePanelLayout({
           onPaneDirtyStateChange={dirtyState =>
             onPaneDirtyStateChange?.(tabId, paneId, dirtyState, panelType)
           }
+          previewPaneState={previewPaneStateById?.[paneId]}
+          onOpenPreviewPath={(path, options = {}) =>
+            onOpenPreviewPath?.(tabId, paneId, path, options)
+          }
+          onActivatePreviewTab={path => onActivatePreviewTab?.(tabId, paneId, path)}
+          onClosePreviewTab={path => onClosePreviewTab?.(tabId, paneId, path)}
+          onUpdatePreviewTab={(path, patch = {}) =>
+            onUpdatePreviewTab?.(tabId, paneId, path, patch)
+          }
           filesystemState={paneState?.filesystemState}
           tabWorkspaceRoot={tab?.workspaceRoot ?? ""}
           tabSelectedFiles={tab?.selectedFiles}
@@ -194,10 +208,15 @@ function WorkspacePanelLayout({
     onPaneActivate,
     onPaneClose,
     onPaneDirtyStateChange,
+    onOpenPreviewPath,
+    onActivatePreviewTab,
+    onClosePreviewTab,
+    onUpdatePreviewTab,
     onPanelTypeChange,
     onTabSelectedFilesChange,
     paneCount,
     paneStates,
+    previewPaneStateById,
     primaryFilesystemPaneId,
     recentFoldersEntries,
     recentFoldersLoading,

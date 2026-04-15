@@ -5,16 +5,20 @@ import { usePanelsDndHandlers, usePanelsDragActive } from "../PanelsDndLayer";
 import { getFirstDraggedPathFromDndEvent } from "../dndEventPaths";
 import useExternalPathDrop from "../hooks/useExternalPathDrop";
 import useFilesystemDirectoryWatcher from "../FilesystemPanel/hooks/useFilesystemDirectoryWatcher";
+import { useNotificationCenter } from "../../notifications/notificationCenter";
 import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
 import { getParentDirectoryPath, isSamePath } from "../../utils/pathWatch";
 import {
   getErrorMessage,
   getPathDisplayName,
   getSaveStatusMessage,
-  getSelectedPreviewPath,
   INITIAL_PREVIEW_STATE,
   isFolderPreviewErrorMessage,
 } from "./previewPanelUtils";
+import {
+  getActivePreviewTab,
+  normalizePreviewPaneState,
+} from "./previewPaneState";
 
 function isMediaPreviewKind(kind) {
   return kind === "image" || kind === "audio" || kind === "video";
@@ -31,14 +35,28 @@ function getFirstPath(paths = []) {
 
 function usePreviewPanelState({
   paneId = "",
-  tabSelectedFiles = undefined,
+  previewPaneState = undefined,
+  onOpenPreviewPath = undefined,
+  onActivatePreviewTab = undefined,
+  onClosePreviewTab = undefined,
+  onUpdatePreviewTab = undefined,
   onPaneDirtyStateChange = undefined,
 }) {
-  const selectedPreviewPath = useMemo(
-    () => getSelectedPreviewPath(tabSelectedFiles),
-    [tabSelectedFiles],
+  const normalizedPreviewPaneState = useMemo(
+    () => normalizePreviewPaneState(previewPaneState),
+    [previewPaneState],
   );
-  const [lockedPath, setLockedPath] = useState("");
+  const previewTabs = normalizedPreviewPaneState.tabs;
+  const { openConfirm } = useNotificationCenter();
+  const activePreviewTab = useMemo(
+    () => getActivePreviewTab(normalizedPreviewPaneState),
+    [normalizedPreviewPaneState],
+  );
+  const previewPath = activePreviewTab?.path ?? "";
+  const activePreviewTabDraftContent = typeof activePreviewTab?.draftContent === "string"
+    ? activePreviewTab.draftContent
+    : "";
+  const activePreviewTabDirty = Boolean(activePreviewTab?.isDirty);
   const [textContent, setTextContent] = useState("");
   const [saveStatus, setSaveStatus] = useState("idle");
   const [saveError, setSaveError] = useState("");
@@ -46,21 +64,6 @@ function usePreviewPanelState({
   const [mediaSrcVersion, setMediaSrcVersion] = useState(0);
   const [previewState, setPreviewState] = useState(INITIAL_PREVIEW_STATE);
   const latestSaveRequestRef = useRef(0);
-  const latestPreviewPathRef = useRef(selectedPreviewPath);
-  const isLocked = Boolean(lockedPath);
-  const previousPreviewPath = latestPreviewPathRef.current;
-  const shouldStickToPreviousPath = !isLocked
-    && saveStatus === "dirty"
-    && previousPreviewPath
-    && selectedPreviewPath !== previousPreviewPath;
-  let previewPath;
-  if (isLocked) {
-    previewPath = lockedPath;
-  } else if (shouldStickToPreviousPath) {
-    previewPath = previousPreviewPath;
-  } else {
-    previewPath = selectedPreviewPath;
-  }
   const previewDropId = useMemo(() => `preview-drop:${paneId || "preview"}`, [paneId]);
   const previewLabel = useMemo(() => getPathDisplayName(previewPath), [previewPath]);
   const previewDirectoryPath = useMemo(() => getParentDirectoryPath(previewPath), [previewPath]);
@@ -72,12 +75,12 @@ function usePreviewPanelState({
   }, [mediaSrcVersion, previewPath, previewState]);
   const isTextPreviewReady = previewState.status === "ready" && previewState.preview?.kind === "text";
   const isTextEditable = isTextPreviewReady && !previewState.preview?.truncated;
-  const hasUnsavedPreviewChanges = isTextEditable && saveStatus === "dirty";
-  const lockFirstDroppedPath = useCallback((paths) => {
+
+  const openFirstDroppedPath = useCallback((paths) => {
     const firstPath = getFirstPath(paths);
     if (!firstPath) return;
-    setLockedPath(firstPath);
-  }, []);
+    onOpenPreviewPath?.(firstPath, { openMode: "pinned" });
+  }, [onOpenPreviewPath]);
 
   const saveTextFile = useCallback(async (path, content) => {
     const requestId = latestSaveRequestRef.current + 1;
@@ -89,28 +92,16 @@ function usePreviewPanelState({
       await invoke("preview_write_text_file", { path, content });
       if (latestSaveRequestRef.current !== requestId) return;
       setSaveStatus("saved");
+      onUpdatePreviewTab?.(path, {
+        isDirty: false,
+        draftContent: content,
+      });
     } catch (saveLoadError) {
       if (latestSaveRequestRef.current !== requestId) return;
       setSaveStatus("error");
       setSaveError(getErrorMessage(saveLoadError));
     }
-  }, []);
-
-  const handleToggleLock = useCallback(() => {
-    if (!isLocked) {
-      if (previewPath) setLockedPath(previewPath);
-      return;
-    }
-
-    const willSwitchToSelectedPath = selectedPreviewPath
-      && selectedPreviewPath !== lockedPath
-      && saveStatus === "dirty";
-    if (willSwitchToSelectedPath) {
-      setSaveStatus("idle");
-      setSaveError("");
-    }
-    setLockedPath("");
-  }, [isLocked, lockedPath, previewPath, saveStatus, selectedPreviewPath]);
+  }, [onUpdatePreviewTab]);
 
   const {
     isOver: isDropOver,
@@ -132,19 +123,19 @@ function usePreviewPanelState({
   usePanelsDndHandlers({
     onDragEnd: (event) => {
       if (event?.over?.id !== previewDropId) return;
-      lockFirstDroppedPath([getFirstDraggedPathFromDndEvent(event)]);
+      openFirstDroppedPath([getFirstDraggedPathFromDndEvent(event)]);
     },
   });
 
   const { isExternalDragOver } = useExternalPathDrop({
     panelRef,
     isEnabled: true,
-    onDropPaths: lockFirstDroppedPath,
+    onDropPaths: openFirstDroppedPath,
   });
 
   const handlePreviewFileWatchChange = useCallback((_watchedPath, changedPath) => {
     if (!previewPath) return;
-    if (saveStatus === "dirty" || saveStatus === "saving") return;
+    if (activePreviewTabDirty || saveStatus === "saving") return;
 
     if (typeof changedPath === "string" && changedPath) {
       const isPreviewPathChange = isSamePath(changedPath, previewPath);
@@ -154,28 +145,24 @@ function usePreviewPanelState({
     }
 
     setPreviewReloadVersion(version => version + 1);
-  }, [previewDirectoryPath, previewPath, saveStatus]);
+  }, [activePreviewTabDirty, previewDirectoryPath, previewPath, saveStatus]);
 
   useFilesystemDirectoryWatcher({
     watchPaths: previewDirectoryPath ? [previewDirectoryPath] : [],
     onDirectoryChange: handlePreviewFileWatchChange,
   });
 
-  useEffect(() => {
-    latestPreviewPathRef.current = previewPath;
-  }, [previewPath]);
-
-  useEffect(() => {
-    if (!shouldStickToPreviousPath || isLocked) return;
-    setLockedPath(latestPreviewPathRef.current);
-  }, [isLocked, shouldStickToPreviousPath]);
-
   const handleTextContentChange = useCallback((nextContent) => {
     if (!isTextEditable || !previewPath) return;
     setTextContent(nextContent);
     setSaveStatus("dirty");
     setSaveError("");
-  }, [isTextEditable, previewPath]);
+    onUpdatePreviewTab?.(previewPath, {
+      isDirty: true,
+      isEphemeral: false,
+      draftContent: nextContent,
+    });
+  }, [isTextEditable, onUpdatePreviewTab, previewPath]);
 
   const handleSaveNow = useCallback(() => {
     if (!isTextEditable || !previewPath) return;
@@ -194,7 +181,7 @@ function usePreviewPanelState({
 
     let cancelled = false;
     latestSaveRequestRef.current += 1;
-    setSaveStatus("idle");
+    setSaveStatus(activePreviewTabDirty ? "dirty" : "idle");
     setSaveError("");
     setMediaSrcVersion(version => version + 1);
 
@@ -209,7 +196,7 @@ function usePreviewPanelState({
         const preview = await invoke("preview_read_file", { path: previewPath });
         if (cancelled) return;
         if (preview?.kind === "text" && typeof preview.content === "string") {
-          setTextContent(preview.content);
+          setTextContent(activePreviewTabDirty ? activePreviewTabDraftContent : preview.content);
         } else {
           setTextContent("");
         }
@@ -242,7 +229,12 @@ function usePreviewPanelState({
 
     loadPreview();
     return () => { cancelled = true; };
-  }, [previewPath, previewReloadVersion]);
+  }, [
+    activePreviewTabDirty,
+    activePreviewTabDraftContent,
+    previewPath,
+    previewReloadVersion,
+  ]);
 
   const saveStatusMessage = useMemo(() => getSaveStatusMessage({
     isTextPreviewReady,
@@ -251,12 +243,37 @@ function usePreviewPanelState({
     saveError,
   }), [isTextEditable, isTextPreviewReady, saveError, saveStatus]);
 
+  const handlePreviewTabActivate = useCallback((path) => {
+    onActivatePreviewTab?.(path);
+  }, [onActivatePreviewTab]);
+
+  const handlePreviewTabClose = useCallback(async (path) => {
+    const targetTab = previewTabs.find(tab => isSamePath(tab.path, path));
+    if (targetTab?.isDirty) {
+      const shouldClose = openConfirm
+        ? await openConfirm({
+          title: "Discard unsaved changes?",
+          message: "Close this tab and discard unsaved changes?",
+          tone: "warning",
+          confirmLabel: "Close tab",
+          cancelLabel: "Cancel",
+        })
+        : true;
+      if (!shouldClose) return;
+    }
+    onClosePreviewTab?.(path);
+  }, [onClosePreviewTab, openConfirm, previewTabs]);
+  const handlePreviewTabUnpin = useCallback((path) => {
+    onUpdatePreviewTab?.(path, { isEphemeral: false });
+  }, [onUpdatePreviewTab]);
+  const hasUnsavedPreviewChanges = previewTabs.some(tab => tab.isDirty);
+
   useEffect(() => {
     onPaneDirtyStateChange?.({
       hasUnsavedChanges: hasUnsavedPreviewChanges,
       scope: "preview-text",
       message: hasUnsavedPreviewChanges
-        ? "This preview has unsaved text changes."
+        ? "One or more preview tabs have unsaved text changes."
         : "",
     });
   }, [hasUnsavedPreviewChanges, onPaneDirtyStateChange]);
@@ -272,9 +289,9 @@ function usePreviewPanelState({
   return {
     mediaPreviewSrc,
     isDropOver: (isDropOver && isPanelsDragActive) || isExternalDragOver,
-    isLocked,
     isTextEditable,
     isTextPreviewReady,
+    previewTabs,
     previewLabel,
     previewPath,
     previewState,
@@ -282,9 +299,11 @@ function usePreviewPanelState({
     saveStatusMessage,
     setDropNodeRef: setPanelNodeRef,
     textContent,
+    handlePreviewTabActivate,
+    handlePreviewTabClose,
+    handlePreviewTabUnpin,
     handleSaveNow,
     handleTextContentChange,
-    handleToggleLock,
   };
 }
 

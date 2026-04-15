@@ -1,20 +1,6 @@
 @use "../../styles/variables" as *;
 @use "../../styles/mixins" as *;
 
-.previewLabel {
-  flex: 1 0 auto;
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.previewActions {
-  display: flex;
-  align-items: stretch;
-  align-self: stretch;
-  margin-left: auto;
-}
-
 .panelContent {
   display: flex;
   flex-direction: column;
@@ -22,6 +8,99 @@
 
 .panelDropTarget {
   @include drop-target-outline;
+}
+
+.headerContent {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+
+.previewTabs {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.previewTab {
+  display: flex;
+  min-width: 0;
+  border-left: 1px solid $border-default;
+  font-family: $font-sans;
+}
+
+.previewTab:first-child {
+  border-left: none;
+}
+
+.previewTabSelect {
+  @include interactive-tile;
+  min-width: 0;
+  max-width: 16rem;
+  padding: 0 0.45rem;
+  line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: $text-secondary;
+}
+
+.previewTabLabelEphemeral {
+  opacity: 0.9;
+}
+
+.previewTabActive .previewTabSelect {
+  color: $text-primary;
+  background: $bg-selected;
+}
+
+.previewTabClose {
+  @include interactive-tile;
+  padding: 0 0.35rem;
+  line-height: 22px;
+  color: $text-tertiary;
+}
+
+.previewTabActive .previewTabClose {
+  color: $text-secondary;
+}
+
+.headerMeta {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+}
+
+.muted {
+  margin: 0;
+  padding: 0 0.5rem;
+  line-height: 22px;
+  color: $text-tertiary;
+}
+
+.error {
+  margin: 0;
+  padding: 0 0.5rem;
+  line-height: 22px;
+  color: $text-warning;
+}
+
+.saveButton {
+  @include interactive-tile;
+  height: 100%;
+  border: solid $border-default;
+  border-width: 0 0 0 1px;
+  padding: 0 0.5rem;
+}
+
+.saveButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .panelBody {
@@ -77,39 +156,4 @@
   display: block;
   width: 100%;
   padding: 0.5rem;
-}
-
-.muted {
-  margin: 0;
-  color: $text-tertiary;
-}
-
-.error {
-  margin: 0;
-  color: $text-warning;
-}
-
-.saveButton {
-  @include interactive-tile;
-  height: 100%;
-  border: solid $border-default;
-  border-width: 0 0 0 1px;
-  padding: 0 0.5rem;
-}
-
-.saveButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.lockButton {
-  @include interactive-tile;
-  height: 100%;
-  border: solid $border-default;
-  border-width: 0 0 0 1px;
-  padding: 0 0.5rem;
-}
-
-.lockButtonLocked {
-  color: $accent-active-light;
 }

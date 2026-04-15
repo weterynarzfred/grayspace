@@ -10,7 +10,7 @@ function getErrorMessage(error) {
   return "Unknown terminal error.";
 }
 
-const ignoreError = () => {};
+const ignoreError = () => { };
 
 function useTerminalSession(cwdHint = "", sessionId = "") {
   const terminalHostRef = useRef(null);

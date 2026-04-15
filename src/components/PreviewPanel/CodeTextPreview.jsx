@@ -19,7 +19,7 @@ const previewEditorTheme = EditorView.theme({
     color: "#ebdbb2",
   },
   ".cm-scroller": {
-    fontFamily: "\"Fira Code\", \"Cascadia Mono\", \"Consolas\", monospace",
+    fontFamily: "\"Fira Code\", monospace",
     lineHeight: "1.45",
   },
   ".cm-content": {
