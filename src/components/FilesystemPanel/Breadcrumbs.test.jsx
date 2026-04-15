@@ -207,6 +207,33 @@ describe("Breadcrumbs", () => {
     expect(pathInput).toHaveValue("C:\\Users");
   });
 
+  it("submits the keyboard-selected suggestion without forcing fallback to the first entry", () => {
+    const handlePathSubmit = vi.fn();
+
+    render(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={vi.fn()}
+        onPathSubmit={handlePathSubmit}
+        recentFoldersEntries={[
+          { path: "C:\\Users", openedAtMs: 1710806400000, isWorkspace: false },
+          { path: "D:\\Work", openedAtMs: 1710892800000, isWorkspace: true },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const pathInput = screen.getByRole("textbox", { name: "Current folder path" });
+    pathInput.focus();
+    fireEvent.keyDown(pathInput, { key: "ArrowDown" });
+    fireEvent.keyDown(pathInput, { key: "ArrowDown" });
+    fireEvent.submit(pathInput.closest("form"));
+
+    expect(handlePathSubmit).toHaveBeenCalledWith("D:\\Work");
+    expect(handlePathSubmit).not.toHaveBeenCalledWith("D:\\Work", expect.anything());
+  });
+
   it("scrolls the selected suggestion into view during keyboard navigation", () => {
     const scrollIntoViewMock = vi.fn();
     const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;

@@ -317,9 +317,17 @@ function Breadcrumbs({
 
   const handleSubmitPath = useCallback((event) => {
     event.preventDefault();
-    const nextPath = pathDraft.trim();
+    const hasSelectedSuggestion =
+      selectedSuggestionIndex >= 0 && selectedSuggestionIndex < visibleSuggestions.length;
+    const nextPath = (
+      hasSelectedSuggestion
+        ? (visibleSuggestions[selectedSuggestionIndex]?.path ?? "")
+        : pathDraft
+    ).trim();
     const firstSuggestedPath = visibleSuggestions[0]?.path ?? "";
     const shouldIncludeFallback = (
+      !hasSelectedSuggestion
+      &&
       typeof firstSuggestedPath === "string"
       && firstSuggestedPath.trim().length > 0
       && !arePathsEquivalent(firstSuggestedPath, nextPath)
@@ -334,7 +342,14 @@ function Breadcrumbs({
       return;
     }
     onPathSubmit?.(nextPath);
-  }, [arePathsEquivalent, currentPath, onPathSubmit, pathDraft, visibleSuggestions]);
+  }, [
+    arePathsEquivalent,
+    currentPath,
+    onPathSubmit,
+    pathDraft,
+    selectedSuggestionIndex,
+    visibleSuggestions,
+  ]);
   const handlePathInputBlur = useCallback(() => {
     setIsPathEditing(false);
     setIsPathInputFocused(false);

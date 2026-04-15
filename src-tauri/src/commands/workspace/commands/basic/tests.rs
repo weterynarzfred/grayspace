@@ -246,6 +246,59 @@ fn apply_tab_workspace_root_change_preserves_non_active_filesystem_path() {
 }
 
 #[test]
+fn apply_tab_workspace_root_change_preserves_active_filesystem_drives_state() {
+  let mut model = WorkspaceModel::default();
+  let mut tab = model.create_default_tab();
+  tab.workspace_root = Some("H:\\short_lib".to_string());
+  tab.terminal_cwd_hint = "H:\\short_lib".to_string();
+
+  let main_pane_id = tab.active_pane_id.clone();
+  let sub_pane_id = "pane-sub".to_string();
+  assert!(split_layout_leaf(
+    &mut tab.layout,
+    &main_pane_id,
+    SplitDirection::Bottom,
+    &sub_pane_id,
+  ));
+
+  tab.pane_states.insert(
+    sub_pane_id.clone(),
+    crate::commands::workspace::model::PaneState {
+      pane_id: sub_pane_id.clone(),
+      panel_type: "Filesystem".to_string(),
+      terminal_session_id: "term-sub".to_string(),
+      filesystem_state: FilesystemPaneState {
+        current_drive: "H:\\".to_string(),
+        current_path: "H:\\sub".to_string(),
+        ..FilesystemPaneState::default()
+      },
+    },
+  );
+
+  if let Some(main_pane) = tab.pane_states.get_mut(&main_pane_id) {
+    main_pane.panel_type = "Filesystem".to_string();
+    main_pane.filesystem_state.current_drive.clear();
+    main_pane.filesystem_state.current_path.clear();
+  }
+
+  let tab_id = tab.tab_id.clone();
+  model.tabs.insert(tab_id.clone(), tab);
+  let (changed, _) =
+    apply_tab_workspace_root_change(&mut model, &tab_id, None).expect("update should succeed");
+  assert!(changed);
+
+  let updated_tab = model.tabs.get(&tab_id).expect("tab should exist");
+  let expected_left_pane_id = format!("{}-left", tab_id);
+  let left_pane = updated_tab
+    .pane_states
+    .get(&expected_left_pane_id)
+    .expect("left pane should exist");
+  assert_eq!(left_pane.panel_type, "Filesystem");
+  assert_eq!(left_pane.filesystem_state.current_drive, "");
+  assert_eq!(left_pane.filesystem_state.current_path, "");
+}
+
+#[test]
 fn find_workspace_root_for_path_detects_nearest_ancestor_workspace() {
   let test_root = unique_test_root("workspace-ancestor-detect");
   let workspace_root = test_root.join("WorkspaceRoot");

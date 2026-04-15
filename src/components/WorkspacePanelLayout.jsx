@@ -146,7 +146,7 @@ function WorkspacePanelLayout({
       </div>
       <PaneHeaderActionsProvider value={paneHeaderActions}>
         <PanelComponent
-          key={`${tabId || "tab"}::${paneId}`}
+          key={`${tabId || "tab"}::${paneId}::${paneState?.terminalSessionId ?? ""}`}
           tabId={tabId}
           paneId={paneId}
           panelType={panelType}

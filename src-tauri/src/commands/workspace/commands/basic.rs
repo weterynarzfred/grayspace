@@ -378,6 +378,12 @@ fn resolve_first_filesystem_state(tab: &WorkspaceTab) -> Option<FilesystemPaneSt
 }
 
 fn resolve_preserved_filesystem_state(tab: &WorkspaceTab) -> FilesystemPaneState {
+  if let Some(active_pane_state) = tab.pane_states.get(&tab.active_pane_id) {
+    if active_pane_state.panel_type == "Filesystem" {
+      return active_pane_state.filesystem_state.clone();
+    }
+  }
+
   let active_pane_state = tab
     .pane_states
     .get(&tab.active_pane_id)
