@@ -17,6 +17,11 @@ function getEventSourcePath(event) {
   return event?.active?.data?.current?.sourcePath || parseEntryPath(event?.active?.id);
 }
 
+function getEventSourceKind(event) {
+  const sourceKind = event?.active?.data?.current?.kind;
+  return typeof sourceKind === "string" ? sourceKind : "";
+}
+
 function normalizePathForMatch(path) {
   if (typeof path !== "string") return "";
   const trimmedPath = path.trim();
@@ -272,18 +277,24 @@ function useFilesystemDnd({
   }
 
   async function handleDragEnd(event) {
+    const sourceKind = getEventSourceKind(event);
     const isOwner = isEventOwnedByPane(event);
+    const destinationPaneId = typeof event?.over?.data?.current?.paneId === "string"
+      ? event.over.data.current.paneId
+      : "";
+    const isPreviewTabDropOwner = sourceKind === "preview-tab" && destinationPaneId === paneId;
     const sourcePaths = resolveDragPathsForEvent(event);
     const destinationTarget = getDestinationTarget(event);
     const destinationDir = destinationTarget.path;
-    const shouldCopy = copyModifierPressedRef.current
+    const shouldCopy = sourceKind === "preview-tab"
+      || copyModifierPressedRef.current
       || event?.activatorEvent?.ctrlKey === true;
     const actionableSourcePaths = getActionableSourcePaths(sourcePaths, destinationDir);
     const canDropIntoDestination = isDestinationDirectory(destinationTarget);
 
     clearDragState();
     stopModifierTracking();
-    if (!isOwner) return;
+    if (!isOwner && !isPreviewTabDropOwner) return;
 
     if (externalDragStartedRef.current) {
       externalDragStartedRef.current = false;

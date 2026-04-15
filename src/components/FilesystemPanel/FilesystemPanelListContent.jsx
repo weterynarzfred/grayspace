@@ -111,6 +111,7 @@ export default function FilesystemPanelListContent({
 
     {isBrowsing && <>
       <Breadcrumbs
+        paneId={paneId}
         currentPath={currentPath}
         currentDrive={currentDrive}
         onSelect={onBreadcrumbSelect}
@@ -128,6 +129,7 @@ export default function FilesystemPanelListContent({
 
       {!isLoadingEntries && !error && <ul className={styles.entryList}>
         <UpEntryDropTarget
+          paneId={paneId}
           destinationPath={upDestinationPath}
           isSelected={isUpSelected}
           isMovingEntry={isEntryOperationInProgress}

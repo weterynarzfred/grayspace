@@ -39,15 +39,18 @@ import {
   isCommandShortcutMatch,
 } from "./commands/commandRegistry";
 import executeCommand from "./commands/executeCommand";
-import { getSelectedPathsFromState } from "./utils/pathSelection";
+import { getSelectedPathsFromState, uniqueNonEmptyPaths } from "./utils/pathSelection";
 import isEditableKeyboardTarget from "./utils/isEditableKeyboardTarget";
 import { getPaneIdsInLayoutOrder } from "./components/workspacePanelLayoutUtils";
 import { FILESYSTEM_FLUSH_STATE_EVENT } from "./components/FilesystemPanel/filesystemPanelEvents";
 import {
   arePreviewPaneStatesEqual,
   closePreviewTab,
+  getPreviewTabsByPaths,
+  insertPreviewTabs,
   normalizePreviewPaneState,
   openPathInPreviewPaneState,
+  removePreviewTabsByPaths,
   setActivePreviewTab,
   updatePreviewTab,
 } from "./components/PreviewPanel/previewPaneState";
@@ -366,6 +369,69 @@ function App() {
     if (!tabId || !paneId || !path || !patch || typeof patch !== "object") return;
     updatePreviewPaneState(tabId, paneId, paneState => updatePreviewTab(paneState, path, patch));
   }, [updatePreviewPaneState]);
+  const handleMovePreviewTabs = useCallback((
+    tabId,
+    sourcePaneId,
+    targetPaneId,
+    paths = [],
+    options = {},
+  ) => {
+    if (!tabId || !sourcePaneId || !targetPaneId) return;
+    const normalizedPaths = uniqueNonEmptyPaths(paths);
+    if (normalizedPaths.length === 0) return;
+
+    setPreviewPaneStateByTabId((previous) => {
+      const previousTabState = previous[tabId] ?? {};
+      const sourcePaneState = normalizePreviewPaneState(previousTabState[sourcePaneId]);
+      const targetPaneState = normalizePreviewPaneState(previousTabState[targetPaneId]);
+      const movedTabs = getPreviewTabsByPaths(sourcePaneState, normalizedPaths)
+        .map((tab) => ({
+          ...tab,
+          isEphemeral: options?.pinTabs === true ? false : tab.isEphemeral,
+        }));
+      if (movedTabs.length === 0) return previous;
+
+      const movedPaths = movedTabs.map(tab => tab.path);
+      const sourceAfterRemoval = removePreviewTabsByPaths(sourcePaneState, movedPaths);
+      const targetBaseState = sourcePaneId === targetPaneId
+        ? sourceAfterRemoval
+        : targetPaneState;
+      const targetAfterInsert = insertPreviewTabs(targetBaseState, movedTabs, {
+        ...(options?.insert === "append" ? { index: targetBaseState.tabs.length } : {}),
+        targetPath: options?.targetPath,
+        targetSide: options?.targetSide,
+        activePath: movedTabs.at(-1)?.path ?? "",
+      });
+
+      const nextTabState = { ...previousTabState };
+      if (sourcePaneId !== targetPaneId) {
+        if (sourceAfterRemoval.tabs.length === 0) delete nextTabState[sourcePaneId];
+        else nextTabState[sourcePaneId] = sourceAfterRemoval;
+      }
+      if (targetAfterInsert.tabs.length === 0) delete nextTabState[targetPaneId];
+      else nextTabState[targetPaneId] = targetAfterInsert;
+
+      const sourceUnchanged = sourcePaneId === targetPaneId
+        || arePreviewPaneStatesEqual(previousTabState[sourcePaneId], nextTabState[sourcePaneId]);
+      const targetUnchanged = arePreviewPaneStatesEqual(
+        previousTabState[targetPaneId],
+        nextTabState[targetPaneId],
+      );
+      if (sourceUnchanged && targetUnchanged) return previous;
+
+      if (Object.keys(nextTabState).length === 0) {
+        if (!(tabId in previous)) return previous;
+        const nextState = { ...previous };
+        delete nextState[tabId];
+        return nextState;
+      }
+
+      return {
+        ...previous,
+        [tabId]: nextTabState,
+      };
+    });
+  }, []);
   useEffect(() => {
     setPreviewPaneStateByTabId(previous => (
       prunePreviewPaneStateBySnapshot(previous, viewState.snapshot)
@@ -722,6 +788,8 @@ function App() {
             onActivatePreviewTab={handleActivatePreviewTab}
             onClosePreviewTab={handleClosePreviewTab}
             onUpdatePreviewTab={handleUpdatePreviewTab}
+            onSplitPaneWithPanelType={workspaceActions.handleSplitPaneWithPanelType}
+            onMovePreviewTabs={handleMovePreviewTabs}
           />
         </PanelsDndLayer>
       </section>

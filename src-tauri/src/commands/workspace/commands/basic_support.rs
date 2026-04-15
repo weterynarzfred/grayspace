@@ -182,19 +182,33 @@ pub(super) fn split_layout_leaf(
   match layout {
     TabLayoutNode::Leaf { pane_id } if pane_id == target_pane_id => {
       let original_pane_id = pane_id.clone();
-      let axis = match direction {
-        SplitDirection::Right => LayoutAxis::Row,
-        SplitDirection::Bottom => LayoutAxis::Column,
+      let (axis, first_pane_id, second_pane_id) = match direction {
+        SplitDirection::Left => (
+          LayoutAxis::Row,
+          new_pane_id.to_string(),
+          original_pane_id,
+        ),
+        SplitDirection::Right => (
+          LayoutAxis::Row,
+          original_pane_id,
+          new_pane_id.to_string(),
+        ),
+        SplitDirection::Top => (
+          LayoutAxis::Column,
+          new_pane_id.to_string(),
+          original_pane_id,
+        ),
+        SplitDirection::Bottom => (
+          LayoutAxis::Column,
+          original_pane_id,
+          new_pane_id.to_string(),
+        ),
       };
       *layout = TabLayoutNode::Split {
         axis,
         ratio: 50,
-        first: Box::new(TabLayoutNode::Leaf {
-          pane_id: original_pane_id,
-        }),
-        second: Box::new(TabLayoutNode::Leaf {
-          pane_id: new_pane_id.to_string(),
-        }),
+        first: Box::new(TabLayoutNode::Leaf { pane_id: first_pane_id }),
+        second: Box::new(TabLayoutNode::Leaf { pane_id: second_pane_id }),
       };
       true
     }

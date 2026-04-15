@@ -5,7 +5,7 @@ use super::{
 };
 use crate::commands::workspace::model::WorkspaceModel;
 use crate::commands::workspace::types::{
-  FilesystemPaneState, SplitDirection, TabLayoutNode, TabSelectedFilesState,
+  FilesystemPaneState, LayoutAxis, SplitDirection, TabLayoutNode, TabSelectedFilesState,
 };
 
 #[test]
@@ -234,6 +234,61 @@ fn split_layout_leaf_adds_new_pane_and_close_collapses_parent() {
   assert_eq!(replacement.as_deref(), Some(source_pane_id.as_str()));
   assert!(!layout_contains_pane(&tab.layout, &new_pane_id));
   assert_eq!(count_layout_leaves(&tab.layout), 2);
+}
+
+#[test]
+fn split_layout_leaf_supports_left_and_top_directions() {
+  let mut left_layout = TabLayoutNode::Leaf {
+    pane_id: "pane-source".to_string(),
+  };
+  assert!(split_layout_leaf(
+    &mut left_layout,
+    "pane-source",
+    SplitDirection::Left,
+    "pane-left",
+  ));
+  match left_layout {
+    TabLayoutNode::Split {
+      axis, first, second, ..
+    } => {
+      assert_eq!(axis, LayoutAxis::Row);
+      match first.as_ref() {
+        TabLayoutNode::Leaf { pane_id } => assert_eq!(pane_id, "pane-left"),
+        _ => panic!("left split first branch should be a leaf"),
+      }
+      match second.as_ref() {
+        TabLayoutNode::Leaf { pane_id } => assert_eq!(pane_id, "pane-source"),
+        _ => panic!("left split second branch should be a leaf"),
+      }
+    }
+    _ => panic!("left split should produce split layout"),
+  }
+
+  let mut top_layout = TabLayoutNode::Leaf {
+    pane_id: "pane-source".to_string(),
+  };
+  assert!(split_layout_leaf(
+    &mut top_layout,
+    "pane-source",
+    SplitDirection::Top,
+    "pane-top",
+  ));
+  match top_layout {
+    TabLayoutNode::Split {
+      axis, first, second, ..
+    } => {
+      assert_eq!(axis, LayoutAxis::Column);
+      match first.as_ref() {
+        TabLayoutNode::Leaf { pane_id } => assert_eq!(pane_id, "pane-top"),
+        _ => panic!("top split first branch should be a leaf"),
+      }
+      match second.as_ref() {
+        TabLayoutNode::Leaf { pane_id } => assert_eq!(pane_id, "pane-source"),
+        _ => panic!("top split second branch should be a leaf"),
+      }
+    }
+    _ => panic!("top split should produce split layout"),
+  }
 }
 
 #[test]

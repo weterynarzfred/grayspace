@@ -2,7 +2,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { useDroppable } from "@dnd-kit/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePanelsDndHandlers, usePanelsDragActive } from "../PanelsDndLayer";
-import { getFirstDraggedPathFromDndEvent } from "../dndEventPaths";
+import { getDraggedPathsFromDndEvent } from "../dndEventPaths";
 import useExternalPathDrop from "../hooks/useExternalPathDrop";
 import useFilesystemDirectoryWatcher from "../FilesystemPanel/hooks/useFilesystemDirectoryWatcher";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
@@ -27,10 +27,6 @@ function isMediaPreviewKind(kind) {
 function appendCacheBuster(src, token) {
   if (!src) return src;
   return `${src}${src.includes("?") ? "&" : "?"}v=${token}`;
-}
-
-function getFirstPath(paths = []) {
-  return uniqueNonEmptyPaths(paths)[0] ?? "";
 }
 
 function usePreviewPanelState({
@@ -76,10 +72,11 @@ function usePreviewPanelState({
   const isTextPreviewReady = previewState.status === "ready" && previewState.preview?.kind === "text";
   const isTextEditable = isTextPreviewReady && !previewState.preview?.truncated;
 
-  const openFirstDroppedPath = useCallback((paths) => {
-    const firstPath = getFirstPath(paths);
-    if (!firstPath) return;
-    onOpenPreviewPath?.(firstPath, { openMode: "pinned" });
+  const openDroppedPaths = useCallback((paths) => {
+    const droppedPaths = uniqueNonEmptyPaths(paths);
+    droppedPaths.forEach(path => {
+      onOpenPreviewPath?.(path, { openMode: "pinned" });
+    });
   }, [onOpenPreviewPath]);
 
   const saveTextFile = useCallback(async (path, content) => {
@@ -123,14 +120,15 @@ function usePreviewPanelState({
   usePanelsDndHandlers({
     onDragEnd: (event) => {
       if (event?.over?.id !== previewDropId) return;
-      openFirstDroppedPath([getFirstDraggedPathFromDndEvent(event)]);
+      if (event?.active?.data?.current?.kind === "preview-tab") return;
+      openDroppedPaths(getDraggedPathsFromDndEvent(event));
     },
   });
 
   const { isExternalDragOver } = useExternalPathDrop({
     panelRef,
     isEnabled: true,
-    onDropPaths: openFirstDroppedPath,
+    onDropPaths: openDroppedPaths,
   });
 
   const handlePreviewFileWatchChange = useCallback((_watchedPath, changedPath) => {
@@ -289,6 +287,7 @@ function usePreviewPanelState({
   return {
     mediaPreviewSrc,
     isDropOver: (isDropOver && isPanelsDragActive) || isExternalDragOver,
+    isPanelsDragActive,
     isTextEditable,
     isTextPreviewReady,
     previewTabs,

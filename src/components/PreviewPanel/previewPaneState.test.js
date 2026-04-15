@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   closePreviewTab,
   createEmptyPreviewPaneState,
+  getPreviewTabsByPaths,
+  insertPreviewTabs,
   openPathInPreviewPaneState,
+  removePreviewTabsByPaths,
   setActivePreviewTab,
   updatePreviewTab,
 } from "./previewPaneState";
@@ -111,5 +114,43 @@ describe("previewPaneState", () => {
     expect(afterClose.tabs).toHaveLength(1);
     expect(afterClose.tabs[0]?.path).toBe("C:\\two.txt");
     expect(afterClose.activePath).toBe("C:\\two.txt");
+  });
+
+  it("extracts and reinserts tabs while preserving dirty state", () => {
+    const base = openPathInPreviewPaneState(
+      createEmptyPreviewPaneState(),
+      "C:\\one.txt",
+      { openAsEphemeral: false },
+    );
+    const withTwo = openPathInPreviewPaneState(base, "C:\\two.txt", {
+      openAsEphemeral: false,
+    });
+    const withDirtyTwo = updatePreviewTab(withTwo, "C:\\two.txt", {
+      isDirty: true,
+      draftContent: "draft",
+    });
+
+    const extractedTabs = getPreviewTabsByPaths(withDirtyTwo, ["C:\\two.txt"]);
+    expect(extractedTabs).toHaveLength(1);
+    expect(extractedTabs[0]).toMatchObject({
+      path: "C:\\two.txt",
+      isDirty: true,
+      draftContent: "draft",
+    });
+
+    const withoutTwo = removePreviewTabsByPaths(withDirtyTwo, ["C:\\two.txt"]);
+    expect(withoutTwo.tabs.map(tab => tab.path)).toEqual(["C:\\one.txt"]);
+
+    const reinserted = insertPreviewTabs(withoutTwo, extractedTabs, {
+      targetPath: "C:\\one.txt",
+      targetSide: "left",
+      activePath: "C:\\two.txt",
+    });
+    expect(reinserted.tabs.map(tab => tab.path)).toEqual(["C:\\two.txt", "C:\\one.txt"]);
+    expect(reinserted.activePath).toBe("C:\\two.txt");
+    expect(reinserted.tabs[0]).toMatchObject({
+      isDirty: true,
+      draftContent: "draft",
+    });
   });
 });

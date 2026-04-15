@@ -154,6 +154,21 @@ export default function useWorkspaceActions({
     workspaceSplitTabPane(tabId, paneId, direction).catch(handleTabScopedCommandError);
   }, [handleTabScopedCommandError]);
 
+  const handleSplitPaneWithPanelType = useCallback(async (
+    tabId,
+    paneId,
+    direction,
+    newPanelType = null,
+  ) => {
+    if (!tabId || !paneId || !direction) return null;
+    try {
+      return await workspaceSplitTabPane(tabId, paneId, direction, newPanelType);
+    } catch (error) {
+      handleTabScopedCommandError(error);
+      return null;
+    }
+  }, [handleTabScopedCommandError]);
+
   const handleClosePane = useCallback(async (tabId, paneId) => {
     if (!tabId || !paneId) return;
 
@@ -279,6 +294,7 @@ export default function useWorkspaceActions({
     handleSetPaneFilesystemState,
     handleSetActivePane,
     handleSplitPane,
+    handleSplitPaneWithPanelType,
     handleClosePane,
     handlePaneDirtyStateChange,
     handleSetSplitRatio,

@@ -56,6 +56,12 @@ vi.mock("@dnd-kit/core", () => ({
   pointerWithin: vi.fn(() => []),
   useSensor: vi.fn(() => ({})),
   useSensors: vi.fn((...sensors) => sensors),
+  useDraggable: vi.fn(() => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    isDragging: false,
+  })),
   useDroppable: vi.fn(() => ({
     isOver: false,
     setNodeRef: vi.fn(),
@@ -120,7 +126,7 @@ describe("PreviewPanel drag and drop", () => {
     });
   });
 
-  it("loads the first dropped path from internal panel drag", async () => {
+  it("loads all dropped paths from internal panel drag", async () => {
     render(<PreviewPanelHarness />);
 
     await waitFor(() => {
@@ -156,15 +162,17 @@ describe("PreviewPanel drag and drop", () => {
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("preview_read_file", {
-        path: "C:\\notes.txt",
+        path: "C:\\other.txt",
       });
     });
 
-    const tabButton = screen.getByRole("tab", { name: "notes.txt" });
-    expect(tabButton.getAttribute("title")).not.toContain("ephemeral");
+    const notesTab = screen.getByRole("tab", { name: "notes.txt" });
+    const otherTab = screen.getByRole("tab", { name: "other.txt" });
+    expect(notesTab.getAttribute("title")).not.toContain("ephemeral");
+    expect(otherTab.getAttribute("title")).not.toContain("ephemeral");
   });
 
-  it("loads dropped external paths", async () => {
+  it("loads all dropped external paths", async () => {
     render(<PreviewPanelHarness />);
 
     await waitFor(() => {
@@ -187,16 +195,17 @@ describe("PreviewPanel drag and drop", () => {
     await externalDropCallback?.({
       payload: {
         type: "drop",
-        paths: ["C:\\notes.txt"],
+        paths: ["C:\\notes.txt", "C:\\other.txt"],
         position: { x: 100, y: 100 },
       },
     });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("preview_read_file", {
-        path: "C:\\notes.txt",
+        path: "C:\\other.txt",
       });
     });
     expect(screen.getByRole("tab", { name: "notes.txt" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "other.txt" })).toBeInTheDocument();
   });
 });

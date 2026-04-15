@@ -177,3 +177,92 @@ export function updatePreviewTab(state = undefined, path = "", patch = {}) {
     tabs,
   });
 }
+
+function normalizeUniquePaths(paths = []) {
+  const normalizedPaths = [];
+  paths.forEach((path) => {
+    const normalizedPath = normalizePath(path);
+    if (!normalizedPath) return;
+    if (normalizedPaths.some(candidatePath => isSamePath(candidatePath, normalizedPath))) return;
+    normalizedPaths.push(normalizedPath);
+  });
+  return normalizedPaths;
+}
+
+export function getPreviewTabsByPaths(state = undefined, paths = []) {
+  const normalizedState = normalizePreviewPaneState(state);
+  const normalizedPaths = normalizeUniquePaths(paths);
+  if (normalizedPaths.length === 0) return [];
+
+  return normalizedPaths
+    .map((path) => {
+      const tabIndex = findPreviewTabIndexByPath(normalizedState.tabs, path);
+      return tabIndex >= 0 ? normalizedState.tabs[tabIndex] : null;
+    })
+    .filter(tab => tab !== null);
+}
+
+export function removePreviewTabsByPaths(state = undefined, paths = []) {
+  const normalizedState = normalizePreviewPaneState(state);
+  const normalizedPaths = normalizeUniquePaths(paths);
+  if (normalizedPaths.length === 0) return normalizedState;
+
+  const removeIndexes = normalizedPaths
+    .map(path => findPreviewTabIndexByPath(normalizedState.tabs, path))
+    .filter(index => index >= 0)
+    .sort((leftIndex, rightIndex) => leftIndex - rightIndex);
+  if (removeIndexes.length === 0) return normalizedState;
+
+  const tabs = normalizedState.tabs.filter((tab, index) => !removeIndexes.includes(index));
+  if (tabs.length === 0) return createEmptyPreviewPaneState();
+
+  const activePathWasRemoved = normalizedPaths.some(path => isSamePath(path, normalizedState.activePath));
+  if (!activePathWasRemoved) {
+    return normalizePreviewPaneState({
+      tabs,
+      activePath: normalizedState.activePath,
+    });
+  }
+
+  const fallbackIndex = Math.max(0, removeIndexes[0] - 1);
+  const fallbackPath = tabs[fallbackIndex]?.path ?? tabs[0]?.path ?? "";
+  return normalizePreviewPaneState({
+    tabs,
+    activePath: fallbackPath,
+  });
+}
+
+export function insertPreviewTabs(state = undefined, tabsToInsert = [], options = {}) {
+  const normalizedState = normalizePreviewPaneState(state);
+  const normalizedTabsToInsert = tabsToInsert
+    .map(tab => normalizePreviewTab(tab))
+    .filter(tab => tab !== null);
+  if (normalizedTabsToInsert.length === 0) return normalizedState;
+
+  const insertPaths = normalizedTabsToInsert.map(tab => tab.path);
+  const baseState = removePreviewTabsByPaths(normalizedState, insertPaths);
+  const tabs = [...baseState.tabs];
+
+  let insertIndex = tabs.length;
+  const targetPath = normalizePath(options?.targetPath);
+  if (targetPath) {
+    const targetIndex = findPreviewTabIndexByPath(tabs, targetPath);
+    if (targetIndex >= 0) {
+      insertIndex = options?.targetSide === "left" ? targetIndex : targetIndex + 1;
+    }
+  }
+  if (Number.isInteger(options?.index)) {
+    insertIndex = Math.min(Math.max(0, options.index), tabs.length);
+  }
+
+  tabs.splice(insertIndex, 0, ...normalizedTabsToInsert);
+  const requestedActivePath = normalizePath(options?.activePath);
+  const activePath = requestedActivePath
+    ? requestedActivePath
+    : (normalizedTabsToInsert.at(-1)?.path ?? "");
+
+  return normalizePreviewPaneState({
+    tabs,
+    activePath,
+  });
+}
