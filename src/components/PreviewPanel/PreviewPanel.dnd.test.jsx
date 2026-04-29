@@ -1,7 +1,15 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 import PanelsDndLayer from "../PanelsDndLayer";
 import PreviewPanel from "./PreviewPanel";
+import {
+  normalizePreviewPaneState,
+  openPathInPreviewPaneState,
+  setActivePreviewTab,
+  closePreviewTab,
+  updatePreviewTab,
+} from "./previewPaneState";
 import { runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
 
 const dndCallbacks = {
@@ -10,6 +18,7 @@ const dndCallbacks = {
   onDragCancel: undefined,
 };
 let externalDropCallback;
+const openConfirmMock = vi.fn(async () => true);
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -30,6 +39,12 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async () => () => { }),
 }));
 
+vi.mock("../../notifications/notificationCenter", () => ({
+  useNotificationCenter: () => ({
+    openConfirm: openConfirmMock,
+  }),
+}));
+
 vi.mock("@dnd-kit/core", () => ({
   DndContext: ({ children, onDragStart, onDragEnd, onDragCancel }) => {
     dndCallbacks.onDragStart = runInAct(onDragStart);
@@ -41,6 +56,12 @@ vi.mock("@dnd-kit/core", () => ({
   pointerWithin: vi.fn(() => []),
   useSensor: vi.fn(() => ({})),
   useSensors: vi.fn((...sensors) => sensors),
+  useDraggable: vi.fn(() => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    isDragging: false,
+  })),
   useDroppable: vi.fn(() => ({
     isOver: false,
     setNodeRef: vi.fn(),
@@ -51,12 +72,43 @@ vi.mock("./CodeTextPreview", () => ({
   default: ({ content }) => <div data-testid="preview-text-content">{content}</div>,
 }));
 
+function PreviewPanelHarness() {
+  const [paneState, setPaneState] = useState(
+    normalizePreviewPaneState({ tabs: [], activePath: "" }),
+  );
+
+  return (
+    <PanelsDndLayer>
+      <PreviewPanel
+        paneId="preview-pane"
+        previewPaneState={paneState}
+        onOpenPreviewPath={(path, options = {}) => {
+          setPaneState(previous => openPathInPreviewPaneState(previous, path, {
+            openAsEphemeral: options?.openMode !== "pinned",
+          }));
+        }}
+        onActivatePreviewTab={(path) => {
+          setPaneState(previous => setActivePreviewTab(previous, path));
+        }}
+        onClosePreviewTab={(path) => {
+          setPaneState(previous => closePreviewTab(previous, path));
+        }}
+        onUpdatePreviewTab={(path, patch = {}) => {
+          setPaneState(previous => updatePreviewTab(previous, path, patch));
+        }}
+      />
+    </PanelsDndLayer>
+  );
+}
+
 describe("PreviewPanel drag and drop", () => {
   beforeEach(() => {
     externalDropCallback = undefined;
     dndCallbacks.onDragStart = undefined;
     dndCallbacks.onDragEnd = undefined;
     dndCallbacks.onDragCancel = undefined;
+    openConfirmMock.mockReset();
+    openConfirmMock.mockResolvedValue(true);
     invoke.mockReset();
     invoke.mockImplementation(async (command, payload) => {
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
@@ -74,17 +126,8 @@ describe("PreviewPanel drag and drop", () => {
     });
   });
 
-  it("locks and loads the first dropped path", async () => {
-    render(
-      <PanelsDndLayer>
-        <PreviewPanel
-          paneId="preview-pane"
-          tabSelectedFiles={{
-            selectedPaths: [],
-          }}
-        />
-      </PanelsDndLayer>,
-    );
+  it("loads all dropped paths from internal panel drag", async () => {
+    render(<PreviewPanelHarness />);
 
     await waitFor(() => {
       expect(typeof dndCallbacks.onDragEnd).toBe("function");
@@ -119,24 +162,18 @@ describe("PreviewPanel drag and drop", () => {
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("preview_read_file", {
-        path: "C:\\notes.txt",
+        path: "C:\\other.txt",
       });
     });
 
-    expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
+    const notesTab = screen.getByRole("tab", { name: "notes.txt" });
+    const otherTab = screen.getByRole("tab", { name: "other.txt" });
+    expect(notesTab.getAttribute("title")).not.toContain("ephemeral");
+    expect(otherTab.getAttribute("title")).not.toContain("ephemeral");
   });
 
-  it("loads dropped external paths", async () => {
-    render(
-      <PanelsDndLayer>
-        <PreviewPanel
-          paneId="preview-pane"
-          tabSelectedFiles={{
-            selectedPaths: [],
-          }}
-        />
-      </PanelsDndLayer>,
-    );
+  it("loads all dropped external paths", async () => {
+    render(<PreviewPanelHarness />);
 
     await waitFor(() => {
       expect(typeof externalDropCallback).toBe("function");
@@ -158,16 +195,17 @@ describe("PreviewPanel drag and drop", () => {
     await externalDropCallback?.({
       payload: {
         type: "drop",
-        paths: ["C:\\notes.txt"],
+        paths: ["C:\\notes.txt", "C:\\other.txt"],
         position: { x: 100, y: 100 },
       },
     });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("preview_read_file", {
-        path: "C:\\notes.txt",
+        path: "C:\\other.txt",
       });
     });
-    expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "notes.txt" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "other.txt" })).toBeInTheDocument();
   });
 });

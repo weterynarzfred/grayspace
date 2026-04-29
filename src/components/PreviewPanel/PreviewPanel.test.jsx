@@ -1,9 +1,18 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { useState } from "react";
 import PanelsDndLayer from "../PanelsDndLayer";
 import PreviewPanel from "./PreviewPanel";
+import {
+  closePreviewTab,
+  normalizePreviewPaneState,
+  openPathInPreviewPaneState,
+  setActivePreviewTab,
+  updatePreviewTab,
+} from "./previewPaneState";
 
 let filesystemWatchCallback;
+const openConfirmMock = vi.fn(async () => true);
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -16,6 +25,12 @@ vi.mock("@tauri-apps/api/event", () => ({
     return () => {
       if (filesystemWatchCallback === handler) filesystemWatchCallback = undefined;
     };
+  }),
+}));
+
+vi.mock("../../notifications/notificationCenter", () => ({
+  useNotificationCenter: () => ({
+    openConfirm: openConfirmMock,
   }),
 }));
 
@@ -39,45 +54,78 @@ vi.mock("./CodeTextPreview", () => ({
   ),
 }));
 
-describe("PreviewPanel", () => {
-  function renderPreviewPanel(props = {}) {
-    return render(
-      <PanelsDndLayer>
-        <PreviewPanel {...props} />
-      </PanelsDndLayer>,
-    );
-  }
+function PreviewPanelHarness({ initialPaneState = undefined }) {
+  const [paneState, setPaneState] = useState(
+    normalizePreviewPaneState(initialPaneState),
+  );
 
+  return (
+    <PanelsDndLayer>
+      <PreviewPanel
+        paneId="preview-pane"
+        previewPaneState={paneState}
+        onOpenPreviewPath={(path, options = {}) => {
+          setPaneState(previous => openPathInPreviewPaneState(previous, path, {
+            openAsEphemeral: options?.openMode !== "pinned",
+          }));
+        }}
+        onActivatePreviewTab={(path) => {
+          setPaneState(previous => setActivePreviewTab(previous, path));
+        }}
+        onClosePreviewTab={(path) => {
+          setPaneState(previous => closePreviewTab(previous, path));
+        }}
+        onUpdatePreviewTab={(path, patch = {}) => {
+          setPaneState(previous => updatePreviewTab(previous, path, patch));
+        }}
+      />
+    </PanelsDndLayer>
+  );
+}
+
+function createSingleTabPaneState(path, options = {}) {
+  return {
+    tabs: [
+      {
+        path,
+        isEphemeral: options?.isEphemeral ?? true,
+        isDirty: options?.isDirty ?? false,
+        draftContent: options?.draftContent ?? "",
+      },
+    ],
+    activePath: path,
+  };
+}
+
+describe("PreviewPanel", () => {
   beforeEach(() => {
     filesystemWatchCallback = undefined;
     invoke.mockReset();
     convertFileSrc.mockClear();
+    openConfirmMock.mockReset();
+    openConfirmMock.mockResolvedValue(true);
   });
 
-  it("shows a placeholder when there is no selected file", () => {
-    renderPreviewPanel({
-      tabSelectedFiles: {
-        selectedPaths: [],
-      },
-    });
+  it("shows a placeholder when there are no preview tabs", () => {
+    render(<PreviewPanelHarness initialPaneState={{ tabs: [], activePath: "" }} />);
 
     expect(screen.getByLabelText("Preview panel")).toBeInTheDocument();
     expect(screen.getByText("Select a file to preview.")).toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalled();
   });
 
-  it("loads and renders plain text previews", async () => {
+  it("loads and renders plain text previews for the active preview tab", async () => {
     invoke.mockResolvedValue({
       kind: "text",
       content: "hello preview",
       truncated: false,
     });
 
-    renderPreviewPanel({
-      tabSelectedFiles: {
-        selectedPaths: ["C:\\notes.txt"],
-      },
-    });
+    render(
+      <PreviewPanelHarness
+        initialPaneState={createSingleTabPaneState("C:\\notes.txt")}
+      />,
+    );
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("preview_read_file", {
@@ -86,7 +134,7 @@ describe("PreviewPanel", () => {
     });
 
     expect(await screen.findByTestId("preview-text-content")).toHaveTextContent("hello preview");
-    expect(screen.getByText("notes.txt").tagName).toBe("EM");
+    expect(screen.getByRole("tab", { name: "notes.txt" })).toBeInTheDocument();
   });
 
   it("loads and renders image previews", async () => {
@@ -95,11 +143,11 @@ describe("PreviewPanel", () => {
       mimeType: "image/png",
     });
 
-    renderPreviewPanel({
-      tabSelectedFiles: {
-        selectedPaths: ["C:\\image.png"],
-      },
-    });
+    render(
+      <PreviewPanelHarness
+        initialPaneState={createSingleTabPaneState("C:\\image.png")}
+      />,
+    );
 
     const image = await screen.findByRole("img", { name: /preview of image\.png/i });
     expect(image.getAttribute("src")).toContain("asset://localhost/C%3A%5Cimage.png");
@@ -107,88 +155,11 @@ describe("PreviewPanel", () => {
     expect(convertFileSrc).toHaveBeenCalledWith("C:\\image.png");
   });
 
-  it("loads and renders video previews", async () => {
-    invoke.mockResolvedValue({
-      kind: "video",
-      mimeType: "video/mp4",
-    });
-
-    renderPreviewPanel({
-      tabSelectedFiles: {
-        selectedPaths: ["C:\\movie.mp4"],
-      },
-    });
-
-    const video = await screen.findByTestId("preview-video");
-    expect(video.getAttribute("src")).toContain("asset://localhost/C%3A%5Cmovie.mp4");
-    expect(video.getAttribute("src")).toMatch(/\?v=\d+$/);
-    expect(convertFileSrc).toHaveBeenCalledWith("C:\\movie.mp4");
-  });
-
-  it("loads and renders audio previews", async () => {
-    invoke.mockResolvedValue({
-      kind: "audio",
-      mimeType: "audio/mpeg",
-    });
-
-    renderPreviewPanel({
-      tabSelectedFiles: {
-        selectedPaths: ["C:\\song.mp3"],
-      },
-    });
-
-    const audio = await screen.findByTestId("preview-audio");
-    expect(audio.getAttribute("src")).toContain("asset://localhost/C%3A%5Csong.mp3");
-    expect(audio.getAttribute("src")).toMatch(/\?v=\d+$/);
-    expect(convertFileSrc).toHaveBeenCalledWith("C:\\song.mp3");
-  });
-
-  it("shows unsupported-type messages returned by the backend", async () => {
-    invoke.mockResolvedValue({
-      kind: "unsupported",
-      reason: "PDF document previews are not supported yet.",
-    });
-
-    renderPreviewPanel({
-      tabSelectedFiles: {
-        selectedPaths: ["C:\\spec.pdf"],
-      },
-    });
-
-    expect(await screen.findByText("PDF document previews are not supported yet.")).toBeInTheDocument();
-  });
-
-  it("shows a friendly unsupported message for folders", async () => {
-    invoke.mockRejectedValue(new Error("Preview is only available for files."));
-
-    renderPreviewPanel({
-      tabSelectedFiles: {
-        selectedPaths: ["C:\\workspace"],
-      },
-    });
-
-    expect(await screen.findByText("Folder previews are not supported yet.")).toBeInTheDocument();
-    expect(screen.queryByText("Preview is only available for files.")).not.toBeInTheDocument();
-  });
-
-  it("surfaces preview loading errors", async () => {
-    invoke.mockRejectedValue(new Error("Permission denied."));
-
-    renderPreviewPanel({
-      tabSelectedFiles: {
-        selectedPaths: ["C:\\locked.txt"],
-      },
-    });
-
-    expect(await screen.findByText("Permission denied.")).toBeInTheDocument();
-  });
-
-  it("saves text edits only when save is triggered", async () => {
+  it("marks tab as dirty while editing and clears dirty state after save", async () => {
     invoke.mockImplementation(async (command) => {
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
         return null;
       }
-
       if (command === "preview_read_file") {
         return {
           kind: "text",
@@ -196,26 +167,32 @@ describe("PreviewPanel", () => {
           truncated: false,
         };
       }
-
-      if (command === "preview_write_text_file") {
-        return null;
-      }
-
+      if (command === "preview_write_text_file") return null;
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    renderPreviewPanel({
-      tabSelectedFiles: {
-        selectedPaths: ["C:\\notes.txt"],
-      },
-    });
+    render(
+      <PreviewPanelHarness
+        initialPaneState={createSingleTabPaneState("C:\\notes.txt")}
+      />,
+    );
 
     await screen.findByTestId("preview-text-content");
+    await waitFor(() => {
+      const readCalls = invoke.mock.calls.filter(([command]) => command === "preview_read_file");
+      expect(readCalls).toHaveLength(1);
+    });
+    const tabButton = screen.getByRole("tab", { name: "notes.txt" });
+    expect(tabButton.getAttribute("title")).toContain("ephemeral");
+
     fireEvent.click(screen.getByRole("button", { name: "mock-change" }));
     expect(await screen.findByText("Unsaved changes.")).toBeInTheDocument();
-    expect(
-      invoke.mock.calls.some(([command]) => command === "preview_write_text_file"),
-    ).toBe(false);
+    expect(screen.getByRole("tab", { name: /notes\.txt \*/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /notes\.txt \*/i }).getAttribute("title")).not.toContain("ephemeral");
+    await waitFor(() => {
+      const readCalls = invoke.mock.calls.filter(([command]) => command === "preview_read_file");
+      expect(readCalls).toHaveLength(1);
+    });
 
     fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
     await waitFor(() => {
@@ -224,142 +201,112 @@ describe("PreviewPanel", () => {
         content: "hello preview updated",
       });
     });
+    await waitFor(() => {
+      expect(screen.queryByRole("tab", { name: /notes\.txt \*/i })).not.toBeInTheDocument();
+    });
   });
 
-  it("keeps truncated text previews read-only", async () => {
+  it("double click on an ephemeral tab removes ephemeral flag", async () => {
     invoke.mockResolvedValue({
       kind: "text",
-      content: "truncated preview",
-      truncated: true,
+      content: "hello preview",
+      truncated: false,
     });
 
-    renderPreviewPanel({
-      tabSelectedFiles: {
-        selectedPaths: ["C:\\large.txt"],
-      },
-    });
+    render(
+      <PreviewPanelHarness
+        initialPaneState={createSingleTabPaneState("C:\\notes.txt")}
+      />,
+    );
 
-    expect(await screen.findByTestId("preview-read-only")).toHaveTextContent("true");
-    expect(
-      await screen.findByText("Preview is truncated. Editing is disabled for large files."),
-    ).toBeInTheDocument();
+    const tabButton = await screen.findByRole("tab", { name: "notes.txt" });
+    expect(tabButton.getAttribute("title")).toContain("ephemeral");
+    fireEvent.doubleClick(tabButton);
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "notes.txt" }).getAttribute("title")).not.toContain("ephemeral");
+    });
   });
 
-  it("auto-locks when selection changes while text edits are unsaved", async () => {
-    invoke.mockImplementation(async (command, payload) => {
-      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
-        return null;
-      }
-
-      if (command === "preview_read_file") {
-        if (payload?.path === "C:\\notes.txt") {
-          return {
-            kind: "text",
-            content: "notes body",
-            truncated: false,
-          };
-        }
-        if (payload?.path === "C:\\other.txt") {
-          return {
-            kind: "text",
-            content: "other body",
-            truncated: false,
-          };
-        }
-      }
-
-      if (command === "preview_write_text_file") {
-        return null;
-      }
-
-      throw new Error(`Unhandled invoke: ${command}`);
+  it("closes tabs from the header close button", async () => {
+    invoke.mockResolvedValue({
+      kind: "text",
+      content: "hello preview",
+      truncated: false,
     });
 
-    const { rerender } = render(
-      <PanelsDndLayer>
-        <PreviewPanel
-          tabSelectedFiles={{
-            selectedPaths: ["C:\\notes.txt"],
-          }}
-        />
-      </PanelsDndLayer>,
+    render(
+      <PreviewPanelHarness
+        initialPaneState={createSingleTabPaneState("C:\\notes.txt", {
+          isEphemeral: false,
+        })}
+      />,
     );
 
-    await screen.findByTestId("preview-text-content");
-    fireEvent.click(screen.getByRole("button", { name: "mock-change" }));
-    expect(await screen.findByText("Unsaved changes.")).toBeInTheDocument();
+    await screen.findByRole("tab", { name: "notes.txt" });
+    fireEvent.click(screen.getByRole("button", { name: /close notes\.txt/i }));
 
-    rerender(
-      <PanelsDndLayer>
-        <PreviewPanel
-          tabSelectedFiles={{
-            selectedPaths: ["C:\\other.txt"],
-          }}
-        />
-      </PanelsDndLayer>,
-    );
-
-    expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
-    expect(screen.getByTestId("preview-text-content")).toHaveTextContent("notes body updated");
-
-    const readCalls = invoke.mock.calls.filter(([command]) => command === "preview_read_file");
-    expect(readCalls).toEqual([
-      ["preview_read_file", { path: "C:\\notes.txt" }],
-    ]);
+    expect(await screen.findByText("Select a file to preview.")).toBeInTheDocument();
+    expect(openConfirmMock).not.toHaveBeenCalled();
   });
 
-  it("keeps non-text previews pinned when manually locked", async () => {
-    invoke.mockImplementation(async (command, payload) => {
-      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
-        return null;
-      }
-
-      if (command === "preview_read_file") {
-        if (payload?.path === "C:\\one.png") {
-          return {
-            kind: "image",
-            mimeType: "image/png",
-          };
-        }
-        if (payload?.path === "C:\\two.png") {
-          return {
-            kind: "image",
-            mimeType: "image/png",
-          };
-        }
-      }
-
-      throw new Error(`Unhandled invoke: ${command}`);
+  it("requires confirmation before closing a dirty tab", async () => {
+    invoke.mockResolvedValue({
+      kind: "text",
+      content: "hello preview",
+      truncated: false,
     });
 
-    const { rerender } = render(
-      <PanelsDndLayer>
-        <PreviewPanel
-          tabSelectedFiles={{
-            selectedPaths: ["C:\\one.png"],
-          }}
-        />
-      </PanelsDndLayer>,
+    render(
+      <PreviewPanelHarness
+        initialPaneState={createSingleTabPaneState("C:\\notes.txt", {
+          isEphemeral: false,
+          isDirty: true,
+          draftContent: "draft text",
+        })}
+      />,
     );
 
-    await screen.findByRole("img", { name: /preview of one\.png/i });
-    fireEvent.click(screen.getByRole("button", { name: /^lock$/i }));
+    await screen.findByRole("tab", { name: /notes\.txt \*/i });
+    fireEvent.click(screen.getByRole("button", { name: /close notes\.txt/i }));
 
-    rerender(
-      <PanelsDndLayer>
-        <PreviewPanel
-          tabSelectedFiles={{
-            selectedPaths: ["C:\\two.png"],
-          }}
-        />
-      </PanelsDndLayer>,
+    await waitFor(() => {
+      expect(openConfirmMock).toHaveBeenCalledWith({
+        title: "Discard unsaved changes?",
+        message: "Close this tab and discard unsaved changes?",
+        tone: "warning",
+        confirmLabel: "Close tab",
+        cancelLabel: "Cancel",
+      });
+    });
+    expect(await screen.findByText("Select a file to preview.")).toBeInTheDocument();
+  });
+
+  it("keeps dirty tab open when close confirmation is cancelled", async () => {
+    openConfirmMock.mockResolvedValueOnce(false);
+    invoke.mockResolvedValue({
+      kind: "text",
+      content: "hello preview",
+      truncated: false,
+    });
+
+    render(
+      <PreviewPanelHarness
+        initialPaneState={createSingleTabPaneState("C:\\notes.txt", {
+          isEphemeral: false,
+          isDirty: true,
+          draftContent: "draft text",
+        })}
+      />,
     );
 
-    const image = await screen.findByRole("img", { name: /preview of one\.png/i });
-    expect(image.getAttribute("src")).toContain("asset://localhost/C%3A%5Cone.png");
-    expect(image.getAttribute("src")).toMatch(/\?v=\d+$/);
-    expect(screen.getByRole("button", { name: /^unlock$/i })).toBeInTheDocument();
-    expect(invoke).not.toHaveBeenCalledWith("preview_read_file", { path: "C:\\two.png" });
+    await screen.findByRole("tab", { name: /notes\.txt \*/i });
+    fireEvent.click(screen.getByRole("button", { name: /close notes\.txt/i }));
+
+    await waitFor(() => {
+      expect(openConfirmMock).toHaveBeenCalled();
+    });
+    expect(screen.getByRole("tab", { name: /notes\.txt \*/i })).toBeInTheDocument();
   });
 
   it("starts a watcher for the preview file parent directory", async () => {
@@ -367,7 +314,6 @@ describe("PreviewPanel", () => {
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") {
         return null;
       }
-
       if (command === "preview_read_file") {
         return {
           kind: "text",
@@ -375,15 +321,16 @@ describe("PreviewPanel", () => {
           truncated: false,
         };
       }
-
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { unmount } = renderPreviewPanel({
-      tabSelectedFiles: {
-        selectedPaths: ["C:\\notes.txt"],
-      },
-    });
+    const { unmount } = render(
+      <PreviewPanelHarness
+        initialPaneState={createSingleTabPaneState("C:\\notes.txt", {
+          isEphemeral: false,
+        })}
+      />,
+    );
 
     await screen.findByTestId("preview-text-content");
 

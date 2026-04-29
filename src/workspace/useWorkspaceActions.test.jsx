@@ -279,6 +279,32 @@ describe("useWorkspaceActions basic commands", () => {
     expect(workspaceSetTabSelectedFiles).toHaveBeenCalledWith("tab-1", ["C:\\a.txt"]);
   });
 
+  it("splits pane with explicit panel type and returns split metadata", async () => {
+    workspaceSplitTabPane.mockResolvedValueOnce({ newPaneId: "pane-2" });
+    const { result } = renderHook(() => useWorkspaceActions({
+      currentWindow: { windowId: "window-1" },
+      activeTab: createActiveTab(),
+    }));
+
+    let splitResult = null;
+    await act(async () => {
+      splitResult = await result.current.handleSplitPaneWithPanelType(
+        "tab-1",
+        "pane-1",
+        "left",
+        "Preview",
+      );
+    });
+
+    expect(workspaceSplitTabPane).toHaveBeenCalledWith(
+      "tab-1",
+      "pane-1",
+      "left",
+      "Preview",
+    );
+    expect(splitResult).toEqual({ newPaneId: "pane-2" });
+  });
+
   it("skips pane/layout state commands when tab id is missing", async () => {
     const { result } = renderHook(() => useWorkspaceActions({
       currentWindow: { windowId: "window-1" },

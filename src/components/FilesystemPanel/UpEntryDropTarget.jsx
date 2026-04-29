@@ -3,6 +3,7 @@ import EntryItem from "./EntryItem";
 import { getUpDndId } from "./dndIds";
 
 function UpEntryDropTarget({
+  paneId = "",
   destinationPath,
   isSelected,
   isMovingEntry,
@@ -13,6 +14,12 @@ function UpEntryDropTarget({
   const { isOver, setNodeRef } = useDroppable({
     id: getUpDndId(destinationPath),
     disabled: isMovingEntry || !destinationPath,
+    data: {
+      kind: "up",
+      path: destinationPath,
+      isDirectory: true,
+      paneId,
+    },
   });
   const isDropTarget =
     Boolean(destinationPath) &&

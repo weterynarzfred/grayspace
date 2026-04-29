@@ -200,7 +200,9 @@ pub struct TabActivePanePayload {
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum SplitDirection {
+  Left,
   Right,
+  Top,
   Bottom,
 }
 

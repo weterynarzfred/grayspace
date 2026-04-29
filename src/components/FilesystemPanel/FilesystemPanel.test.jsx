@@ -754,12 +754,14 @@ describe("FilesystemPanel", () => {
       selectedEntryKinds: {
         "C:\\notes.txt": "file",
       },
+      previewOpenMode: "ephemeral",
     });
 
     fireEvent.click(fileButton, { ctrlKey: true });
     expect(onTabSelectedFilesChange).toHaveBeenLastCalledWith({
       selectedPaths: [],
       selectedEntryKinds: {},
+      previewOpenMode: "ephemeral",
     });
   });
 
@@ -960,6 +962,30 @@ describe("FilesystemPanel", () => {
       });
     });
     expect(screen.getByRole("button", { name: /Temp/i })).toBeInTheDocument();
+  });
+
+  it("opens middle-clicked files as pinned preview entries", async () => {
+    const onTabSelectedFilesChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-1",
+      onTabSelectedFilesChange,
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+
+    const fileButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.mouseDown(fileButton, { button: 1 });
+    fireEvent.mouseUp(fileButton, { button: 1 });
+
+    expect(onTabSelectedFilesChange).toHaveBeenLastCalledWith({
+      selectedPaths: ["C:\\notes.txt"],
+      selectedEntryKinds: {
+        "C:\\notes.txt": "file",
+      },
+      previewOpenMode: "pinned",
+    });
+    expect(invoke).not.toHaveBeenCalledWith("open_path", { path: "C:\\notes.txt" });
   });
 
   it("opens non-workspace folders in a new tab on ctrl+double click", async () => {

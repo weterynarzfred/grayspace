@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { vi } from "vitest";
+import { NotificationCenterProvider } from "../notifications/notificationCenter";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -79,6 +80,10 @@ vi.mock("./FilesystemPanel/FilesystemPanel", () => ({
 
 import WorkspacePanelLayout from "./WorkspacePanelLayout";
 
+function renderWithNotificationCenter(ui) {
+  return render(<NotificationCenterProvider>{ui}</NotificationCenterProvider>);
+}
+
 describe("WorkspacePanelLayout", () => {
   beforeEach(() => {
     invoke.mockReset();
@@ -97,7 +102,7 @@ describe("WorkspacePanelLayout", () => {
     const onPaneActivate = vi.fn();
     const paneId = "pane-a";
 
-    render(
+    renderWithNotificationCenter(
       <WorkspacePanelLayout
         primaryFilesystemPaneId={paneId}
         tab={{
@@ -169,7 +174,7 @@ describe("WorkspacePanelLayout", () => {
   it("forwards current path updates only for the primary filesystem pane", () => {
     const onCurrentPathChange = vi.fn();
 
-    render(
+    renderWithNotificationCenter(
       <WorkspacePanelLayout
         primaryFilesystemPaneId="pane-a"
         tab={{
@@ -234,7 +239,7 @@ describe("WorkspacePanelLayout", () => {
     const onPaneSplit = vi.fn();
     const onPaneClose = vi.fn();
 
-    render(
+    renderWithNotificationCenter(
       <WorkspacePanelLayout
         tab={{
           tabId: "tab-pane-controls",
@@ -321,7 +326,7 @@ describe("WorkspacePanelLayout", () => {
   it("reports split ratio changes for the active tab layout path", () => {
     const onSplitRatioChange = vi.fn();
 
-    render(
+    renderWithNotificationCenter(
       <WorkspacePanelLayout
         tab={{
           tabId: "tab-ratio",
@@ -381,7 +386,7 @@ describe("WorkspacePanelLayout", () => {
   it("flattens same-axis split chains and reports nested ratios", () => {
     const onSplitRatioChange = vi.fn();
 
-    render(
+    renderWithNotificationCenter(
       <WorkspacePanelLayout
         tab={{
           tabId: "tab-chain",

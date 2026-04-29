@@ -54,6 +54,7 @@ function StaticCrumbButton({ crumb, onSelect, isWorkspaceFolder = false }) {
 function DroppableCrumbButton({
   crumb,
   index,
+  paneId,
   onSelect,
   isMovingEntry,
   activeDragPaths,
@@ -64,6 +65,12 @@ function DroppableCrumbButton({
   const { isOver, setNodeRef } = useDroppable({
     id: dropId || `breadcrumb-disabled-${index}`,
     disabled: !hasDestinationPath || isMovingEntry,
+    data: {
+      kind: "breadcrumb",
+      path: crumb.path,
+      isDirectory: true,
+      paneId,
+    },
   });
   const isDropTarget =
     hasDestinationPath &&
@@ -88,6 +95,7 @@ function DroppableCrumbButton({
 }
 
 function Breadcrumbs({
+  paneId = "",
   currentPath,
   currentDrive,
   onSelect,
@@ -433,6 +441,7 @@ function Breadcrumbs({
             key={`${crumb.path}-${index}`}
             crumb={crumb}
             index={index}
+            paneId={paneId}
             onSelect={onSelect}
             isMovingEntry={isMovingEntry}
             activeDragPaths={activeDragPaths}

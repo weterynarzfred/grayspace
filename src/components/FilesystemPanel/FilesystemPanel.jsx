@@ -265,6 +265,7 @@ function FilesystemPanel({
       kind: "panel",
       path: currentPath,
       isDirectory: true,
+      paneId,
     },
   });
   const setPanelNodeRef = useCallback((node) => {

@@ -86,6 +86,7 @@ function DraggableFilesystemEntry({
     id: draggableId,
     disabled: isMovingEntry || isRenaming,
     data: {
+      kind: "filesystem-entry",
       sourcePath: entry.path,
       sourcePaneId: paneId,
       dragPaths,
@@ -98,6 +99,7 @@ function DraggableFilesystemEntry({
       kind: "entry",
       path: destinationPath,
       isDirectory: true,
+      paneId,
     },
   });
 

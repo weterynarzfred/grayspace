@@ -15,6 +15,71 @@
   width: 100%;
 }
 
+.paneDropZones {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.paneDropZonesVisible {
+  opacity: 1;
+}
+
+.paneDropZone {
+  position: absolute;
+  pointer-events: none;
+  background: transparent;
+}
+
+.paneDropZonesVisible .paneDropZone {
+  pointer-events: auto;
+}
+
+.paneDropZoneLeft {
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 20%;
+}
+
+.paneDropZoneRight {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 20%;
+}
+
+.paneDropZoneTop {
+  left: 20%;
+  right: 20%;
+  top: var(--pane-drop-zone-top-inset-px, 0px);
+  height: max(0px, calc(20% - var(--pane-drop-zone-top-inset-px, 0px)));
+}
+
+.paneDropZoneBottom {
+  left: 20%;
+  right: 20%;
+  bottom: 0;
+  height: 20%;
+}
+
+.paneDropZoneCenter {
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  top: 20%;
+  bottom: 20%;
+  border: 1px dashed $border-default;
+  border-radius: 0.35rem;
+}
+
+.paneDropZonesVisible .paneDropZoneActive {
+  background: $bg-selected;
+}
+
 .cornerHandles {
   position: absolute;
   inset: 0;

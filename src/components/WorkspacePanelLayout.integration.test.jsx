@@ -5,6 +5,12 @@ import PanelsDndLayer from "./PanelsDndLayer";
 import WorkspacePanelLayout from "./WorkspacePanelLayout";
 import { getPaneIdsInLayoutOrder } from "./workspacePanelLayoutUtils";
 import { NotificationCenterProvider } from "../notifications/notificationCenter";
+import {
+  closePreviewTab,
+  openPathInPreviewPaneState,
+  setActivePreviewTab,
+  updatePreviewTab,
+} from "./PreviewPanel/previewPaneState";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -100,8 +106,32 @@ function createInitialTabState() {
   };
 }
 
+function resolvePreviewPaneIdForTab(tab) {
+  const paneStates = tab?.paneStates ?? {};
+  const activePaneId = tab?.activePaneId ?? "";
+  if (paneStates[activePaneId]?.panelType === "Preview") return activePaneId;
+
+  const paneIdsInLayoutOrder = getPaneIdsInLayoutOrder(tab?.layout);
+  const firstPreviewPaneId = paneIdsInLayoutOrder.find((paneId) => (
+    paneStates[paneId]?.panelType === "Preview"
+  ));
+  if (firstPreviewPaneId) return firstPreviewPaneId;
+
+  return Object.keys(paneStates).find((paneId) => paneStates[paneId]?.panelType === "Preview")
+    ?? "";
+}
+
+function resolveSelectedFilePath(selectedFiles = {}) {
+  const selectedPaths = Array.isArray(selectedFiles?.selectedPaths)
+    ? selectedFiles.selectedPaths
+    : [];
+  const selectedEntryKinds = selectedFiles?.selectedEntryKinds ?? {};
+  return selectedPaths.find((path) => selectedEntryKinds[path] === "file") ?? "";
+}
+
 function WorkspacePanelLayoutHarness() {
   const [tab, setTab] = useState(createInitialTabState);
+  const [previewPaneStateById, setPreviewPaneStateById] = useState({});
   const paneIdsInLayoutOrder = getPaneIdsInLayoutOrder(tab.layout);
   const primaryFilesystemPaneId = paneIdsInLayoutOrder.find(
     (paneId) => tab.paneStates[paneId]?.panelType === "Filesystem",
@@ -118,6 +148,32 @@ function WorkspacePanelLayoutHarness() {
         },
       },
     }));
+    if (panelType !== "Preview") {
+      setPreviewPaneStateById((previousState) => {
+        if (!(paneId in previousState)) return previousState;
+        const nextState = { ...previousState };
+        delete nextState[paneId];
+        return nextState;
+      });
+    }
+  }
+
+  function updatePreviewPaneState(paneId, updater) {
+    if (!paneId || typeof updater !== "function") return;
+    setPreviewPaneStateById((previousState) => {
+      const currentPaneState = previousState[paneId];
+      const nextPaneState = updater(currentPaneState);
+      if (!nextPaneState || !Array.isArray(nextPaneState.tabs) || nextPaneState.tabs.length === 0) {
+        if (!(paneId in previousState)) return previousState;
+        const nextState = { ...previousState };
+        delete nextState[paneId];
+        return nextState;
+      }
+      return {
+        ...previousState,
+        [paneId]: nextPaneState,
+      };
+    });
   }
 
   return (
@@ -141,6 +197,7 @@ function WorkspacePanelLayoutHarness() {
       <PanelsDndLayer>
         <WorkspacePanelLayout
           tab={tab}
+          previewPaneStateById={previewPaneStateById}
           primaryFilesystemPaneId={primaryFilesystemPaneId}
           onPanelTypeChange={(tabId, paneId, panelType) => {
             if (!tabId || !paneId || !panelType) return;
@@ -165,6 +222,37 @@ function WorkspacePanelLayoutHarness() {
               ...previousTab,
               selectedFiles,
             }));
+
+            const selectedFilePath = resolveSelectedFilePath(selectedFiles);
+            if (!selectedFilePath) return;
+            const targetPreviewPaneId = resolvePreviewPaneIdForTab(tab);
+            if (!targetPreviewPaneId) return;
+
+            updatePreviewPaneState(targetPreviewPaneId, (paneState) => (
+              openPathInPreviewPaneState(paneState, selectedFilePath, {
+                openAsEphemeral: selectedFiles?.previewOpenMode !== "pinned",
+              })
+            ));
+          }}
+          onOpenPreviewPath={(tabId, paneId, path, options = {}) => {
+            if (!tabId || !paneId || !path) return;
+            updatePreviewPaneState(paneId, paneState => openPathInPreviewPaneState(
+              paneState,
+              path,
+              { openAsEphemeral: options?.openMode !== "pinned" },
+            ));
+          }}
+          onActivatePreviewTab={(tabId, paneId, path) => {
+            if (!tabId || !paneId || !path) return;
+            updatePreviewPaneState(paneId, paneState => setActivePreviewTab(paneState, path));
+          }}
+          onClosePreviewTab={(tabId, paneId, path) => {
+            if (!tabId || !paneId || !path) return;
+            updatePreviewPaneState(paneId, paneState => closePreviewTab(paneState, path));
+          }}
+          onUpdatePreviewTab={(tabId, paneId, path, patch = {}) => {
+            if (!tabId || !paneId || !path) return;
+            updatePreviewPaneState(paneId, paneState => updatePreviewTab(paneState, path, patch));
           }}
         />
       </PanelsDndLayer>
@@ -266,7 +354,7 @@ describe("WorkspacePanelLayout integration", () => {
     });
   });
 
-  it("keeps last selected file across panel switching flow", async () => {
+  it("keeps preview tabs scoped to each preview pane", async () => {
     render(
       <NotificationCenterProvider>
         <WorkspacePanelLayoutHarness />
@@ -282,23 +370,22 @@ describe("WorkspacePanelLayout integration", () => {
     await waitFor(() => {
       const previewPanels = screen.getAllByLabelText("Preview panel");
       expect(previewPanels).toHaveLength(1);
-      expect(within(previewPanels[0]).getByText("notes.txt")).toBeInTheDocument();
+      expect(within(previewPanels[0]).getByRole("tab", { name: "notes.txt" })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "set-left-preview" }));
     await waitFor(() => {
       const previewPanels = screen.getAllByLabelText("Preview panel");
       expect(previewPanels).toHaveLength(2);
-      previewPanels.forEach((panel) => {
-        expect(within(panel).getByText("notes.txt")).toBeInTheDocument();
-      });
+      expect(within(previewPanels[0]).getByText("Select a file to preview.")).toBeInTheDocument();
+      expect(within(previewPanels[1]).getByRole("tab", { name: "notes.txt" })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "set-right-filesystem" }));
     await waitFor(() => {
       const previewPanels = screen.getAllByLabelText("Preview panel");
       expect(previewPanels).toHaveLength(1);
-      expect(within(previewPanels[0]).getByText("notes.txt")).toBeInTheDocument();
+      expect(within(previewPanels[0]).getByText("Select a file to preview.")).toBeInTheDocument();
     });
     expect(screen.getByLabelText("Filesystem panel")).toBeInTheDocument();
     expect(await screen.findByText("Select a drive")).toBeInTheDocument();
@@ -312,7 +399,7 @@ describe("WorkspacePanelLayout integration", () => {
     await waitFor(() => {
       const previewPanels = screen.getAllByLabelText("Preview panel");
       expect(previewPanels).toHaveLength(1);
-      expect(within(previewPanels[0]).getByText("notes.txt")).toBeInTheDocument();
+      expect(within(previewPanels[0]).getByText("Select a file to preview.")).toBeInTheDocument();
     });
   });
 });

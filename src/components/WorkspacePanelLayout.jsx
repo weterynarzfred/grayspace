@@ -1,8 +1,14 @@
-import { useCallback } from "react";
+import { useDroppable } from "@dnd-kit/core";
+import { useCallback, useMemo, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
+import { getDraggedPathsFromDndEvent } from "./dndEventPaths";
 import { PaneHeaderActionsProvider } from "./paneHeaderActionsContext";
+import { parsePaneDropZoneId, getPaneDropZoneId } from "./panelDropZoneIds";
 import { PANEL_COMPONENTS } from "./panelTypes";
+import { usePanelsDndHandlers } from "./PanelsDndLayer";
 import usePaneSplitPreview from "./usePaneSplitPreview";
+import { parsePreviewTabDropId } from "./PreviewPanel/previewTabDndIds";
+import { isSamePath } from "../utils/pathWatch";
 import {
   collectSameAxisSegmentsWithSizes,
   collectSameAxisSplitRatioUpdates,
@@ -44,11 +50,142 @@ const CORNER_HANDLES = [
   },
 ];
 
+const PANE_DROP_ZONE_DIRECTION = Object.freeze({
+  left: "left",
+  right: "right",
+  top: "top",
+  bottom: "bottom",
+});
+const PREVIEW_TOP_DROP_ZONE_INSET_PX = 23;
+
+function normalizeDraggedPaths(event) {
+  return getDraggedPathsFromDndEvent(event);
+}
+
+function resolveDragMetadata(event) {
+  const activeData = event?.active?.data?.current ?? {};
+  const sourceKind = typeof activeData.kind === "string" ? activeData.kind : "";
+  const sourcePaneId = typeof activeData.sourcePreviewPaneId === "string"
+    ? activeData.sourcePreviewPaneId
+    : (typeof activeData.sourcePaneId === "string" ? activeData.sourcePaneId : "");
+  const sourcePath = typeof activeData.sourcePreviewTabPath === "string"
+    ? activeData.sourcePreviewTabPath
+    : (typeof activeData.sourcePath === "string" ? activeData.sourcePath : "");
+  const dragPaths = normalizeDraggedPaths(event);
+
+  return {
+    sourceKind,
+    sourcePaneId,
+    sourcePath,
+    dragPaths,
+  };
+}
+
+function resolvePanelTypeForPane(paneStates, paneId) {
+  const requestedPanelType = paneStates?.[paneId]?.panelType ?? "Filesystem";
+  return PANEL_COMPONENTS[requestedPanelType] ? requestedPanelType : "Filesystem";
+}
+
+function PaneDropZones({
+  tabId = "",
+  paneId = "",
+  isEnabled = false,
+  topInsetPx = 0,
+}) {
+  const resolvedTopInsetPx = Number.isFinite(topInsetPx) && topInsetPx > 0
+    ? topInsetPx
+    : 0;
+  const dropZonesStyle = resolvedTopInsetPx > 0
+    ? { "--pane-drop-zone-top-inset-px": `${resolvedTopInsetPx}px` }
+    : undefined;
+  const leftDropZoneId = useMemo(
+    () => getPaneDropZoneId(tabId, paneId, "left"),
+    [tabId, paneId],
+  );
+  const rightDropZoneId = useMemo(
+    () => getPaneDropZoneId(tabId, paneId, "right"),
+    [tabId, paneId],
+  );
+  const topDropZoneId = useMemo(
+    () => getPaneDropZoneId(tabId, paneId, "top"),
+    [tabId, paneId],
+  );
+  const bottomDropZoneId = useMemo(
+    () => getPaneDropZoneId(tabId, paneId, "bottom"),
+    [tabId, paneId],
+  );
+
+  const { isOver: isOverLeft, setNodeRef: setLeftNodeRef } = useDroppable({
+    id: leftDropZoneId,
+    disabled: !isEnabled,
+    data: {
+      kind: "pane-drop-zone",
+      tabId,
+      paneId,
+      zone: "left",
+    },
+  });
+  const { isOver: isOverRight, setNodeRef: setRightNodeRef } = useDroppable({
+    id: rightDropZoneId,
+    disabled: !isEnabled,
+    data: {
+      kind: "pane-drop-zone",
+      tabId,
+      paneId,
+      zone: "right",
+    },
+  });
+  const { isOver: isOverTop, setNodeRef: setTopNodeRef } = useDroppable({
+    id: topDropZoneId,
+    disabled: !isEnabled,
+    data: {
+      kind: "pane-drop-zone",
+      tabId,
+      paneId,
+      zone: "top",
+    },
+  });
+  const { isOver: isOverBottom, setNodeRef: setBottomNodeRef } = useDroppable({
+    id: bottomDropZoneId,
+    disabled: !isEnabled,
+    data: {
+      kind: "pane-drop-zone",
+      tabId,
+      paneId,
+      zone: "bottom",
+    },
+  });
+
+  return <div
+    className={`${styles.paneDropZones} ${isEnabled ? styles.paneDropZonesVisible : ""}`}
+    aria-hidden="true"
+    style={dropZonesStyle}
+  >
+    <span
+      ref={setLeftNodeRef}
+      className={`${styles.paneDropZone} ${styles.paneDropZoneLeft} ${isOverLeft ? styles.paneDropZoneActive : ""}`}
+    />
+    <span
+      ref={setRightNodeRef}
+      className={`${styles.paneDropZone} ${styles.paneDropZoneRight} ${isOverRight ? styles.paneDropZoneActive : ""}`}
+    />
+    <span
+      ref={setTopNodeRef}
+      className={`${styles.paneDropZone} ${styles.paneDropZoneTop} ${isOverTop ? styles.paneDropZoneActive : ""}`}
+    />
+    <span
+      ref={setBottomNodeRef}
+      className={`${styles.paneDropZone} ${styles.paneDropZoneBottom} ${isOverBottom ? styles.paneDropZoneActive : ""}`}
+    />
+    <span className={styles.paneDropZoneCenter} />
+  </div>;
+}
+
 function getSplitPreviewClassName(direction) {
   return `${styles.splitPreview} ${direction === "right"
     ? styles.splitPreviewVertical
     : styles.splitPreviewHorizontal
-  }`;
+    }`;
 }
 
 function getWorkspaceLayoutKey(workspaceRoot = "") {
@@ -61,6 +198,7 @@ function getWorkspaceLayoutKey(workspaceRoot = "") {
 
 function WorkspacePanelLayout({
   tab,
+  previewPaneStateById = {},
   primaryFilesystemPaneId = "",
   cwdHint = "",
   recentFoldersEntries = [],
@@ -75,6 +213,12 @@ function WorkspacePanelLayout({
   onPaneClose = undefined,
   onPaneDirtyStateChange = undefined,
   onSplitRatioChange = undefined,
+  onOpenPreviewPath = undefined,
+  onActivatePreviewTab = undefined,
+  onClosePreviewTab = undefined,
+  onUpdatePreviewTab = undefined,
+  onSplitPaneWithPanelType = undefined,
+  onMovePreviewTabs = undefined,
 }) {
   const paneStates = tab?.paneStates ?? {};
   const paneCount = Object.keys(paneStates).length;
@@ -82,6 +226,13 @@ function WorkspacePanelLayout({
   const tabId = tab?.tabId ?? "";
   const splitContextKey = getWorkspaceLayoutKey(tab?.workspaceRoot);
   const activePaneId = tab?.activePaneId ?? "";
+  const [panelDragState, setPanelDragState] = useState({
+    sourceKind: "",
+    sourcePaneId: "",
+    sourcePath: "",
+    dragPaths: [],
+  });
+  const hasDraggedPaths = panelDragState.dragPaths.length > 0;
   const {
     splitPreview,
     handleCornerHandlePointerDown,
@@ -91,16 +242,141 @@ function WorkspacePanelLayout({
     handleCornerHandleLostPointerCapture,
   } = usePaneSplitPreview({ tabId, onPaneSplit });
 
+  usePanelsDndHandlers({
+    onDragStart: (event) => {
+      const nextDragMetadata = resolveDragMetadata(event);
+      setPanelDragState(nextDragMetadata);
+      if (
+        nextDragMetadata.sourceKind === "preview-tab"
+        && nextDragMetadata.sourcePaneId
+        && nextDragMetadata.sourcePath
+      ) {
+        onUpdatePreviewTab?.(
+          tabId,
+          nextDragMetadata.sourcePaneId,
+          nextDragMetadata.sourcePath,
+          { isEphemeral: false },
+        );
+      }
+    },
+    onDragCancel: () => {
+      setPanelDragState({
+        sourceKind: "",
+        sourcePaneId: "",
+        sourcePath: "",
+        dragPaths: [],
+      });
+    },
+    onDragEnd: async (event) => {
+      const dragMetadata = resolveDragMetadata(event);
+      const resetDragState = () => {
+        setPanelDragState({
+          sourceKind: "",
+          sourcePaneId: "",
+          sourcePath: "",
+          dragPaths: [],
+        });
+      };
+      try {
+        if (dragMetadata.dragPaths.length === 0) return;
+
+        const overId = String(event?.over?.id ?? "");
+        const paneDropZone = parsePaneDropZoneId(overId);
+        if (paneDropZone.tabId === tabId && paneDropZone.paneId && paneDropZone.zone) {
+          const splitDirection = PANE_DROP_ZONE_DIRECTION[paneDropZone.zone] ?? "";
+          if (splitDirection && typeof onSplitPaneWithPanelType === "function") {
+            try {
+              const splitResult = await onSplitPaneWithPanelType(
+                tabId,
+                paneDropZone.paneId,
+                splitDirection,
+                "Preview",
+              );
+              const newPaneId = typeof splitResult?.newPaneId === "string"
+                ? splitResult.newPaneId
+                : "";
+              if (newPaneId) {
+                if (dragMetadata.sourceKind === "preview-tab") {
+                  onMovePreviewTabs?.(
+                    tabId,
+                    dragMetadata.sourcePaneId,
+                    newPaneId,
+                    dragMetadata.dragPaths,
+                    { insert: "append", pinTabs: true },
+                  );
+                } else {
+                  dragMetadata.dragPaths.forEach((path) => {
+                    onOpenPreviewPath?.(tabId, newPaneId, path, { openMode: "pinned" });
+                  });
+                }
+              }
+            } catch {
+              // Workspace actions surface split errors to the user.
+            }
+          }
+          return;
+        }
+
+        const previewTabDrop = parsePreviewTabDropId(overId);
+        if (previewTabDrop.paneId) {
+          const isDroppingOnSamePreviewTab = previewTabDrop.kind === "tab"
+            && dragMetadata.dragPaths.length === 1
+            && isSamePath(previewTabDrop.path, dragMetadata.dragPaths[0]);
+          if (isDroppingOnSamePreviewTab) return;
+          if (dragMetadata.sourceKind === "preview-tab") {
+            onMovePreviewTabs?.(
+              tabId,
+              dragMetadata.sourcePaneId,
+              previewTabDrop.paneId,
+              dragMetadata.dragPaths,
+              {
+                insert: previewTabDrop.kind === "bar" ? "append" : "at-target",
+                targetPath: previewTabDrop.path,
+                targetSide: previewTabDrop.side,
+                pinTabs: true,
+              },
+            );
+          } else {
+            dragMetadata.dragPaths.forEach((path) => {
+              onOpenPreviewPath?.(tabId, previewTabDrop.paneId, path, { openMode: "pinned" });
+            });
+          }
+          return;
+        }
+
+        const overData = event?.over?.data?.current ?? {};
+        const overPaneId = typeof overData.paneId === "string" ? overData.paneId : "";
+        const overKind = typeof overData.kind === "string" ? overData.kind : "";
+        if (
+          dragMetadata.sourceKind === "preview-tab"
+          && overKind === "preview"
+          && overPaneId
+        ) {
+          onMovePreviewTabs?.(
+            tabId,
+            dragMetadata.sourcePaneId,
+            overPaneId,
+            dragMetadata.dragPaths,
+            { insert: "append", pinTabs: true },
+          );
+        }
+      } finally {
+        resetDragState();
+      }
+    },
+  });
+
   const renderPaneViewport = useCallback((paneId, nodePath) => {
     const paneState = paneStates[paneId];
     if (!paneState) return <div key={`missing-${nodePath}`} className={styles.paneViewport} />;
 
-    const requestedPanelType = paneState?.panelType ?? "Filesystem";
-    const panelType = PANEL_COMPONENTS[requestedPanelType]
-      ? requestedPanelType
-      : "Filesystem";
+    const panelType = resolvePanelTypeForPane(paneStates, paneId);
     const isPrimaryFilesystemPane = panelType === "Filesystem"
       && paneId === primaryFilesystemPaneId;
+    const arePaneDropZonesEnabled = hasDraggedPaths && panelType !== "Filesystem";
+    const paneDropZoneTopInsetPx = panelType === "Preview"
+      ? PREVIEW_TOP_DROP_ZONE_INSET_PX
+      : 0;
     const panelLabel = panelType === "Filesystem" && !isPrimaryFilesystemPane
       ? "Filesystem (sub)"
       : panelType;
@@ -130,6 +406,12 @@ function WorkspacePanelLayout({
         data-direction={splitPreview.direction}
         aria-hidden="true"
       /> : null}
+      <PaneDropZones
+        tabId={tabId}
+        paneId={paneId}
+        isEnabled={arePaneDropZonesEnabled}
+        topInsetPx={paneDropZoneTopInsetPx}
+      />
       <div className={styles.cornerHandles}>
         {CORNER_HANDLES.map(handle => <button
           key={handle.id}
@@ -167,6 +449,15 @@ function WorkspacePanelLayout({
           onPaneDirtyStateChange={dirtyState =>
             onPaneDirtyStateChange?.(tabId, paneId, dirtyState, panelType)
           }
+          previewPaneState={previewPaneStateById?.[paneId]}
+          onOpenPreviewPath={(path, options = {}) =>
+            onOpenPreviewPath?.(tabId, paneId, path, options)
+          }
+          onActivatePreviewTab={path => onActivatePreviewTab?.(tabId, paneId, path)}
+          onClosePreviewTab={path => onClosePreviewTab?.(tabId, paneId, path)}
+          onUpdatePreviewTab={(path, patch = {}) =>
+            onUpdatePreviewTab?.(tabId, paneId, path, patch)
+          }
           filesystemState={paneState?.filesystemState}
           tabWorkspaceRoot={tab?.workspaceRoot ?? ""}
           tabSelectedFiles={tab?.selectedFiles}
@@ -194,10 +485,16 @@ function WorkspacePanelLayout({
     onPaneActivate,
     onPaneClose,
     onPaneDirtyStateChange,
+    onOpenPreviewPath,
+    onActivatePreviewTab,
+    onClosePreviewTab,
+    onUpdatePreviewTab,
     onPanelTypeChange,
     onTabSelectedFilesChange,
+    hasDraggedPaths,
     paneCount,
     paneStates,
+    previewPaneStateById,
     primaryFilesystemPaneId,
     recentFoldersEntries,
     recentFoldersLoading,

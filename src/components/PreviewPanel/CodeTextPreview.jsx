@@ -4,7 +4,7 @@ import { languages } from "@codemirror/language-data";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorView, keymap } from "@codemirror/view";
 import { gruvboxDark } from "@uiw/codemirror-theme-gruvbox-dark";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const BASIC_SETUP = {
   foldGutter: false,
@@ -19,7 +19,7 @@ const previewEditorTheme = EditorView.theme({
     color: "#ebdbb2",
   },
   ".cm-scroller": {
-    fontFamily: "\"Fira Code\", \"Cascadia Mono\", \"Consolas\", monospace",
+    fontFamily: "\"Fira Code\", monospace",
     lineHeight: "1.45",
   },
   ".cm-content": {
@@ -66,6 +66,11 @@ function CodeTextPreview({
   onSave = undefined,
 }) {
   const [languageSupport, setLanguageSupport] = useState(null);
+  const onSaveRef = useRef(onSave);
+
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  }, [onSave]);
 
   useEffect(() => {
     const fileName = getFileName(filePath);
@@ -98,25 +103,26 @@ function CodeTextPreview({
   }, [filePath]);
 
   const extensions = useMemo(() => {
-    const saveKeymap = typeof onSave === "function"
-      ? keymap.of([{
-        key: "Mod-s",
-        preventDefault: true,
-        run: () => {
-          onSave();
+    const saveKeymap = keymap.of([{
+      key: "Mod-s",
+      preventDefault: true,
+      run: () => {
+        if (typeof onSaveRef.current === "function") {
+          onSaveRef.current();
           return true;
-        },
-      }])
-      : null;
+        }
+        return false;
+      },
+    }]);
     const nextExtensions = [
       gruvboxDark,
       previewEditorTheme,
       EditorView.lineWrapping,
+      saveKeymap,
     ];
     if (languageSupport) nextExtensions.push(languageSupport);
-    if (saveKeymap) nextExtensions.push(saveKeymap);
     return nextExtensions;
-  }, [languageSupport, onSave]);
+  }, [languageSupport]);
 
   return <CodeMirror
     key={filePath}

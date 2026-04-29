@@ -1,11 +1,21 @@
+import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { useMemo } from "react";
 import PanelHeader from "../PanelHeader";
 import shellStyles from "../PanelShell.module.scss";
+import { isSamePath } from "../../utils/pathWatch";
 import CodeTextPreview from "./CodeTextPreview";
 import usePreviewPanelState from "./usePreviewPanelState";
+import {
+  getPreviewTabBarDropId,
+  getPreviewTabDragId,
+  getPreviewTabDropId,
+} from "./previewTabDndIds";
+import { getPathDisplayName } from "./previewPanelUtils";
 import styles from "./PreviewPanel.module.scss";
 
-function renderHeaderStatus(previewPath, previewState, saveStatusMessage, saveStatus) {
-  if (!previewPath) return <p className={styles.muted}>Select a file to preview.</p>;
+function renderHeaderStatus(previewPath, previewTabs, previewState, saveStatusMessage, saveStatus) {
+  if (previewTabs.length === 0) return <p className={styles.muted}>Select a file to preview.</p>;
+  if (!previewPath) return <p className={styles.muted}>Select a tab to preview.</p>;
   if (previewState.status === "loading") return <p className={styles.muted}>Loading preview...</p>;
   if (previewState.status === "error") return <p className={styles.error}>{previewState.error}</p>;
   if (saveStatusMessage) {
@@ -33,28 +43,6 @@ function renderMediaPreview(previewKind, previewPath, previewLabel, mediaPreview
   return null;
 }
 
-function renderPreviewLabel(previewLabel, isLocked) {
-  if (!previewLabel) return null;
-  return <p className={styles.previewLabel}>{isLocked ? previewLabel : <em>{previewLabel}</em>}</p>;
-}
-
-function renderPreviewActions(previewPath, isLocked, isTextPreviewReady, isTextEditable, saveStatus, handleToggleLock, handleSaveNow) {
-  if (!previewPath) return null;
-  return <div className={styles.previewActions}>
-    <button
-      type="button"
-      className={`${styles.lockButton} ${isLocked ? styles.lockButtonLocked : ""}`}
-      onClick={handleToggleLock}
-    >{isLocked ? "unlock" : "lock"}</button>
-    {isTextPreviewReady ? <button
-      type="button"
-      className={styles.saveButton}
-      onClick={handleSaveNow}
-      disabled={!isTextEditable || saveStatus === "saving"}
-    >save</button> : null}
-  </div>;
-}
-
 function renderTextPreview(previewPath, previewState, textContent, isTextEditable, handleTextContentChange, handleSaveNow) {
   if (!previewPath || previewState.status !== "ready" || previewState.preview?.kind !== "text") return null;
   return <>
@@ -72,19 +60,173 @@ function renderTextPreview(previewPath, previewState, textContent, isTextEditabl
   </>;
 }
 
+function PreviewTabItem({
+  paneId,
+  previewPath,
+  tab,
+  isPanelsDragActive,
+  handlePreviewTabActivate,
+  handlePreviewTabClose,
+  handlePreviewTabUnpin,
+}) {
+  const isActive = isSamePath(tab.path, previewPath);
+  const tabLabel = getPathDisplayName(tab.path);
+  const dirtySuffix = tab.isDirty ? " *" : "";
+  const titleParts = [tab.path];
+  if (tab.isEphemeral) titleParts.push("ephemeral");
+  if (tab.isDirty) titleParts.push("dirty");
+  const renderedTabLabel = tab.isEphemeral
+    ? <em className={styles.previewTabLabelEphemeral}>{tabLabel}{dirtySuffix}</em>
+    : <>{tabLabel}{dirtySuffix}</>;
+
+  const tabDragId = useMemo(
+    () => getPreviewTabDragId(paneId, tab.path),
+    [paneId, tab.path],
+  );
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragNodeRef,
+    isDragging,
+  } = useDraggable({
+    id: tabDragId,
+    data: {
+      kind: "preview-tab",
+      sourcePath: tab.path,
+      dragPaths: [tab.path],
+      sourcePaneId: paneId,
+      sourcePreviewPaneId: paneId,
+      sourcePreviewTabPath: tab.path,
+    },
+  });
+  const dragAttributes = useMemo(() => {
+    const nextAttributes = { ...(attributes ?? {}) };
+    delete nextAttributes.role;
+    return nextAttributes;
+  }, [attributes]);
+  const leftDropId = useMemo(
+    () => getPreviewTabDropId(paneId, tab.path, "left"),
+    [paneId, tab.path],
+  );
+  const rightDropId = useMemo(
+    () => getPreviewTabDropId(paneId, tab.path, "right"),
+    [paneId, tab.path],
+  );
+  const { isOver: isLeftDropOver, setNodeRef: setLeftDropNodeRef } = useDroppable({
+    id: leftDropId,
+    data: {
+      kind: "preview-tab-insert",
+      paneId,
+      path: tab.path,
+      side: "left",
+    },
+  });
+  const { isOver: isRightDropOver, setNodeRef: setRightDropNodeRef } = useDroppable({
+    id: rightDropId,
+    data: {
+      kind: "preview-tab-insert",
+      paneId,
+      path: tab.path,
+      side: "right",
+    },
+  });
+
+  return <div
+    key={tab.path}
+    className={`${styles.previewTab} ${isActive ? styles.previewTabActive : ""} ${isDragging ? styles.previewTabDragging : ""}`}
+    data-testid={`preview-tab-${tab.path}`}
+  >
+    <button
+      ref={setDragNodeRef}
+      type="button"
+      role="tab"
+      aria-selected={isActive}
+      className={styles.previewTabSelect}
+      title={titleParts.join(" | ")}
+      onClick={() => handlePreviewTabActivate(tab.path)}
+      onDoubleClick={() => handlePreviewTabUnpin(tab.path)}
+      {...dragAttributes}
+      {...listeners}
+    >{renderedTabLabel}</button>
+    <button
+      type="button"
+      className={styles.previewTabClose}
+      title={`Close ${tabLabel}`}
+      aria-label={`Close ${tabLabel}`}
+      onClick={() => handlePreviewTabClose(tab.path)}
+    >&times;</button>
+    <span
+      ref={setLeftDropNodeRef}
+      className={`${styles.previewTabDropZone} ${styles.previewTabDropZoneLeft} ${isPanelsDragActive ? styles.previewTabDropZoneEnabled : ""} ${isLeftDropOver ? styles.previewTabDropZoneActive : ""}`}
+      aria-hidden="true"
+    />
+    <span
+      ref={setRightDropNodeRef}
+      className={`${styles.previewTabDropZone} ${styles.previewTabDropZoneRight} ${isPanelsDragActive ? styles.previewTabDropZoneEnabled : ""} ${isRightDropOver ? styles.previewTabDropZoneActive : ""}`}
+      aria-hidden="true"
+    />
+  </div>;
+}
+
+function PreviewTabs({
+  paneId,
+  previewTabs,
+  previewPath,
+  isPanelsDragActive,
+  handlePreviewTabActivate,
+  handlePreviewTabClose,
+  handlePreviewTabUnpin,
+}) {
+  if (!Array.isArray(previewTabs) || previewTabs.length === 0) return null;
+
+  const tabBarDropId = getPreviewTabBarDropId(paneId);
+  const { isOver: isTabBarDropOver, setNodeRef: setTabBarDropNodeRef } = useDroppable({
+    id: tabBarDropId,
+    data: {
+      kind: "preview-tab-bar",
+      paneId,
+    },
+  });
+
+  return <div
+    ref={setTabBarDropNodeRef}
+    className={`${styles.previewTabs} ${isPanelsDragActive ? styles.previewTabsDragging : ""} ${isTabBarDropOver ? styles.previewTabsBarDropTarget : ""}`}
+    role="tablist"
+    aria-label="Open preview files"
+  >
+    {previewTabs.map((tab) => {
+      return <PreviewTabItem
+        key={tab.path}
+        paneId={paneId}
+        previewPath={previewPath}
+        tab={tab}
+        isPanelsDragActive={isPanelsDragActive}
+        handlePreviewTabActivate={handlePreviewTabActivate}
+        handlePreviewTabClose={handlePreviewTabClose}
+        handlePreviewTabUnpin={handlePreviewTabUnpin}
+      />;
+    })}
+  </div>;
+}
+
 function PreviewPanel({
   paneId = "",
   panelType = "Preview",
   onPanelTypeChange = undefined,
-  tabSelectedFiles = undefined,
+  previewPaneState = undefined,
+  onOpenPreviewPath = undefined,
+  onActivatePreviewTab = undefined,
+  onClosePreviewTab = undefined,
+  onUpdatePreviewTab = undefined,
   onPaneDirtyStateChange = undefined,
 }) {
   const {
     mediaPreviewSrc,
     isDropOver,
-    isLocked,
+    isPanelsDragActive,
     isTextEditable,
     isTextPreviewReady,
+    previewTabs,
     previewLabel,
     previewPath,
     previewState,
@@ -92,12 +234,18 @@ function PreviewPanel({
     saveStatusMessage,
     setDropNodeRef,
     textContent,
+    handlePreviewTabActivate,
+    handlePreviewTabClose,
+    handlePreviewTabUnpin,
     handleSaveNow,
     handleTextContentChange,
-    handleToggleLock,
   } = usePreviewPanelState({
     paneId,
-    tabSelectedFiles,
+    previewPaneState,
+    onOpenPreviewPath,
+    onActivatePreviewTab,
+    onClosePreviewTab,
+    onUpdatePreviewTab,
     onPaneDirtyStateChange,
   });
   const isReady = previewState.status === "ready";
@@ -111,9 +259,26 @@ function PreviewPanel({
     aria-label="Preview panel"
   >
     <PanelHeader panelType={panelType} onPanelTypeChange={onPanelTypeChange}>
-      {renderPreviewLabel(previewLabel, isLocked)}
-      {renderHeaderStatus(previewPath, previewState, saveStatusMessage, saveStatus)}
-      {renderPreviewActions(previewPath, isLocked, isTextPreviewReady, isTextEditable, saveStatus, handleToggleLock, handleSaveNow)}
+      <div className={styles.headerContent}>
+        <PreviewTabs
+          paneId={paneId}
+          previewTabs={previewTabs}
+          previewPath={previewPath}
+          isPanelsDragActive={isPanelsDragActive}
+          handlePreviewTabActivate={handlePreviewTabActivate}
+          handlePreviewTabClose={handlePreviewTabClose}
+          handlePreviewTabUnpin={handlePreviewTabUnpin}
+        />
+        <div className={styles.headerMeta}>
+          {renderHeaderStatus(previewPath, previewTabs, previewState, saveStatusMessage, saveStatus)}
+          {isTextPreviewReady && previewPath ? <button
+            type="button"
+            className={styles.saveButton}
+            onClick={handleSaveNow}
+            disabled={!isTextEditable || saveStatus === "saving"}
+          >save</button> : null}
+        </div>
+      </div>
     </PanelHeader>
     <div className={`${shellStyles.panelBody} ${styles.panelBody}`}>
       {renderTextPreview(previewPath, previewState, textContent, isTextEditable, handleTextContentChange, handleSaveNow)}

@@ -169,6 +169,7 @@ npm run tauri_dev
 * [x] media + text preview/edit
 * [x] sync with selection
 * [x] lock preview
+* [x] add a separate tab system
 * [ ] slideshow
 * add more preview types
   * [ ] pdf (https://github.com/mozilla/pdf.js ?)
