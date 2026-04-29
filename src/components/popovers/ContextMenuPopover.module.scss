@@ -43,3 +43,28 @@
   font-size: $font-size-small;
   color: $text-tertiary;
 }
+
+.commandRowSubmenuOpen {
+  @include popover-action-button-active;
+}
+
+.commandSubmenuArrow {
+  color: $text-secondary;
+  font-size: 0.6em;
+}
+
+.submenu {
+  position: fixed;
+  z-index: 141;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 12rem;
+  background: $bg-panel;
+  border: 1px solid $border-secondary;
+  border-radius: 0.35rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}

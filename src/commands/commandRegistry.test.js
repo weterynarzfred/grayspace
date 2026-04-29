@@ -45,7 +45,7 @@ describe("commandRegistry", () => {
     expect(getCommandIds(commands)).not.toContain("filesystem.renameSelected");
   });
 
-  it("shows split commands only for panel targets in context menus", () => {
+  it("never shows split commands in context menus", () => {
     const fileTargetCommands = getCommandsForTrigger("context-menu", {
       source: "context-menu",
       targetType: "file",
@@ -64,8 +64,8 @@ describe("commandRegistry", () => {
 
     expect(getCommandIds(fileTargetCommands)).not.toContain("pane.split.vertical");
     expect(getCommandIds(fileTargetCommands)).not.toContain("pane.split.horizontal");
-    expect(getCommandIds(panelTargetCommands)).toContain("pane.split.vertical");
-    expect(getCommandIds(panelTargetCommands)).toContain("pane.split.horizontal");
+    expect(getCommandIds(panelTargetCommands)).not.toContain("pane.split.vertical");
+    expect(getCommandIds(panelTargetCommands)).not.toContain("pane.split.horizontal");
   });
 
   it("shows open-folder-in-new-tab command for folder context targets only", () => {

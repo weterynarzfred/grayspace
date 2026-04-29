@@ -32,6 +32,10 @@ export const COMMAND_IDS = {
   FILESYSTEM_OPEN_RECENT_FOLDERS: "filesystem.openRecentFolders",
   FILESYSTEM_CREATE_TEXT_FILE: "filesystem.createTextFile",
   FILESYSTEM_CREATE_FOLDER: "filesystem.createFolder",
+  FILESYSTEM_VIEW: "filesystem.view",
+  FILESYSTEM_VIEW_FOLDER_TREE: "filesystem.view.folderTree",
+  FILESYSTEM_VIEW_GRID: "filesystem.view.grid",
+  FILESYSTEM_VIEW_FOLDABLE_GRID: "filesystem.view.foldableGrid",
   WORKSPACE_RUN_SCRIPT: "workspace.runScript",
 };
 
@@ -173,13 +177,10 @@ export const COMMANDS = [
     id: COMMAND_IDS.PANE_SPLIT_VERTICAL,
     title: "Split Active Pane Vertically",
     shortcut: "Alt+V",
-    triggers: ["shortcut", "palette", "context-menu"],
+    triggers: ["shortcut", "palette"],
     scope: "pane",
-    whenText: "(source !== \"context-menu\" && hasActivePane()) || targetType === \"panel\"",
-    when: (context) => {
-      if (!isContextMenuSource(context)) return hasActivePane(context);
-      return isPanelContextTarget(context);
-    },
+    whenText: "hasActivePane()",
+    when: (context) => hasActivePane(context),
     shortcutMatcher: event =>
       event.altKey
       && !event.ctrlKey
@@ -191,13 +192,10 @@ export const COMMANDS = [
     id: COMMAND_IDS.PANE_SPLIT_HORIZONTAL,
     title: "Split Active Pane Horizontally",
     shortcut: "Alt+H",
-    triggers: ["shortcut", "palette", "context-menu"],
+    triggers: ["shortcut", "palette"],
     scope: "pane",
-    whenText: "(source !== \"context-menu\" && hasActivePane()) || targetType === \"panel\"",
-    when: (context) => {
-      if (!isContextMenuSource(context)) return hasActivePane(context);
-      return isPanelContextTarget(context);
-    },
+    whenText: "hasActivePane()",
+    when: (context) => hasActivePane(context),
     shortcutMatcher: event =>
       event.altKey
       && !event.ctrlKey
@@ -624,6 +622,30 @@ export const COMMANDS = [
       && event.key.toLowerCase() === "n",
   },
   {
+    id: COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE,
+    title: "View: Folder Tree",
+    triggers: ["palette"],
+    scope: "filesystem",
+    whenText: "activePanelType === \"Filesystem\"",
+    when: isFilesystemPanelActive,
+  },
+  {
+    id: COMMAND_IDS.FILESYSTEM_VIEW_GRID,
+    title: "View: Grid",
+    triggers: ["palette"],
+    scope: "filesystem",
+    whenText: "activePanelType === \"Filesystem\"",
+    when: isFilesystemPanelActive,
+  },
+  {
+    id: COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID,
+    title: "View: Foldable Grid",
+    triggers: ["palette"],
+    scope: "filesystem",
+    whenText: "activePanelType === \"Filesystem\"",
+    when: isFilesystemPanelActive,
+  },
+  {
     id: COMMAND_IDS.WORKSPACE_RUN_SCRIPT,
     title: "Run Workspace Script",
     shortcut: "From Command Palette / Context Menu",
@@ -634,6 +656,21 @@ export const COMMANDS = [
     when: () => false,
   },
 ];
+
+const FILESYSTEM_VIEW_SUBMENU = COMMANDS.filter(c =>
+  c.id === COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE
+  || c.id === COMMAND_IDS.FILESYSTEM_VIEW_GRID
+  || c.id === COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID,
+);
+COMMANDS.push({
+  id: COMMAND_IDS.FILESYSTEM_VIEW,
+  title: "View Type",
+  triggers: ["context-menu"],
+  scope: "filesystem",
+  submenu: FILESYSTEM_VIEW_SUBMENU,
+  whenText: "targetType === \"panel\" && targetPanelType === \"Filesystem\"",
+  when: isFilesystemPanelContextTarget,
+});
 
 const COMMAND_BY_ID = Object.fromEntries(COMMANDS.map(command => [command.id, command]));
 

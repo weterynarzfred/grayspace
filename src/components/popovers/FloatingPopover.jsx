@@ -23,6 +23,7 @@ function FloatingPopover({
   position = { x: VIEWPORT_PADDING, y: VIEWPORT_PADDING },
   className = "",
   onClose = undefined,
+  extraRefs = [],
   children,
 }) {
   const popoverRef = useRef(null);
@@ -71,6 +72,7 @@ function FloatingPopover({
 
     const handlePointerDown = (event) => {
       if (popoverRef.current?.contains(event.target)) return;
+      if (extraRefs.some(r => r.current?.contains(event.target))) return;
       onClose?.();
     };
     const handleKeyDown = (event) => {

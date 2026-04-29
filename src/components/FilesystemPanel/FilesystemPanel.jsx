@@ -7,6 +7,7 @@ import FilesystemPanelListContent from "./FilesystemPanelListContent";
 import FilesystemStatusMessages from "./FilesystemStatusMessages";
 import {
   FILESYSTEM_THUMBNAIL_SIZE_STEPS,
+  FILESYSTEM_VIEW_TYPES,
   normalizeFilesystemPaneState,
 } from "./filesystemPaneState";
 import { isPathInsideRoot } from "./filesystemPanelUtils";
@@ -81,6 +82,7 @@ function FilesystemPanel({
   const [thumbnailSizePx, setThumbnailSizePx] = useState(
     initialFilesystemStateRef.current.thumbnailSizePx,
   );
+  const [viewType, setViewType] = useState(initialFilesystemStateRef.current.viewType);
   const [breadcrumbFocusRequestKey, setBreadcrumbFocusRequestKey] = useState(0);
   const entryRowHeightPx = thumbnailSizePx;
   const { openConfirm, pushNotification } = useNotificationCenter();
@@ -573,6 +575,9 @@ function FilesystemPanel({
         [COMMAND_IDS.FILESYSTEM_NAVIGATE_BACK]: () => goBack(),
         [COMMAND_IDS.FILESYSTEM_NAVIGATE_FORWARD]: () => goForward(),
         [COMMAND_IDS.FILESYSTEM_FOCUS_BREADCRUMB_INPUT]: () => requestBreadcrumbInputFocus(),
+        [COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE]: () => setViewType("folder-tree"),
+        [COMMAND_IDS.FILESYSTEM_VIEW_GRID]: () => setViewType("grid"),
+        [COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID]: () => setViewType("foldable-grid"),
       };
 
       const commandHandler = commandHandlers[commandId];

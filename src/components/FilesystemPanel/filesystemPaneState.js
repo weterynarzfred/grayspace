@@ -3,6 +3,9 @@ import { getSelectedPathsFromState } from "../../utils/pathSelection";
 export const FILESYSTEM_THUMBNAIL_SIZE_STEPS = [22, 32, 64, 128, 256];
 export const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE = FILESYSTEM_THUMBNAIL_SIZE_STEPS[0];
 
+export const FILESYSTEM_VIEW_TYPES = ["folder-tree", "grid", "foldable-grid"];
+export const DEFAULT_FILESYSTEM_VIEW_TYPE = "folder-tree";
+
 function getExpandedPathsFromState(state = {}) {
   if (!state || typeof state !== "object") return [];
   if (!Array.isArray(state.expandedPaths)) return [];
@@ -44,5 +47,6 @@ export function normalizeFilesystemPaneState(filesystemState = {}) {
     expandedPaths,
     scrollTop: Number.isFinite(state.scrollTop) ? Math.max(0, Math.round(state.scrollTop)) : 0,
     thumbnailSizePx: normalizeFilesystemThumbnailSize(state.thumbnailSizePx),
+    viewType: FILESYSTEM_VIEW_TYPES.includes(state.viewType) ? state.viewType : DEFAULT_FILESYSTEM_VIEW_TYPE,
   };
 }
