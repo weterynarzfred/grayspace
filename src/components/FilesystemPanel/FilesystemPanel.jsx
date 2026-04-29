@@ -39,12 +39,10 @@ import { FILESYSTEM_FLUSH_STATE_EVENT } from "./filesystemPanelEvents";
 import styles from "./FilesystemPanel.module.scss";
 import shellStyles from "../PanelShell.module.scss";
 
-const UP_ENTRY_SELECTION_ID = "__up__";
 const ENTRY_WINDOWING_THRESHOLD = 200;
 const THUMBNAIL_SIZE_TOGGLE_TITLE = "Toggle icon/thumbnail size";
 const HISTORY_BACK_BUTTON_TITLE = "Go back in folder history";
 const HISTORY_FORWARD_BUTTON_TITLE = "Go forward in folder history";
-const NON_ENTRY_SELECTION_IDS = new Set([UP_ENTRY_SELECTION_ID]);
 
 function normalizeDriveLetterPath(path) {
   if (typeof path !== "string") return "";
@@ -247,9 +245,6 @@ function FilesystemPanel({
     onDeleteShortcutCommand: () => executeFilesystemShortcutCommand(COMMAND_IDS.FILESYSTEM_DELETE_SELECTED),
     onToggleDirectoryExpanded: toggleDirectoryExpanded,
     onOpenDrivePath: selectDrive,
-    onOpenUpEntry: () => {
-      handleGoUpDoubleClick();
-    },
     workspaceFolderPathSet,
     openConfirm,
     pushNotification,
@@ -287,8 +282,7 @@ function FilesystemPanel({
     });
   }, [paneId]);
   const resolveCommandSelectedEntryPaths = useCallback((commandContext = {}) => {
-    const contextSelectedPaths = uniqueNonEmptyPaths(commandContext?.selectedPaths)
-      .filter(path => !NON_ENTRY_SELECTION_IDS.has(path));
+    const contextSelectedPaths = uniqueNonEmptyPaths(commandContext?.selectedPaths);
     if (contextSelectedPaths.length > 0) return contextSelectedPaths;
     return selectedEntryPaths;
   }, [selectedEntryPaths]);
@@ -724,12 +718,6 @@ function FilesystemPanel({
           onSelectRecentFolder: path => {
             handleOpenFolderViaRecentSelection(path);
           },
-        }}
-        upEntry={{
-          destinationPath: upDestinationPath,
-          isSelected: selectedPathSet.has(UP_ENTRY_SELECTION_ID),
-          onSelect: () => setSelectedPath(UP_ENTRY_SELECTION_ID),
-          onOpen: handleGoUpDoubleClick,
         }}
         windowing={{
           entryWindowAnchorRef,

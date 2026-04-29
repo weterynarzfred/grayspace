@@ -35,13 +35,10 @@ export const COMMAND_IDS = {
   WORKSPACE_RUN_SCRIPT: "workspace.runScript",
 };
 
-const NON_ENTRY_SELECTION_IDS = new Set(["__up__"]);
 const CONTEXT_MENU_TARGETS = new Set(["file", "folder"]);
 
 function getSelectedEntryPaths(context) {
-  return uniqueNonEmptyPaths(context?.selectedPaths).filter(
-    path => !NON_ENTRY_SELECTION_IDS.has(path),
-  );
+  return uniqueNonEmptyPaths(context?.selectedPaths);
 }
 
 function hasActivePane(context) {

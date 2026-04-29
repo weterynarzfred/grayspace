@@ -79,12 +79,10 @@ export default function useFilesystemPanelInteractions({
   onDeleteShortcutCommand = undefined,
   onToggleDirectoryExpanded = undefined,
   onOpenDrivePath = undefined,
-  onOpenUpEntry = undefined,
   workspaceFolderPathSet = new Set(),
   openConfirm,
   pushNotification = undefined,
 }) {
-  const upSelectionId = "__up__";
   const [externalDropDestinationPath, setExternalDropDestinationPath] = useState("");
   const [renamingPath, setRenamingPath] = useState("");
   const [pendingRenamePath, setPendingRenamePath] = useState("");
@@ -106,7 +104,7 @@ export default function useFilesystemPanelInteractions({
     return nextByPath;
   }, [treeRows]);
   const keyboardNavigationPaths = useMemo(() => {
-    if (isBrowsing) return [upSelectionId, ...treeData.entryPaths];
+    if (isBrowsing) return treeData.entryPaths;
     return drivePaths.filter((path) => typeof path === "string" && path);
   }, [drivePaths, isBrowsing, treeData.entryPaths]);
 
@@ -609,11 +607,6 @@ export default function useFilesystemPanelInteractions({
     }
 
     const selectedPath = selectedPaths.at(-1) ?? "";
-    if (selectedPath === upSelectionId) {
-      onOpenUpEntry?.();
-      return true;
-    }
-
     if (!isBrowsing && drivePaths.includes(selectedPath)) {
       onOpenDrivePath?.(selectedPath);
       return true;
@@ -630,12 +623,10 @@ export default function useFilesystemPanelInteractions({
     drivePaths,
     isBrowsing,
     onOpenDrivePath,
-    onOpenUpEntry,
     openEntry,
     selectedEntryPaths,
     selectedPaths,
     treeData.entryByPath,
-    upSelectionId,
     workspaceFolderPathSet,
   ]);
 

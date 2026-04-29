@@ -3,7 +3,6 @@ import { Fragment } from "react";
 import Breadcrumbs from "./Breadcrumbs";
 import DraggableFilesystemEntry from "./DraggableFilesystemEntry";
 import EntryItem from "./EntryItem";
-import UpEntryDropTarget from "./UpEntryDropTarget";
 import styles from "./FilesystemPanel.module.scss";
 
 function getDragOverlayMeta(entries, entry) {
@@ -16,7 +15,6 @@ export default function FilesystemPanelListContent({
   browse = {},
   drives = {},
   breadcrumbs = {},
-  upEntry = {},
   windowing = {},
   entries = {},
   drag = {},
@@ -49,12 +47,6 @@ export default function FilesystemPanelListContent({
     isLoadingRecentFolders = false,
     onSelectRecentFolder = undefined,
   } = breadcrumbs;
-  const {
-    destinationPath: upDestinationPath = "",
-    isSelected: isUpSelected = false,
-    onSelect: onUpSelect = undefined,
-    onOpen: onUpOpen = undefined,
-  } = upEntry;
   const {
     entryWindowAnchorRef = undefined,
     isEnabled: isEntryWindowingEnabled = false,
@@ -128,15 +120,6 @@ export default function FilesystemPanelListContent({
       />
 
       {!isLoadingEntries && !error && <ul className={styles.entryList}>
-        <UpEntryDropTarget
-          paneId={paneId}
-          destinationPath={upDestinationPath}
-          isSelected={isUpSelected}
-          isMovingEntry={isEntryOperationInProgress}
-          activeDragPaths={activeDragPaths}
-          onClick={onUpSelect}
-          onDoubleClick={onUpOpen}
-        />
         <li
           ref={entryWindowAnchorRef}
           className={styles.windowingAnchor}

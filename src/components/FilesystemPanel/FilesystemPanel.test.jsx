@@ -400,7 +400,6 @@ describe("FilesystemPanel", () => {
 
     expect(await screen.findByText("Users")).toBeInTheDocument();
     expect(await screen.findByText("notes.txt")).toBeInTheDocument();
-    expect(screen.getByText("..")).toBeInTheDocument();
   });
 
   it("marks .grayspace folders as config entries", async () => {
