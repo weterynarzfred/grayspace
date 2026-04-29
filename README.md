@@ -79,7 +79,6 @@ npm run tauri_dev
 * `F2` (multiple selection) bulk rename
 * `Ctrl+F` filter current folder
 * `Ctrl+Shift+F` search current folder and subfolders
-* workspace script commands from `.grayspace/folder.json` in palette/context
 
 ## TODO
 

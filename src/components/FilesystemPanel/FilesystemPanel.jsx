@@ -622,6 +622,17 @@ function FilesystemPanel({
       return FILESYSTEM_THUMBNAIL_SIZE_STEPS[nextIndex];
     });
   }, []);
+  const handleCtrlWheel = useCallback((event) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    setThumbnailSizePx((previousSize) => {
+      const currentIndex = FILESYSTEM_THUMBNAIL_SIZE_STEPS.indexOf(previousSize);
+      const baseIndex = currentIndex >= 0 ? currentIndex : 0;
+      const delta = event.deltaY < 0 ? 1 : -1;
+      const nextIndex = Math.max(0, Math.min(FILESYSTEM_THUMBNAIL_SIZE_STEPS.length - 1, baseIndex + delta));
+      return FILESYSTEM_THUMBNAIL_SIZE_STEPS[nextIndex];
+    });
+  }, []);
   const panelStyle = useMemo(() => ({
     "--entry-font-size": `var(${thumbnailSizePx <= 32 ? "--font-size-small" : "--font-size-base"})`,
     "--entry-thumbnail-size": `${thumbnailSizePx}px`,
@@ -635,6 +646,7 @@ function FilesystemPanel({
     aria-label="Filesystem panel"
     data-drop-destination-path={currentPath || undefined}
     onKeyDown={handlePanelKeyDown}
+    onWheel={handleCtrlWheel}
   >
     <PanelHeader
       panelType={panelType}

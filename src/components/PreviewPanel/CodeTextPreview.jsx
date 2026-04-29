@@ -4,7 +4,7 @@ import { languages } from "@codemirror/language-data";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorView, keymap } from "@codemirror/view";
 import { gruvboxDark } from "@uiw/codemirror-theme-gruvbox-dark";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const BASIC_SETUP = {
   foldGutter: false,
@@ -57,6 +57,10 @@ function isMarkdownFileName(fileName) {
   return /\.(md|markdown|mdown|mkdn|mkd)$/i.test(fileName);
 }
 
+const MIN_FONT_SIZE = 8;
+const MAX_FONT_SIZE = 32;
+const DEFAULT_FONT_SIZE = 12;
+
 function CodeTextPreview({
   filePath = "",
   content = "",
@@ -66,6 +70,7 @@ function CodeTextPreview({
   onSave = undefined,
 }) {
   const [languageSupport, setLanguageSupport] = useState(null);
+  const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
   const onSaveRef = useRef(onSave);
 
   useEffect(() => {
@@ -102,6 +107,10 @@ function CodeTextPreview({
     };
   }, [filePath]);
 
+  const fontSizeTheme = useMemo(() => EditorView.theme({
+    ".cm-scroller": { fontSize: `${fontSize}px` },
+  }), [fontSize]);
+
   const extensions = useMemo(() => {
     const saveKeymap = keymap.of([{
       key: "Mod-s",
@@ -119,24 +128,35 @@ function CodeTextPreview({
       previewEditorTheme,
       EditorView.lineWrapping,
       saveKeymap,
+      fontSizeTheme,
     ];
     if (languageSupport) nextExtensions.push(languageSupport);
     return nextExtensions;
-  }, [languageSupport]);
+  }, [fontSizeTheme, languageSupport]);
 
-  return <CodeMirror
-    key={filePath}
-    value={content}
-    className={className}
-    data-testid="preview-text-content"
-    readOnly={readOnly}
-    editable={!readOnly}
-    basicSetup={BASIC_SETUP}
-    extensions={extensions}
-    onChange={(nextContent) => {
-      if (typeof onChange === "function") onChange(nextContent);
-    }}
-  />;
+  const handleCtrlWheel = useCallback((event) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    setFontSize((previous) => {
+      const delta = event.deltaY < 0 ? 1 : -1;
+      return Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, previous + delta));
+    });
+  }, []);
+
+  return <div className={className} onWheel={handleCtrlWheel}>
+    <CodeMirror
+      key={filePath}
+      value={content}
+      data-testid="preview-text-content"
+      readOnly={readOnly}
+      editable={!readOnly}
+      basicSetup={BASIC_SETUP}
+      extensions={extensions}
+      onChange={(nextContent) => {
+        if (typeof onChange === "function") onChange(nextContent);
+      }}
+    />
+  </div>;
 }
 
 export default CodeTextPreview;

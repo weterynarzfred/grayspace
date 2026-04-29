@@ -66,7 +66,7 @@ describe("CodeTextPreview", () => {
     expect(screen.getByTestId("codemirror-proxy")).toHaveTextContent("hello world");
     expect(codeMirrorPropsRef.current.readOnly).toBe(true);
     expect(codeMirrorPropsRef.current.editable).toBe(false);
-    expect(codeMirrorPropsRef.current.className).toBe("preview-class");
+    expect(screen.getByTestId("codemirror-proxy").parentElement).toHaveClass("preview-class");
   });
 
   it("can be switched into editable mode", () => {
