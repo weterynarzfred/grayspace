@@ -1,11 +1,13 @@
 use super::super::model::{PaneState, WorkspaceTab};
 use super::super::types::{
   FilesystemPaneState, LayoutAxis, SplitDirection, TabLayoutNode, TabSelectedFilesState,
+  DEFAULT_FILESYSTEM_VIEW_TYPE,
 };
 use std::collections::HashSet;
 
-const FILESYSTEM_THUMBNAIL_SIZE_STEPS: [u32; 5] = [22, 32, 64, 128, 256];
+const FILESYSTEM_THUMBNAIL_SIZE_STEPS: [u32; 8] = [22, 32, 48, 64, 96, 128, 192, 256];
 const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX: u32 = FILESYSTEM_THUMBNAIL_SIZE_STEPS[0];
+const FILESYSTEM_VIEW_TYPES: [&str; 3] = ["folder-tree", "grid", "foldable-grid"];
 
 pub(super) struct PanePanelTypeUpdate {
   pub(super) changed: bool,
@@ -79,6 +81,14 @@ fn normalize_thumbnail_size_px(thumbnail_size_px: u32) -> u32 {
   }
 }
 
+fn normalize_view_type(view_type: String) -> String {
+  if FILESYSTEM_VIEW_TYPES.contains(&view_type.as_str()) {
+    view_type
+  } else {
+    DEFAULT_FILESYSTEM_VIEW_TYPE.to_string()
+  }
+}
+
 fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState {
   let FilesystemPaneState {
     current_drive,
@@ -87,6 +97,7 @@ fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState
     expanded_paths,
     scroll_top,
     thumbnail_size_px,
+    view_type,
   } = state;
   let normalized_selected_paths = normalize_selected_paths(selected_paths);
   let normalized_expanded_paths = normalize_selected_paths(expanded_paths);
@@ -102,6 +113,7 @@ fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState
       0.0
     },
     thumbnail_size_px: normalize_thumbnail_size_px(thumbnail_size_px),
+    view_type: normalize_view_type(view_type),
   }
 }
 

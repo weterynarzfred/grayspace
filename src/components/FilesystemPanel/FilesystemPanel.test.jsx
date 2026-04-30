@@ -830,15 +830,33 @@ describe("FilesystemPanel", () => {
     });
 
     fireEvent.click(sizeButton);
+    expect(sizeButton).toHaveTextContent("48px");
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(48);
+    });
+
+    fireEvent.click(sizeButton);
     expect(sizeButton).toHaveTextContent("64px");
     await waitFor(() => {
       expect(getLatestThumbnailSizeHint()).toBe(64);
     });
 
     fireEvent.click(sizeButton);
+    expect(sizeButton).toHaveTextContent("96px");
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(96);
+    });
+
+    fireEvent.click(sizeButton);
     expect(sizeButton).toHaveTextContent("128px");
     await waitFor(() => {
       expect(getLatestThumbnailSizeHint()).toBe(128);
+    });
+
+    fireEvent.click(sizeButton);
+    expect(sizeButton).toHaveTextContent("192px");
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(192);
     });
 
     fireEvent.click(sizeButton);
@@ -1703,55 +1721,6 @@ describe("FilesystemPanel", () => {
     });
   });
 
-  it("navigates up only on double click for .. entry", async () => {
-    renderFilesystemPanel();
-
-    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
-    fireEvent.doubleClick(driveButton);
-
-    const usersButton = await screen.findByRole("button", { name: /Users/i });
-    fireEvent.doubleClick(usersButton);
-
-    expect(await screen.findByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
-
-    const upButton = screen.getByRole("button", { name: /\.\.\s*Up/i });
-    fireEvent.click(upButton);
-
-    expect(screen.queryByText("notes.txt")).not.toBeInTheDocument();
-
-    fireEvent.doubleClick(upButton);
-
-    expect(await screen.findByText("notes.txt")).toBeInTheDocument();
-  });
-
-  it("requires confirmation before leaving workspace root via up navigation", async () => {
-    openConfirmMock.mockResolvedValue(false);
-    renderFilesystemPanel({
-      tabId: "tab-1",
-      paneId: "left",
-      tabWorkspaceRoot: "C:\\Users",
-      filesystemState: {
-        currentDrive: "C:\\",
-        currentPath: "C:\\Users",
-        selectedPaths: [],
-        scrollTop: 0,
-      },
-    });
-
-    expect(await screen.findByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
-
-    const upButton = screen.getByRole("button", { name: /\.\.\s*Up/i });
-    fireEvent.doubleClick(upButton);
-
-    await waitFor(() => {
-      expect(openConfirmMock).toHaveBeenCalledWith(expect.objectContaining({
-        title: "Leave workspace?",
-        confirmLabel: "Leave workspace",
-      }));
-    });
-    expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
-  });
 
   it("uses breadcrumb root to return to drive selection", async () => {
     renderFilesystemPanel();
@@ -2217,25 +2186,25 @@ describe("FilesystemPanel", () => {
     });
   });
 
-  it("selects up entry and last entry with arrows when nothing is selected", async () => {
+  it("selects first entry and last entry with arrows when nothing is selected", async () => {
     renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
     fireEvent.doubleClick(driveButton);
 
     const panel = screen.getByLabelText("Filesystem panel");
-    const upButton = await screen.findByRole("button", { name: /\.\./i });
+    const firstButton = await screen.findByRole("button", { name: /^Users/i });
     const configButton = await screen.findByRole("button", { name: /\.grayspace/i });
 
     fireEvent.keyDown(panel, { key: "ArrowDown" });
     await waitFor(() => {
-      expect(upButton).toHaveAttribute("aria-selected", "true");
+      expect(firstButton).toHaveAttribute("aria-selected", "true");
     });
 
     const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
     fireEvent.click(scrollContainer);
     await waitFor(() => {
-      expect(upButton).toHaveAttribute("aria-selected", "false");
+      expect(firstButton).toHaveAttribute("aria-selected", "false");
     });
 
     fireEvent.keyDown(panel, { key: "ArrowUp" });
@@ -2251,12 +2220,12 @@ describe("FilesystemPanel", () => {
     fireEvent.doubleClick(driveButton);
 
     const panel = screen.getByLabelText("Filesystem panel");
-    const upButton = await screen.findByRole("button", { name: /\.\./i });
+    const firstButton = await screen.findByRole("button", { name: /^Users/i });
     const configButton = await screen.findByRole("button", { name: /\.grayspace/i });
 
     fireEvent.keyDown(panel, { key: "ArrowDown" });
     await waitFor(() => {
-      expect(upButton).toHaveAttribute("aria-selected", "true");
+      expect(firstButton).toHaveAttribute("aria-selected", "true");
     });
 
     fireEvent.keyDown(panel, { key: "ArrowUp" });
@@ -2266,7 +2235,7 @@ describe("FilesystemPanel", () => {
 
     fireEvent.keyDown(panel, { key: "ArrowDown" });
     await waitFor(() => {
-      expect(upButton).toHaveAttribute("aria-selected", "true");
+      expect(firstButton).toHaveAttribute("aria-selected", "true");
     });
   });
 

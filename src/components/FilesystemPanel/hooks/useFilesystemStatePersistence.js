@@ -19,6 +19,7 @@ export default function useFilesystemStatePersistence({
   selectedPaths = [],
   expandedPaths = [],
   thumbnailSizePx,
+  viewType = "folder-tree",
 }) {
   const initialFilesystemStateRef = useRef(
     normalizeFilesystemPaneState(initialFilesystemState),
@@ -31,6 +32,7 @@ export default function useFilesystemStatePersistence({
     selectedPaths,
     expandedPaths,
     thumbnailSizePx,
+    viewType,
   });
   const latestScrollTopRef = useRef(initialFilesystemStateRef.current.scrollTop);
   const pendingInitialScrollRestoreRef = useRef(true);
@@ -62,6 +64,7 @@ export default function useFilesystemStatePersistence({
       selectedPaths,
       expandedPaths,
       thumbnailSizePx,
+      viewType,
     };
   }, [
     currentDrive,
@@ -69,6 +72,7 @@ export default function useFilesystemStatePersistence({
     expandedPaths,
     selectedPaths,
     thumbnailSizePx,
+    viewType,
   ]);
 
   const persistFilesystemState = useCallback((nextState) => {
@@ -82,7 +86,8 @@ export default function useFilesystemStatePersistence({
       || !arePathArraysEqual(normalizedState.selectedPaths, lastState.selectedPaths)
       || !arePathArraysEqual(normalizedState.expandedPaths, lastState.expandedPaths)
       || normalizedState.scrollTop !== lastState.scrollTop
-      || normalizedState.thumbnailSizePx !== lastState.thumbnailSizePx;
+      || normalizedState.thumbnailSizePx !== lastState.thumbnailSizePx
+      || normalizedState.viewType !== lastState.viewType;
 
     if (!hasChanged) return;
 
@@ -99,6 +104,7 @@ export default function useFilesystemStatePersistence({
       expandedPaths: latestState.expandedPaths,
       scrollTop: latestScrollTopRef.current,
       thumbnailSizePx: latestState.thumbnailSizePx,
+      viewType: latestState.viewType,
     });
   }, [persistFilesystemState]);
 
@@ -142,6 +148,7 @@ export default function useFilesystemStatePersistence({
     persistCurrentFilesystemState,
     selectedPaths,
     thumbnailSizePx,
+    viewType,
   ]);
 
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { getSelectedPathsFromState } from "../../utils/pathSelection";
 
-export const FILESYSTEM_THUMBNAIL_SIZE_STEPS = [22, 32, 64, 128, 256];
+export const FILESYSTEM_THUMBNAIL_SIZE_STEPS = [22, 32, 48, 64, 96, 128, 192, 256];
 export const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE = FILESYSTEM_THUMBNAIL_SIZE_STEPS[0];
 
 export const FILESYSTEM_VIEW_TYPES = ["folder-tree", "grid", "foldable-grid"];

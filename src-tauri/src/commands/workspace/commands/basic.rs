@@ -316,6 +316,7 @@ fn should_persist_workspace_panels_for_filesystem_state_change(
     || previous_state.current_path != next_state.current_path
     || previous_state.expanded_paths != next_state.expanded_paths
     || previous_state.thumbnail_size_px != next_state.thumbnail_size_px
+    || previous_state.view_type != next_state.view_type
 }
 
 fn apply_filesystem_root_to_pane(pane: &mut PaneState, root_path: &str) {

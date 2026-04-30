@@ -19,6 +19,7 @@ import useFilesystemTree from "./hooks/useFilesystemTree";
 import useFilesystemWorkspaceFolders from "./hooks/useFilesystemWorkspaceFolders";
 import useVirtualizedEntryWindow from "./hooks/useVirtualizedEntryWindow";
 import useFilesystemPanelLoadMore from "./hooks/useFilesystemPanelLoadMore";
+import useGridColumnCount from "./hooks/useGridColumnCount";
 import {
   clearFilesystemClipboard,
   readFilesystemClipboard,
@@ -41,6 +42,9 @@ import styles from "./FilesystemPanel.module.scss";
 import shellStyles from "../PanelShell.module.scss";
 
 const ENTRY_WINDOWING_THRESHOLD = 200;
+const GRID_GAP_PX = 8;
+const GRID_PADDING_PX = 8;
+const GRID_LABEL_HEIGHT_PX = 32;
 const THUMBNAIL_SIZE_TOGGLE_TITLE = "Toggle icon/thumbnail size";
 const HISTORY_BACK_BUTTON_TITLE = "Go back in folder history";
 const HISTORY_FORWARD_BUTTON_TITLE = "Go forward in folder history";
@@ -76,6 +80,7 @@ function FilesystemPanel({
   const panelRef = useRef(null);
   const panelScrollRef = useRef(null);
   const entryWindowAnchorRef = useRef(null);
+  const gridAnchorRef = useRef(null);
   const onCurrentPathChangeRef = useRef(onCurrentPathChange);
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
   const [expandedPaths, setExpandedPaths] = useState(initialFilesystemStateRef.current.expandedPaths);
@@ -142,6 +147,7 @@ function FilesystemPanel({
     selectedPaths,
     expandedPaths,
     thumbnailSizePx,
+    viewType,
   });
   const isBrowsing = currentPath !== "";
   const isEntryOperationInProgress = isMovingEntry || isDeletingEntries || isImportingExternal;
@@ -180,9 +186,38 @@ function FilesystemPanel({
   }, [treeRows, virtualEndIndex, virtualStartIndex]);
   const renderedRows = isEntryWindowingEnabled ? visibleRows : treeRows;
   const visibleEntries = useMemo(() => renderedRows.map((row) => row.entry), [renderedRows]);
+
+  const isGridView = viewType === "grid" && isBrowsing;
+  const gridCellMinWidthPx = Math.max(72, thumbnailSizePx + 24);
+  const gridCellHeightPx = thumbnailSizePx + GRID_LABEL_HEIGHT_PX;
+  const gridRowHeightPx = gridCellHeightPx + GRID_GAP_PX;
+  const gridColumns = useGridColumnCount(panelScrollRef, gridCellMinWidthPx, GRID_GAP_PX, GRID_PADDING_PX);
+  const gridRowCount = Math.ceil(totalRootEntryCount / Math.max(1, gridColumns));
+  const isGridWindowingEnabled = isGridView && gridRowCount >= ENTRY_WINDOWING_THRESHOLD;
+  const {
+    startIndex: gridVirtualStartIndex,
+    endIndex: gridVirtualEndIndex,
+    topSpacerHeight: gridTopSpacerHeight,
+    bottomSpacerHeight: gridBottomSpacerHeight,
+    scheduleRecompute: scheduleGridWindowRecompute,
+  } = useVirtualizedEntryWindow({
+    itemCount: gridRowCount,
+    rowHeightPx: gridRowHeightPx,
+    isEnabled: isGridWindowingEnabled,
+    scrollContainerRef: panelScrollRef,
+    listStartAnchorRef: gridAnchorRef,
+  });
+  const visibleGridEntries = useMemo(() => {
+    if (!isGridView) return [];
+    const startEntry = gridVirtualStartIndex * gridColumns;
+    const endEntry = gridVirtualEndIndex * gridColumns;
+    return entries.slice(startEntry, endEntry);
+  }, [isGridView, gridVirtualStartIndex, gridVirtualEndIndex, gridColumns, entries]);
+
+  const effectiveVisibleEntries = isGridView ? visibleGridEntries : visibleEntries;
   const { thumbnailSrcByPath } = useFilesystemThumbnails({
     currentPath,
-    visibleEntries,
+    visibleEntries: effectiveVisibleEntries,
     thumbnailSizePx,
   });
   const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
@@ -477,6 +512,10 @@ function FilesystemPanel({
   }, [currentPath]);
 
   useEffect(() => {
+    if (panelScrollRef.current) panelScrollRef.current.scrollTop = 0;
+  }, [viewType]);
+
+  useEffect(() => {
     const handleFilesystemFlushRequest = () => {
       flushFilesystemState();
     };
@@ -608,15 +647,15 @@ function FilesystemPanel({
   const { handlePanelScroll } = useFilesystemPanelLoadMore({
     panelRef: panelScrollRef,
     handlePanelListScroll,
-    scheduleEntryWindowRecompute,
-    isEntryWindowingEnabled,
+    scheduleEntryWindowRecompute: isGridView ? scheduleGridWindowRecompute : scheduleEntryWindowRecompute,
+    isEntryWindowingEnabled: isGridView ? isGridWindowingEnabled : isEntryWindowingEnabled,
     hasMoreEntries,
     isLoadingEntries,
     isLoadingMoreEntries,
     loadMoreEntries,
     isBrowsing,
-    treeRowsCount: treeRows.length,
-    virtualEndIndex,
+    treeRowsCount: isGridView ? entries.length : treeRows.length,
+    virtualEndIndex: isGridView ? gridVirtualEndIndex * gridColumns : virtualEndIndex,
   });
   const handleToggleThumbnailSize = useCallback(() => {
     setThumbnailSizePx((previousSize) => {
@@ -762,6 +801,21 @@ function FilesystemPanel({
           activeEntry: activeDragEntry,
           activeEntries: activeDragEntries,
           intent: dragIntent,
+        }}
+        viewType={viewType}
+        grid={{
+          entries: visibleGridEntries,
+          selectedPathSet,
+          thumbnailSrcByPath,
+          workspaceFolderPathSet,
+          columnCount: gridColumns,
+          anchorRef: gridAnchorRef,
+          topSpacerHeight: gridTopSpacerHeight,
+          bottomSpacerHeight: gridBottomSpacerHeight,
+          isWindowingEnabled: isGridWindowingEnabled,
+          onEntryClick: handleEntryClick,
+          onEntryDoubleClick: handleEntryDoubleClick,
+          onEntryContextMenu: handleEntryContextMenu,
         }}
       />
     </div>

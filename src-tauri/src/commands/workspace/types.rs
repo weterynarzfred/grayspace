@@ -8,9 +8,14 @@ pub const DEFAULT_LEFT_PANEL_TYPE: &str = "Filesystem";
 pub const DEFAULT_RIGHT_PANEL_TYPE: &str = "Preview";
 pub const DEFAULT_SPLIT_RATIO: u8 = 50;
 pub const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX: u32 = 22;
+pub const DEFAULT_FILESYSTEM_VIEW_TYPE: &str = "folder-tree";
 
 fn default_filesystem_thumbnail_size_px() -> u32 {
   DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX
+}
+
+fn default_filesystem_view_type() -> String {
+  DEFAULT_FILESYSTEM_VIEW_TYPE.to_string()
 }
 
 #[derive(Clone, Serialize)]
@@ -117,6 +122,8 @@ pub struct FilesystemPaneState {
   pub scroll_top: f64,
   #[serde(default = "default_filesystem_thumbnail_size_px")]
   pub thumbnail_size_px: u32,
+  #[serde(default = "default_filesystem_view_type")]
+  pub view_type: String,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
@@ -268,6 +275,7 @@ impl Default for FilesystemPaneState {
       expanded_paths: Vec::new(),
       scroll_top: 0.0,
       thumbnail_size_px: DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX,
+      view_type: DEFAULT_FILESYSTEM_VIEW_TYPE.to_string(),
     }
   }
 }

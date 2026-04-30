@@ -33,17 +33,6 @@ describe("commandRegistry", () => {
     expect(getCommandIds(commandsWithSelection)).toContain("filesystem.renameSelected");
   });
 
-  it("keeps non-entry selection ids out of rename availability", () => {
-    const commands = getCommandsForTrigger("palette", {
-      source: "palette",
-      activePaneId: "pane-1",
-      activePanelType: "Filesystem",
-      isFilesystemBrowsing: true,
-      selectedPaths: ["__up__"],
-    });
-
-    expect(getCommandIds(commands)).not.toContain("filesystem.renameSelected");
-  });
 
   it("never shows split commands in context menus", () => {
     const fileTargetCommands = getCommandsForTrigger("context-menu", {

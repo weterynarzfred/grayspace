@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(cargo build *)",
+      "Bash(grep -v \"//.*config\")"
+    ]
+  }
+}

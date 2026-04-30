@@ -3,6 +3,7 @@ import { Fragment } from "react";
 import Breadcrumbs from "./Breadcrumbs";
 import DraggableFilesystemEntry from "./DraggableFilesystemEntry";
 import EntryItem from "./EntryItem";
+import FilesystemPanelGridContent from "./FilesystemPanelGridContent";
 import styles from "./FilesystemPanel.module.scss";
 
 function getDragOverlayMeta(entries, entry) {
@@ -18,6 +19,8 @@ export default function FilesystemPanelListContent({
   windowing = {},
   entries = {},
   drag = {},
+  viewType = "folder-tree",
+  grid = {},
 }) {
   const {
     isBrowsing = false,
@@ -74,7 +77,22 @@ export default function FilesystemPanelListContent({
     activeEntries: activeDragEntries = [],
     intent: dragIntent = "move",
   } = drag;
+  const {
+    entries: gridEntries = [],
+    selectedPathSet: gridSelectedPathSet = new Set(),
+    thumbnailSrcByPath: gridThumbnailSrcByPath = {},
+    workspaceFolderPathSet: gridWorkspaceFolderPathSet = new Set(),
+    columnCount: gridColumnCount = 1,
+    anchorRef: gridAnchorRef = undefined,
+    topSpacerHeight: gridTopSpacerHeight = 0,
+    bottomSpacerHeight: gridBottomSpacerHeight = 0,
+    isWindowingEnabled: isGridWindowingEnabled = false,
+    onEntryClick: onGridEntryClick = undefined,
+    onEntryDoubleClick: onGridEntryDoubleClick = undefined,
+    onEntryContextMenu: onGridEntryContextMenu = undefined,
+  } = grid;
   const dragIntentLabel = dragIntent === "copy" ? "Copy" : "Move";
+  const isGridView = viewType === "grid";
 
   return <div
     className={styles.panelList}
@@ -119,7 +137,24 @@ export default function FilesystemPanelListContent({
         onSelectRecentFolder={onSelectRecentFolder}
       />
 
-      {!isLoadingEntries && !error && <ul className={styles.entryList}>
+      {!isLoadingEntries && !error && isGridView && (
+        <FilesystemPanelGridContent
+          paneId={paneId}
+          entries={gridEntries}
+          selectedPathSet={gridSelectedPathSet}
+          thumbnailSrcByPath={gridThumbnailSrcByPath}
+          workspaceFolderPathSet={gridWorkspaceFolderPathSet}
+          columnCount={gridColumnCount}
+          anchorRef={gridAnchorRef}
+          topSpacerHeight={gridTopSpacerHeight}
+          bottomSpacerHeight={gridBottomSpacerHeight}
+          isWindowingEnabled={isGridWindowingEnabled}
+          onEntryClick={onGridEntryClick}
+          onEntryDoubleClick={onGridEntryDoubleClick}
+          onEntryContextMenu={onGridEntryContextMenu}
+        />
+      )}
+      {!isLoadingEntries && !error && !isGridView && <ul className={styles.entryList}>
         <li
           ref={entryWindowAnchorRef}
           className={styles.windowingAnchor}

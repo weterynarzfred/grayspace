@@ -1,0 +1,106 @@
+@use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
+
+.gridContainer {
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(var(--grid-cols, 4), 1fr);
+  gap: 8px;
+  align-content: start;
+}
+
+.gridAnchor {
+  grid-column: 1 / -1;
+  height: 0;
+  pointer-events: none;
+}
+
+.gridSpacer {
+  grid-column: 1 / -1;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 6px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: default;
+  text-align: center;
+  color: $text-primary;
+  width: 100%;
+
+  &:hover {
+    background: $bg-surface-hover;
+    border-color: $border-hover;
+  }
+
+  &:focus-visible {
+    @include focus-ring;
+  }
+}
+
+.cellSelected {
+  background: $bg-selected;
+  color: $accent-active;
+
+  &:hover {
+    background: $bg-selected;
+    border-color: $border-hover;
+  }
+}
+
+.cellPreview {
+  width: var(--entry-thumbnail-size, 32px);
+  height: var(--entry-thumbnail-size, 32px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cellIcon {
+  color: $text-secondary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+
+  &::before {
+    text-align: center;
+    width: 100% !important;
+    font-size: calc(var(--entry-thumbnail-size, 32px) * 0.7) !important;
+  }
+
+  &:global(.folder-icon)::before {
+    font-family: fontawesome;
+    top: 1px;
+    content: "\f114";
+  }
+}
+
+.cellThumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cellName {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--entry-font-size, 0.8rem);
+  line-height: 1.3;
+}
+
+.cellConfig {
+  &,
+  .cellIcon:global(.folder-icon) {
+    color: $text-accent-2;
+  }
+}
