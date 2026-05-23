@@ -6,6 +6,7 @@ mod types;
 pub use commands::{
   handle_runtime_window_destroyed, workspace_bootstrap, workspace_close_tab,
   workspace_close_tab_pane, workspace_close_window, workspace_detach_tab_to_new_window,
+  workspace_folder_view_styles_get, workspace_folder_view_styles_set,
   workspace_get_snapshot, workspace_move_tab, workspace_new_tab, workspace_new_window,
   workspace_open_folder_from_tab, workspace_open_workspace_folder_from_tab,
   workspace_recent_folders_list, workspace_recent_folders_record, workspace_recent_folders_remove,

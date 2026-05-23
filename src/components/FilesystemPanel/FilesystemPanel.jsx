@@ -42,6 +42,7 @@ import styles from "./FilesystemPanel.module.scss";
 import shellStyles from "../PanelShell.module.scss";
 
 const ENTRY_WINDOWING_THRESHOLD = 200;
+const DRIVES_VIEW_STYLE_KEY = "::drives::";
 const GRID_GAP_PX = 8;
 const GRID_PADDING_PX = 8;
 const GRID_LABEL_HEIGHT_PX = 32;
@@ -82,6 +83,10 @@ function FilesystemPanel({
   const entryWindowAnchorRef = useRef(null);
   const gridAnchorRef = useRef(null);
   const onCurrentPathChangeRef = useRef(onCurrentPathChange);
+  const isFirstPathRef = useRef(tabWorkspaceRoot !== "");
+  const pathLoadEpochRef = useRef(0);
+  const tabWorkspaceRootRef = useRef(tabWorkspaceRoot);
+  tabWorkspaceRootRef.current = tabWorkspaceRoot;
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
   const [expandedPaths, setExpandedPaths] = useState(initialFilesystemStateRef.current.expandedPaths);
   const [thumbnailSizePx, setThumbnailSizePx] = useState(
@@ -89,6 +94,8 @@ function FilesystemPanel({
   );
   const [viewType, setViewType] = useState(initialFilesystemStateRef.current.viewType);
   const [breadcrumbFocusRequestKey, setBreadcrumbFocusRequestKey] = useState(0);
+  const thumbnailSizePxRef = useRef(thumbnailSizePx);
+  thumbnailSizePxRef.current = thumbnailSizePx;
   const entryRowHeightPx = thumbnailSizePx;
   const { openConfirm, pushNotification } = useNotificationCenter();
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current, {
@@ -512,6 +519,26 @@ function FilesystemPanel({
   }, [currentPath]);
 
   useEffect(() => {
+    isFirstPathRef.current = tabWorkspaceRootRef.current !== "";
+    pathLoadEpochRef.current += 1;
+  }, [paneId, tabId]);
+
+  useEffect(() => {
+    if (currentPath && isFirstPathRef.current) {
+      isFirstPathRef.current = false;
+      return;
+    }
+    const styleKey = currentPath || DRIVES_VIEW_STYLE_KEY;
+    const epoch = ++pathLoadEpochRef.current;
+    invoke("workspace_folder_view_styles_get", { path: styleKey }).then((style) => {
+      if (pathLoadEpochRef.current !== epoch) return;
+      if (!style) return;
+      if (FILESYSTEM_VIEW_TYPES.includes(style.viewType)) setViewType(style.viewType);
+      if (FILESYSTEM_THUMBNAIL_SIZE_STEPS.includes(style.thumbnailSizePx)) setThumbnailSizePx(style.thumbnailSizePx);
+    }).catch(() => {});
+  }, [currentPath]);
+
+  useEffect(() => {
     if (panelScrollRef.current) panelScrollRef.current.scrollTop = 0;
   }, [viewType]);
 
@@ -584,6 +611,10 @@ function FilesystemPanel({
       window.removeEventListener("keydown", handlePanelNavigationKeys);
     };
   }, [handlePanelKeyDown, isPanelActive]);
+  const saveFolderViewStyle = useCallback((path, vt, tspx) => {
+    const styleKey = path || DRIVES_VIEW_STYLE_KEY;
+    invoke("workspace_folder_view_styles_set", { path: styleKey, viewType: vt, thumbnailSizePx: tspx }).catch(() => {});
+  }, []);
   useEffect(() => {
     const handleAppCommand = (event) => {
       const detail = event?.detail ?? {};
@@ -614,9 +645,18 @@ function FilesystemPanel({
         [COMMAND_IDS.FILESYSTEM_NAVIGATE_BACK]: () => goBack(),
         [COMMAND_IDS.FILESYSTEM_NAVIGATE_FORWARD]: () => goForward(),
         [COMMAND_IDS.FILESYSTEM_FOCUS_BREADCRUMB_INPUT]: () => requestBreadcrumbInputFocus(),
-        [COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE]: () => setViewType("folder-tree"),
-        [COMMAND_IDS.FILESYSTEM_VIEW_GRID]: () => setViewType("grid"),
-        [COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID]: () => setViewType("foldable-grid"),
+        [COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE]: () => {
+          setViewType("folder-tree");
+          saveFolderViewStyle(currentPath, "folder-tree", thumbnailSizePxRef.current);
+        },
+        [COMMAND_IDS.FILESYSTEM_VIEW_GRID]: () => {
+          setViewType("grid");
+          saveFolderViewStyle(currentPath, "grid", thumbnailSizePxRef.current);
+        },
+        [COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID]: () => {
+          setViewType("foldable-grid");
+          saveFolderViewStyle(currentPath, "foldable-grid", thumbnailSizePxRef.current);
+        },
       };
 
       const commandHandler = commandHandlers[commandId];
@@ -628,6 +668,7 @@ function FilesystemPanel({
       window.removeEventListener(APP_COMMAND_EVENT, handleAppCommand);
     };
   }, [
+    currentPath,
     handleBeginRenameSelectedEntry,
     handleClipboardSelectionCommand,
     handleCreateFolder,
@@ -642,6 +683,7 @@ function FilesystemPanel({
     requestBreadcrumbInputFocus,
     resolveCreateCommandOptions,
     redoEntries,
+    saveFolderViewStyle,
     undoEntries,
   ]);
   const { handlePanelScroll } = useFilesystemPanelLoadMore({
@@ -658,25 +700,28 @@ function FilesystemPanel({
     virtualEndIndex: isGridView ? gridVirtualEndIndex * gridColumns : virtualEndIndex,
   });
   const handleToggleThumbnailSize = useCallback(() => {
-    setThumbnailSizePx((previousSize) => {
-      const currentIndex = FILESYSTEM_THUMBNAIL_SIZE_STEPS.indexOf(previousSize);
-      const nextIndex = currentIndex >= 0
-        ? (currentIndex + 1) % FILESYSTEM_THUMBNAIL_SIZE_STEPS.length
-        : 0;
-      return FILESYSTEM_THUMBNAIL_SIZE_STEPS[nextIndex];
-    });
-  }, []);
+    const currentIndex = FILESYSTEM_THUMBNAIL_SIZE_STEPS.indexOf(thumbnailSizePxRef.current);
+    const nextIndex = currentIndex >= 0
+      ? (currentIndex + 1) % FILESYSTEM_THUMBNAIL_SIZE_STEPS.length
+      : 0;
+    const newSize = FILESYSTEM_THUMBNAIL_SIZE_STEPS[nextIndex];
+    setThumbnailSizePx(newSize);
+    saveFolderViewStyle(currentPath, viewType, newSize);
+  }, [currentPath, viewType, saveFolderViewStyle]);
   const handleCtrlWheel = useCallback((event) => {
     if (!event.ctrlKey) return;
     event.preventDefault();
+    let newSize;
     setThumbnailSizePx((previousSize) => {
       const currentIndex = FILESYSTEM_THUMBNAIL_SIZE_STEPS.indexOf(previousSize);
       const baseIndex = currentIndex >= 0 ? currentIndex : 0;
       const delta = event.deltaY < 0 ? 1 : -1;
       const nextIndex = Math.max(0, Math.min(FILESYSTEM_THUMBNAIL_SIZE_STEPS.length - 1, baseIndex + delta));
-      return FILESYSTEM_THUMBNAIL_SIZE_STEPS[nextIndex];
+      newSize = FILESYSTEM_THUMBNAIL_SIZE_STEPS[nextIndex];
+      return newSize;
     });
-  }, []);
+    saveFolderViewStyle(currentPath, viewType, newSize);
+  }, [currentPath, viewType, saveFolderViewStyle]);
   const panelStyle = useMemo(() => ({
     "--entry-font-size": `var(${thumbnailSizePx <= 32 ? "--font-size-small" : "--font-size-base"})`,
     "--entry-thumbnail-size": `${thumbnailSizePx}px`,

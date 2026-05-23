@@ -51,6 +51,50 @@ pub struct RecentFolderEntry {
 
 const RECENT_FOLDERS_FILE_NAME: &str = "recent-folders.json";
 const MAX_RECENT_FOLDERS: usize = 200;
+const FOLDER_VIEW_STYLES_FILE_NAME: &str = "folder-view-styles.json";
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderViewStyle {
+  view_type: String,
+  thumbnail_size_px: u32,
+}
+
+fn folder_view_styles_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
+  let app_data_dir = app_handle
+    .path()
+    .app_data_dir()
+    .map_err(|error| error.to_string())?;
+  fs::create_dir_all(&app_data_dir).map_err(|error| error.to_string())?;
+  Ok(app_data_dir.join(FOLDER_VIEW_STYLES_FILE_NAME))
+}
+
+fn read_folder_view_styles(app_handle: &AppHandle) -> std::collections::BTreeMap<String, FolderViewStyle> {
+  let path = match folder_view_styles_path(app_handle) {
+    Ok(p) => p,
+    Err(_) => return std::collections::BTreeMap::new(),
+  };
+  if !path.is_file() {
+    return std::collections::BTreeMap::new();
+  }
+  let raw = match fs::read_to_string(path) {
+    Ok(s) => s,
+    Err(_) => return std::collections::BTreeMap::new(),
+  };
+  if raw.trim().is_empty() {
+    return std::collections::BTreeMap::new();
+  }
+  serde_json::from_str(&raw).unwrap_or_default()
+}
+
+fn write_folder_view_styles(
+  app_handle: &AppHandle,
+  styles: &std::collections::BTreeMap<String, FolderViewStyle>,
+) -> Result<(), String> {
+  let path = folder_view_styles_path(app_handle)?;
+  let serialized = serde_json::to_string_pretty(styles).map_err(|error| error.to_string())?;
+  fs::write(path, serialized).map_err(|error| error.to_string())
+}
 
 fn workspace_panels_config_path(workspace_root: &str) -> PathBuf {
   PathBuf::from(workspace_root)
@@ -1364,6 +1408,36 @@ pub fn workspace_set_window_bounds(
   }
 
   Ok(())
+}
+
+#[tauri::command]
+pub fn workspace_folder_view_styles_get(
+  app_handle: AppHandle,
+  path: String,
+) -> Option<FolderViewStyle> {
+  let normalized = normalize_recent_folder_path(&path);
+  if normalized.is_empty() {
+    return None;
+  }
+  let key = recent_folder_dedupe_key(&normalized);
+  read_folder_view_styles(&app_handle).get(&key).cloned()
+}
+
+#[tauri::command]
+pub fn workspace_folder_view_styles_set(
+  app_handle: AppHandle,
+  path: String,
+  view_type: String,
+  thumbnail_size_px: u32,
+) -> Result<(), String> {
+  let normalized = normalize_recent_folder_path(&path);
+  if normalized.is_empty() {
+    return Ok(());
+  }
+  let key = recent_folder_dedupe_key(&normalized);
+  let mut styles = read_folder_view_styles(&app_handle);
+  styles.insert(key, FolderViewStyle { view_type, thumbnail_size_px });
+  write_folder_view_styles(&app_handle, &styles)
 }
 
 #[cfg(test)]
