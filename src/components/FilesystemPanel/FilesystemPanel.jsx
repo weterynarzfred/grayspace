@@ -858,9 +858,12 @@ function FilesystemPanel({
           topSpacerHeight: gridTopSpacerHeight,
           bottomSpacerHeight: gridBottomSpacerHeight,
           isWindowingEnabled: isGridWindowingEnabled,
+          renamingPath,
           onEntryClick: handleEntryClick,
           onEntryDoubleClick: handleEntryDoubleClick,
           onEntryContextMenu: handleEntryContextMenu,
+          onEntryRenameSubmit: handleEntryRenameSubmit,
+          onEntryRenameCancel: handleEntryRenameCancel,
         }}
       />
     </div>

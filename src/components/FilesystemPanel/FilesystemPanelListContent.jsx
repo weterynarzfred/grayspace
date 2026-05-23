@@ -87,9 +87,12 @@ export default function FilesystemPanelListContent({
     topSpacerHeight: gridTopSpacerHeight = 0,
     bottomSpacerHeight: gridBottomSpacerHeight = 0,
     isWindowingEnabled: isGridWindowingEnabled = false,
+    renamingPath: gridRenamingPath = "",
     onEntryClick: onGridEntryClick = undefined,
     onEntryDoubleClick: onGridEntryDoubleClick = undefined,
     onEntryContextMenu: onGridEntryContextMenu = undefined,
+    onEntryRenameSubmit: onGridEntryRenameSubmit = undefined,
+    onEntryRenameCancel: onGridEntryRenameCancel = undefined,
   } = grid;
   const dragIntentLabel = dragIntent === "copy" ? "Copy" : "Move";
   const isGridView = viewType === "grid";
@@ -149,9 +152,12 @@ export default function FilesystemPanelListContent({
           topSpacerHeight={gridTopSpacerHeight}
           bottomSpacerHeight={gridBottomSpacerHeight}
           isWindowingEnabled={isGridWindowingEnabled}
+          renamingPath={gridRenamingPath}
           onEntryClick={onGridEntryClick}
           onEntryDoubleClick={onGridEntryDoubleClick}
           onEntryContextMenu={onGridEntryContextMenu}
+          onEntryRenameSubmit={onGridEntryRenameSubmit}
+          onEntryRenameCancel={onGridEntryRenameCancel}
         />
       )}
       {!isLoadingEntries && !error && !isGridView && <ul className={styles.entryList}>
