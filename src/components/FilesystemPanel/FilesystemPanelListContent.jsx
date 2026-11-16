@@ -3,8 +3,25 @@ import { Fragment } from "react";
 import Breadcrumbs from "./Breadcrumbs";
 import DraggableFilesystemEntry from "./DraggableFilesystemEntry";
 import EntryItem from "./EntryItem";
+import FilesystemDetailsHeader from "./FilesystemDetailsHeader";
 import FilesystemPanelGridContent from "./FilesystemPanelGridContent";
 import styles from "./FilesystemPanel.module.scss";
+import { getParentDirectoryPath, normalizePathForComparison } from "../../utils/pathWatch";
+
+function describeSearch({ query, status, resultCount }) {
+  if (status === "running") return `Searching subfolders for "${query}"... ${resultCount} found`;
+  if (status === "truncated") return `Too many matches for "${query}", showing the first ${resultCount}.`;
+  if (resultCount === 0) return `No results for "${query}" in this folder or its subfolders.`;
+  return `${resultCount} ${resultCount === 1 ? "result" : "results"} for "${query}" in this folder and its subfolders.`;
+}
+
+// Folder of a search result relative to the searched folder, e.g. "photos\\2024"; "" when directly inside.
+function getResultLocation(entryPath, rootPath) {
+  const parentPath = getParentDirectoryPath(entryPath);
+  const normalizedRoot = normalizePathForComparison(rootPath);
+  if (normalizePathForComparison(parentPath) === normalizedRoot) return "";
+  return parentPath.slice(rootPath.replace(/[\\/]+$/, "").length).replace(/^[\\/]+/, "");
+}
 
 function getDragOverlayMeta(entries, entry) {
   if (entries.length > 1) return "Selection";
@@ -20,6 +37,7 @@ export default function FilesystemPanelListContent({
   entries = {},
   drag = {},
   viewType = "folder-tree",
+  details = {},
   grid = {},
 }) {
   const {
@@ -28,6 +46,8 @@ export default function FilesystemPanelListContent({
     isLoadingEntries = false,
     error = "",
     isEntryOperationInProgress = false,
+    unmatchedFilter = "",
+    search = null,
   } = browse;
   const {
     items: driveItems = [],
@@ -96,6 +116,7 @@ export default function FilesystemPanelListContent({
   } = grid;
   const dragIntentLabel = dragIntent === "copy" ? "Copy" : "Move";
   const isGridView = viewType === "grid";
+  const isDetailsView = viewType === "details";
 
   return <div
     className={styles.panelList}
@@ -160,61 +181,78 @@ export default function FilesystemPanelListContent({
           onEntryRenameCancel={onGridEntryRenameCancel}
         />
       )}
-      {!isLoadingEntries && !error && !isGridView && <ul className={styles.entryList}>
-        <li
-          ref={entryWindowAnchorRef}
-          className={styles.windowingAnchor}
-          aria-hidden
-        />
-        {isEntryWindowingEnabled && topSpacerHeight > 0 && <li
-          className={styles.windowingSpacer}
-          style={{ height: `${topSpacerHeight}px` }}
-          aria-hidden
+      {unmatchedFilter && <p className={styles.muted}>No items match "{unmatchedFilter}".</p>}
+      {search && <p className={styles.searchStatus} role="status">{describeSearch(search)}</p>}
+      {!isLoadingEntries && !error && !isGridView && <div
+        className={`${styles.entryRows} ${isDetailsView ? styles.detailsRows : ""}`}
+      >
+        {isDetailsView && <FilesystemDetailsHeader
+          sortKey={details.sortKey}
+          sortDescending={details.sortDescending}
+          onSort={details.onSort}
         />}
-        {renderedRows.map(row => <Fragment key={row.entry.path}>
-          <DraggableFilesystemEntry
-            paneId={paneId}
-            entry={row.entry}
-            drag={{
-              dropDestinationPath: row.entry.is_dir ? row.entry.path : row.parentPath,
-              selectedEntryPaths,
-              isSelectedForDrag: selectedEntryPathSet.has(row.entry.path),
-              isMovingEntry: isEntryOperationInProgress,
-              activeDragPathSet,
-              activeDropDestinationPath,
-            }}
-            view={{
-              isSelected: selectedPathSet.has(row.entry.path),
-              isWorkspaceFolder: workspaceFolderPathSet.has(row.entry.path),
-              thumbnailSrc: thumbnailSrcByPath[row.entry.path] ?? "",
-              nestingDepth: row.depth,
-              isExpanded: row.isExpanded,
-              isRenaming: row.entry.path === renamingPath,
-            }}
-            actions={{
-              onToggleExpand: row.entry.is_dir
-                ? () => onToggleDirectoryExpanded?.(row.entry.path)
-                : undefined,
-              onEntryClick,
-              onEntryDoubleClick,
-              onEntryMiddleClick,
-              onEntryContextMenu,
-              onEntryRenameSubmit,
-              onEntryRenameCancel,
-            }}
+        <ul className={styles.entryList}>
+          <li
+            ref={entryWindowAnchorRef}
+            className={styles.windowingAnchor}
+            aria-hidden
           />
-          {row.isLoadingChildren && <EntryItem
-            label="Loading..."
-            meta=""
-            nestingDepth={row.depth + 1}
+          {isEntryWindowingEnabled && topSpacerHeight > 0 && <li
+            className={styles.windowingSpacer}
+            style={{ height: `${topSpacerHeight}px` }}
+            aria-hidden
           />}
-        </Fragment>)}
-        {isEntryWindowingEnabled && bottomSpacerHeight > 0 && <li
-          className={styles.windowingSpacer}
-          style={{ height: `${bottomSpacerHeight}px` }}
-          aria-hidden
-        />}
-      </ul>}
+          {renderedRows.map(row => {
+            const isSearchResult = Boolean(search) && row.depth === 0;
+            const parentPath = isSearchResult ? getParentDirectoryPath(row.entry.path) : row.parentPath;
+            return <Fragment key={row.entry.path}>
+            <DraggableFilesystemEntry
+              paneId={paneId}
+              entry={row.entry}
+              drag={{
+                dropDestinationPath: row.entry.is_dir ? row.entry.path : parentPath,
+                selectedEntryPaths,
+                isSelectedForDrag: selectedEntryPathSet.has(row.entry.path),
+                isMovingEntry: isEntryOperationInProgress,
+                activeDragPathSet,
+                activeDropDestinationPath,
+              }}
+              view={{
+                isSelected: selectedPathSet.has(row.entry.path),
+                isWorkspaceFolder: workspaceFolderPathSet.has(row.entry.path),
+                thumbnailSrc: thumbnailSrcByPath[row.entry.path] ?? "",
+                nestingDepth: row.depth,
+                isExpanded: row.isExpanded,
+                isRenaming: row.entry.path === renamingPath,
+                showDetails: isDetailsView,
+                location: isSearchResult ? getResultLocation(row.entry.path, currentPath) : "",
+              }}
+              actions={{
+                onToggleExpand: row.entry.is_dir
+                  ? () => onToggleDirectoryExpanded?.(row.entry.path)
+                  : undefined,
+                onEntryClick,
+                onEntryDoubleClick,
+                onEntryMiddleClick,
+                onEntryContextMenu,
+                onEntryRenameSubmit,
+                onEntryRenameCancel,
+              }}
+            />
+            {row.isLoadingChildren && <EntryItem
+              label="Loading..."
+              meta=""
+              nestingDepth={row.depth + 1}
+            />}
+          </Fragment>;
+          })}
+          {isEntryWindowingEnabled && bottomSpacerHeight > 0 && <li
+            className={styles.windowingSpacer}
+            style={{ height: `${bottomSpacerHeight}px` }}
+            aria-hidden
+          />}
+        </ul>
+      </div>}
       <DragOverlay dropAnimation={null}>
         {activeDragEntry && <div className={styles.dragOverlay}>
           <span className={styles.dragOverlayName}>

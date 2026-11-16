@@ -65,6 +65,10 @@ export default function useFilesystemEntryOperations({
   setIsMovingEntry,
   setIsDeletingEntries,
   setIsImportingExternal,
+  beginTransfer,
+  advanceTransfer,
+  endTransfer,
+  resolveConflicts,
 }) {
   const undoStackRef = useRef([]);
   const redoStackRef = useRef([]);
@@ -132,7 +136,7 @@ export default function useFilesystemEntryOperations({
     {
       activePath = "",
       removeSelection = true,
-      errorMessage = "Failed to move item.",
+      conflictPolicy = "fail",
     } = {},
   ) => {
     const actionablePairs = movePairs.filter((pair) =>
@@ -149,12 +153,16 @@ export default function useFilesystemEntryOperations({
 
     setIsMovingEntry(true);
     setError("");
+    const transfer = beginTransfer("move", actionablePairs.length);
 
     try {
       for (const pair of actionablePairs) {
+        if (transfer.cancelRequested) break;
         const movedResult = await invoke("move_path", {
           source: pair.sourcePath,
           destinationDir: pair.destinationDir,
+          jobId: transfer.jobId,
+          conflictPolicy,
         });
         movedItems.push({
           sourcePath: pair.sourcePath,
@@ -164,10 +172,12 @@ export default function useFilesystemEntryOperations({
             movedResult,
           ),
         });
+        advanceTransfer(movedItems.length);
       }
     } catch (moveError) {
-      moveErrorToThrow = moveError;
+      if (!transfer.cancelRequested) moveErrorToThrow = moveError;
     } finally {
+      endTransfer();
       if (activePath && movedItems.length > 0) {
         try {
           await refreshEntriesForPath(activePath);
@@ -186,6 +196,9 @@ export default function useFilesystemEntryOperations({
     if (moveErrorToThrow) throw moveErrorToThrow;
     return movedItems;
   }, [
+    advanceTransfer,
+    beginTransfer,
+    endTransfer,
     refreshEntriesForPath,
     removeSelectionPaths,
     setError,
@@ -318,15 +331,17 @@ export default function useFilesystemEntryOperations({
 
     const activePath = currentPath || destinationDir;
     try {
+      const resolved = await resolveConflicts(normalizedSourcePaths, destinationDir);
+      if (!resolved) return [];
       const movedItems = await runMovePairs(
-        normalizedSourcePaths.map(sourcePath => ({
+        resolved.sourcePaths.map(sourcePath => ({
           sourcePath,
           destinationDir,
         })),
         {
           activePath,
           removeSelection: true,
-          errorMessage: "Failed to move item.",
+          conflictPolicy: resolved.conflictPolicy,
         },
       );
       pushMoveHistoryEntry(movedItems);
@@ -343,6 +358,7 @@ export default function useFilesystemEntryOperations({
     currentPath,
     notifyOperationError,
     pushMoveHistoryEntry,
+    resolveConflicts,
     runMovePairs,
   ]);
 
@@ -353,19 +369,31 @@ export default function useFilesystemEntryOperations({
     const activePath = currentPath;
     let copyErrorToThrow = null;
 
+    const resolved = await resolveConflicts(normalizedSourcePaths, destinationDir);
+    if (!resolved || resolved.sourcePaths.length === 0) return;
+
     setIsMovingEntry(true);
     setError("");
+    const transfer = beginTransfer("copy", resolved.sourcePaths.length);
 
     try {
-      await invoke("import_paths", { paths: normalizedSourcePaths, destinationDir });
-    } catch (copyError) {
-      notifyOperationError({
-        title: "Copy failed",
-        error: copyError,
-        fallbackMessage: "Failed to copy item.",
+      await invoke("import_paths", {
+        paths: resolved.sourcePaths,
+        destinationDir,
+        jobId: transfer.jobId,
+        conflictPolicy: resolved.conflictPolicy,
       });
-      copyErrorToThrow = copyError;
+    } catch (copyError) {
+      if (!transfer.cancelRequested) {
+        notifyOperationError({
+          title: "Copy failed",
+          error: copyError,
+          fallbackMessage: "Failed to copy item.",
+        });
+        copyErrorToThrow = copyError;
+      }
     } finally {
+      endTransfer();
       if (activePath) {
         try {
           await refreshEntriesForPath(activePath);
@@ -379,8 +407,11 @@ export default function useFilesystemEntryOperations({
 
     if (copyErrorToThrow) throw copyErrorToThrow;
   }, [
+    beginTransfer,
     currentPath,
+    endTransfer,
     refreshEntriesForPath,
+    resolveConflicts,
     setError,
     setIsMovingEntry,
     notifyOperationError,
@@ -424,31 +455,46 @@ export default function useFilesystemEntryOperations({
 
     const activePath = currentPath;
 
+    const resolved = await resolveConflicts(paths, normalizedDestinationDir);
+    if (!resolved || resolved.sourcePaths.length === 0) return;
+
     setIsImportingExternal(true);
     setError("");
+    const transfer = beginTransfer("copy", resolved.sourcePaths.length);
 
     try {
-      await invoke("import_paths", { paths, destinationDir: normalizedDestinationDir });
-
-      await refreshEntriesForPath(activePath);
-      if (currentPathRef.current === activePath) {
-        clearSelection();
-      }
-    } catch (importError) {
-      notifyOperationError({
-        title: "Import failed",
-        error: importError,
-        fallbackMessage: "Failed to import dropped items.",
+      await invoke("import_paths", {
+        paths: resolved.sourcePaths,
+        destinationDir: normalizedDestinationDir,
+        jobId: transfer.jobId,
+        conflictPolicy: resolved.conflictPolicy,
       });
-      throw importError;
+    } catch (importError) {
+      if (!transfer.cancelRequested) {
+        notifyOperationError({
+          title: "Import failed",
+          error: importError,
+          fallbackMessage: "Failed to import dropped items.",
+        });
+        throw importError;
+      }
     } finally {
+      endTransfer();
       setIsImportingExternal(false);
     }
+
+    await refreshEntriesForPath(activePath);
+    if (currentPathRef.current === activePath) {
+      clearSelection();
+    }
   }, [
+    beginTransfer,
     clearSelection,
     currentPath,
     currentPathRef,
+    endTransfer,
     refreshEntriesForPath,
+    resolveConflicts,
     setError,
     setIsImportingExternal,
     notifyOperationError,

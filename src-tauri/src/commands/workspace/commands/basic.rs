@@ -10,358 +10,22 @@ use super::super::types::{
   DEFAULT_SPLIT_RATIO,
 };
 use super::basic_support::{
-  close_layout_leaf, count_layout_leaves, find_first_layout_pane_id, layout_contains_pane,
-  select_tab_pane, select_tab_pane_mut, split_layout_leaf, update_layout_split_ratio,
-  update_pane_filesystem_state, update_pane_panel_type, update_tab_selected_files,
-  update_tab_workspace_root,
+  close_layout_leaf, collect_layout_pane_ids, count_layout_leaves, find_first_layout_pane_id,
+  layout_contains_pane, select_tab_pane, select_tab_pane_mut, split_layout_leaf,
+  update_layout_split_ratio, update_pane_filesystem_state, update_pane_panel_type,
+  update_tab_selected_files, update_tab_workspace_root,
+};
+use super::launch::{open_launch_target_in_window, take_pending_launch_target};
+use super::recent_folders::{normalize_recent_folder_path, record_recent_folder_open};
+use super::workspace_config::{
+  apply_workspace_panels_config, find_workspace_root_for_path,
+  persist_workspace_panels_config_for_tab, read_workspace_panels_config,
+  should_persist_workspace_panels_for_filesystem_state_change,
 };
 use crate::commands::terminal::{stop_terminal_session_by_id, TerminalState};
-use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Manager, State};
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WorkspacePanelsPaneConfig {
-  panel_type: String,
-  #[serde(default)]
-  filesystem_state: FilesystemPaneState,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct WorkspacePanelsConfig {
-  layout: TabLayoutNode,
-  pane_states: BTreeMap<String, WorkspacePanelsPaneConfig>,
-  #[serde(default)]
-  active_pane_id: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RecentFolderEntry {
-  path: String,
-  opened_at_ms: u64,
-  #[serde(default)]
-  is_workspace: bool,
-}
-
-const RECENT_FOLDERS_FILE_NAME: &str = "recent-folders.json";
-const MAX_RECENT_FOLDERS: usize = 200;
-const FOLDER_VIEW_STYLES_FILE_NAME: &str = "folder-view-styles.json";
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FolderViewStyle {
-  view_type: String,
-  thumbnail_size_px: u32,
-}
-
-fn folder_view_styles_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
-  let app_data_dir = app_handle
-    .path()
-    .app_data_dir()
-    .map_err(|error| error.to_string())?;
-  fs::create_dir_all(&app_data_dir).map_err(|error| error.to_string())?;
-  Ok(app_data_dir.join(FOLDER_VIEW_STYLES_FILE_NAME))
-}
-
-fn read_folder_view_styles(app_handle: &AppHandle) -> std::collections::BTreeMap<String, FolderViewStyle> {
-  let path = match folder_view_styles_path(app_handle) {
-    Ok(p) => p,
-    Err(_) => return std::collections::BTreeMap::new(),
-  };
-  if !path.is_file() {
-    return std::collections::BTreeMap::new();
-  }
-  let raw = match fs::read_to_string(path) {
-    Ok(s) => s,
-    Err(_) => return std::collections::BTreeMap::new(),
-  };
-  if raw.trim().is_empty() {
-    return std::collections::BTreeMap::new();
-  }
-  serde_json::from_str(&raw).unwrap_or_default()
-}
-
-fn write_folder_view_styles(
-  app_handle: &AppHandle,
-  styles: &std::collections::BTreeMap<String, FolderViewStyle>,
-) -> Result<(), String> {
-  let path = folder_view_styles_path(app_handle)?;
-  let serialized = serde_json::to_string_pretty(styles).map_err(|error| error.to_string())?;
-  fs::write(path, serialized).map_err(|error| error.to_string())
-}
-
-fn workspace_panels_config_path(workspace_root: &str) -> PathBuf {
-  PathBuf::from(workspace_root)
-    .join(".grayspace")
-    .join("panels.json")
-}
-
-fn recent_folders_path(app_handle: &AppHandle) -> Result<PathBuf, String> {
-  let app_data_dir = app_handle
-    .path()
-    .app_data_dir()
-    .map_err(|error| error.to_string())?;
-  fs::create_dir_all(&app_data_dir).map_err(|error| error.to_string())?;
-  Ok(app_data_dir.join(RECENT_FOLDERS_FILE_NAME))
-}
-
-fn normalize_recent_folder_path(path: &str) -> String {
-  let normalized_path = path.trim();
-  if normalized_path.is_empty() {
-    return String::new();
-  }
-
-  let mut trimmed_path = normalized_path.to_string();
-  while trimmed_path.ends_with('\\') || trimmed_path.ends_with('/') {
-    #[cfg(target_os = "windows")]
-    {
-      let bytes = trimmed_path.as_bytes();
-      if bytes.len() == 3 && bytes[1] == b':' && (bytes[2] == b'\\' || bytes[2] == b'/') {
-        break;
-      }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-      if trimmed_path == "/" {
-        break;
-      }
-    }
-
-    trimmed_path.pop();
-  }
-
-  trimmed_path
-}
-
-fn recent_folder_dedupe_key(path: &str) -> String {
-  let normalized_path = normalize_recent_folder_path(path);
-
-  #[cfg(target_os = "windows")]
-  {
-    normalized_path.replace('/', "\\").to_lowercase()
-  }
-
-  #[cfg(not(target_os = "windows"))]
-  {
-    normalized_path
-  }
-}
-
-fn read_recent_folders(app_handle: &AppHandle) -> Vec<RecentFolderEntry> {
-  let recent_folders_path = match recent_folders_path(app_handle) {
-    Ok(path) => path,
-    Err(_) => return Vec::new(),
-  };
-  if !recent_folders_path.is_file() {
-    return Vec::new();
-  }
-
-  let raw_recent_folders = match fs::read_to_string(recent_folders_path) {
-    Ok(raw) => raw,
-    Err(_) => return Vec::new(),
-  };
-  if raw_recent_folders.trim().is_empty() {
-    return Vec::new();
-  }
-
-  serde_json::from_str::<Vec<RecentFolderEntry>>(&raw_recent_folders).unwrap_or_default()
-}
-
-fn sort_recent_folders(entries: &mut [RecentFolderEntry]) {
-  entries.sort_by(|left, right| {
-    right
-      .opened_at_ms
-      .cmp(&left.opened_at_ms)
-      .then_with(|| left.path.cmp(&right.path))
-  });
-}
-
-fn persist_recent_folders(app_handle: &AppHandle, entries: &[RecentFolderEntry]) -> Result<(), String> {
-  let recent_folders_path = recent_folders_path(app_handle)?;
-  let serialized_recent_folders = serde_json::to_string_pretty(entries)
-    .map_err(|error| error.to_string())?;
-  fs::write(recent_folders_path, serialized_recent_folders).map_err(|error| error.to_string())
-}
-
-fn current_unix_timestamp_ms() -> u64 {
-  let now = SystemTime::now();
-  now
-    .duration_since(UNIX_EPOCH)
-    .unwrap_or_default()
-    .as_millis() as u64
-}
-
-fn is_workspace_folder_path(path: &str) -> bool {
-  if path.is_empty() {
-    return false;
-  }
-  PathBuf::from(path).join(".grayspace").is_dir()
-}
-
-fn record_recent_folder_open(app_handle: &AppHandle, path: &str) -> Result<(), String> {
-  let normalized_path = normalize_recent_folder_path(path);
-  if normalized_path.is_empty() {
-    return Ok(());
-  }
-
-  let dedupe_key = recent_folder_dedupe_key(&normalized_path);
-  if dedupe_key.is_empty() {
-    return Ok(());
-  }
-
-  let mut entries = read_recent_folders(app_handle)
-    .into_iter()
-    .filter(|entry| recent_folder_dedupe_key(&entry.path) != dedupe_key)
-    .collect::<Vec<_>>();
-  let is_workspace = is_workspace_folder_path(&normalized_path);
-  entries.push(RecentFolderEntry {
-    path: normalized_path,
-    opened_at_ms: current_unix_timestamp_ms(),
-    is_workspace,
-  });
-  sort_recent_folders(&mut entries);
-  if entries.len() > MAX_RECENT_FOLDERS {
-    entries.truncate(MAX_RECENT_FOLDERS);
-  }
-  persist_recent_folders(app_handle, &entries)
-}
-
-fn find_workspace_root_for_path(path: &Path) -> Option<String> {
-  let mut current_path = Some(path);
-  while let Some(candidate_path) = current_path {
-    if candidate_path.join(".grayspace").is_dir() {
-      return Some(candidate_path.to_string_lossy().to_string());
-    }
-    current_path = candidate_path.parent();
-  }
-  None
-}
-
-fn collect_layout_pane_ids(layout: &TabLayoutNode, pane_ids: &mut Vec<String>) {
-  match layout {
-    TabLayoutNode::Leaf { pane_id } => pane_ids.push(pane_id.clone()),
-    TabLayoutNode::Split { first, second, .. } => {
-      collect_layout_pane_ids(first, pane_ids);
-      collect_layout_pane_ids(second, pane_ids);
-    }
-  }
-}
-
-fn normalize_panel_type(panel_type: &str) -> String {
-  let trimmed_panel_type = panel_type.trim();
-  if trimmed_panel_type.is_empty() {
-    "Filesystem".to_string()
-  } else {
-    trimmed_panel_type.to_string()
-  }
-}
-
-fn apply_workspace_panels_config(
-  model: &mut WorkspaceModel,
-  tab: &mut WorkspaceTab,
-  config: WorkspacePanelsConfig,
-) -> bool {
-  let mut pane_ids = Vec::new();
-  collect_layout_pane_ids(&config.layout, &mut pane_ids);
-  if pane_ids.is_empty() {
-    return false;
-  }
-  let unique_pane_id_count = pane_ids.iter().collect::<BTreeSet<_>>().len();
-  if unique_pane_id_count != pane_ids.len() {
-    return false;
-  }
-
-  let mut next_pane_states = BTreeMap::new();
-  for pane_id in &pane_ids {
-    let Some(configured_pane_state) = config.pane_states.get(pane_id) else {
-      return false;
-    };
-    next_pane_states.insert(
-      pane_id.clone(),
-      PaneState {
-        pane_id: pane_id.clone(),
-        panel_type: normalize_panel_type(&configured_pane_state.panel_type),
-        terminal_session_id: model.next_terminal_session_id(),
-        filesystem_state: configured_pane_state.filesystem_state.clone(),
-      },
-    );
-  }
-
-  let next_active_pane_id = if pane_ids.iter().any(|pane_id| pane_id == &config.active_pane_id) {
-    config.active_pane_id
-  } else {
-    pane_ids[0].clone()
-  };
-
-  tab.layout = config.layout;
-  tab.pane_states = next_pane_states;
-  tab.active_pane_id = next_active_pane_id;
-  true
-}
-
-fn read_workspace_panels_config(workspace_root: &str) -> Option<WorkspacePanelsConfig> {
-  let panels_config_path = workspace_panels_config_path(workspace_root);
-  if !panels_config_path.is_file() {
-    return None;
-  }
-  let raw_panels_config = fs::read_to_string(panels_config_path).ok()?;
-  serde_json::from_str::<WorkspacePanelsConfig>(&raw_panels_config).ok()
-}
-
-fn persist_workspace_panels_config_for_tab(tab: &WorkspaceTab) {
-  let Some(workspace_root) = tab.workspace_root.as_deref() else {
-    return;
-  };
-
-  let pane_states = tab
-    .pane_states
-    .iter()
-    .map(|(pane_id, pane_state)| {
-      (
-        pane_id.clone(),
-        WorkspacePanelsPaneConfig {
-          panel_type: pane_state.panel_type.clone(),
-          filesystem_state: pane_state.filesystem_state.clone(),
-        },
-      )
-    })
-    .collect::<BTreeMap<_, _>>();
-  let panels_config = WorkspacePanelsConfig {
-    layout: tab.layout.clone(),
-    pane_states,
-    active_pane_id: tab.active_pane_id.clone(),
-  };
-
-  let panels_config_path = workspace_panels_config_path(workspace_root);
-  let Some(config_directory) = panels_config_path.parent() else {
-    return;
-  };
-  if fs::create_dir_all(config_directory).is_err() {
-    return;
-  }
-  let Ok(serialized_panels_config) = serde_json::to_string_pretty(&panels_config) else {
-    return;
-  };
-  let _ = fs::write(panels_config_path, serialized_panels_config);
-}
-
-fn should_persist_workspace_panels_for_filesystem_state_change(
-  previous_state: &FilesystemPaneState,
-  next_state: &FilesystemPaneState,
-) -> bool {
-  previous_state.current_drive != next_state.current_drive
-    || previous_state.current_path != next_state.current_path
-    || previous_state.expanded_paths != next_state.expanded_paths
-    || previous_state.thumbnail_size_px != next_state.thumbnail_size_px
-    || previous_state.view_type != next_state.view_type
-}
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use tauri::{AppHandle, State};
 
 fn apply_filesystem_root_to_pane(pane: &mut PaneState, root_path: &str) {
   pane.filesystem_state.current_drive = infer_drive_from_path(root_path);
@@ -545,7 +209,7 @@ fn find_window_id_containing_tab(model: &WorkspaceModel, tab_id: &str) -> Option
   })
 }
 
-fn create_tab_for_opened_folder(
+pub(super) fn create_tab_for_opened_folder(
   model: &mut WorkspaceModel,
   opened_path: &str,
   workspace_root: Option<String>,
@@ -569,20 +233,27 @@ pub fn workspace_bootstrap(
   state: State<WorkspaceState>,
   window_label: String,
 ) -> Result<WorkspaceBootstrapPayload, String> {
-  let (window_id, snapshot, changed) = {
+  let (window_id, snapshot, changed, launch_target) = {
     let mut model = state
       .inner
       .lock()
       .map_err(|_| "Workspace state is unavailable.".to_string())?;
     let revision_before = model.revision;
     let window_id = model.ensure_window_exists_for_label(&window_label);
+    let is_new_window = model.revision != revision_before;
+    let launch_target = is_new_window.then(|| take_pending_launch_target(&app_handle)).flatten();
+    if let Some(target) = &launch_target {
+      open_launch_target_in_window(&mut model, &window_id, target, true);
+    }
     let snapshot = model.snapshot();
-    let changed = model.revision != revision_before;
-    (window_id, snapshot, changed)
+    (window_id, snapshot, is_new_window, launch_target)
   };
 
   if changed {
     publish_snapshot(&app_handle, &snapshot, false);
+  }
+  if let Some(target) = launch_target {
+    let _ = record_recent_folder_open(&app_handle, target.folder());
   }
 
   Ok(WorkspaceBootstrapPayload {
@@ -1243,137 +914,6 @@ pub fn workspace_replace_tab_folder(
 }
 
 #[tauri::command]
-pub fn workspace_recent_folders_list(app_handle: AppHandle) -> Result<Vec<RecentFolderEntry>, String> {
-  let mut entries = read_recent_folders(&app_handle)
-    .into_iter()
-    .filter_map(|entry| {
-      let path = normalize_recent_folder_path(&entry.path);
-      if path.is_empty() {
-        return None;
-      }
-      Some(RecentFolderEntry {
-        path,
-        opened_at_ms: entry.opened_at_ms,
-        is_workspace: entry.is_workspace,
-      })
-    })
-    .collect::<Vec<_>>();
-  sort_recent_folders(&mut entries);
-  Ok(entries)
-}
-
-#[tauri::command]
-pub fn workspace_recent_folders_record(app_handle: AppHandle, path: String) -> Result<(), String> {
-  record_recent_folder_open(&app_handle, &path)
-}
-
-#[tauri::command]
-pub fn workspace_recent_folders_remove(app_handle: AppHandle, path: String) -> Result<(), String> {
-  let dedupe_key = recent_folder_dedupe_key(&path);
-  if dedupe_key.is_empty() {
-    return Ok(());
-  }
-
-  let mut entries = read_recent_folders(&app_handle)
-    .into_iter()
-    .filter(|entry| recent_folder_dedupe_key(&entry.path) != dedupe_key)
-    .collect::<Vec<_>>();
-  sort_recent_folders(&mut entries);
-  if entries.len() > MAX_RECENT_FOLDERS {
-    entries.truncate(MAX_RECENT_FOLDERS);
-  }
-  persist_recent_folders(&app_handle, &entries)
-}
-
-#[tauri::command]
-pub fn workspace_read_folder_config(workspace_root: String) -> Result<Option<String>, String> {
-  let trimmed_workspace_root = workspace_root.trim();
-  if trimmed_workspace_root.is_empty() {
-    return Ok(None);
-  }
-
-  let workspace_root_path = PathBuf::from(trimmed_workspace_root);
-  if !workspace_root_path.is_dir() {
-    return Ok(None);
-  }
-
-  let folder_config_path = workspace_root_path.join(".grayspace").join("folder.json");
-  if !folder_config_path.is_file() {
-    return Ok(None);
-  }
-
-  fs::read_to_string(&folder_config_path)
-    .map(Some)
-    .map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-pub fn workspace_read_folder_stylesheet(
-  workspace_root: String,
-  stylesheet_path: String,
-) -> Result<Option<String>, String> {
-  let trimmed_workspace_root = workspace_root.trim();
-  if trimmed_workspace_root.is_empty() {
-    return Ok(None);
-  }
-
-  let workspace_root_path = PathBuf::from(trimmed_workspace_root);
-  if !workspace_root_path.is_dir() {
-    return Ok(None);
-  }
-
-  let trimmed_stylesheet_path = stylesheet_path.trim();
-  if trimmed_stylesheet_path.is_empty() {
-    return Ok(None);
-  }
-
-  let relative_stylesheet_path = PathBuf::from(trimmed_stylesheet_path);
-  if relative_stylesheet_path.is_absolute() {
-    return Err("Stylesheet path must be relative to workspace root.".to_string());
-  }
-  if relative_stylesheet_path.components().any(|component| {
-    matches!(
-      component,
-      std::path::Component::ParentDir
-        | std::path::Component::RootDir
-        | std::path::Component::Prefix(_)
-    )
-  }) {
-    return Err("Stylesheet path must stay inside workspace root.".to_string());
-  }
-
-  let mut stylesheet_candidates = vec![workspace_root_path.join(&relative_stylesheet_path)];
-  let has_path_separator_suffix = trimmed_stylesheet_path.ends_with('/')
-    || trimmed_stylesheet_path.ends_with('\\');
-  if !has_path_separator_suffix && trimmed_stylesheet_path.to_ascii_lowercase().ends_with(".css") {
-    let mut scss_relative_path = relative_stylesheet_path.clone();
-    scss_relative_path.set_extension("scss");
-    if scss_relative_path != relative_stylesheet_path {
-      stylesheet_candidates.push(workspace_root_path.join(scss_relative_path));
-    }
-  }
-
-  let canonical_workspace_root_path =
-    fs::canonicalize(&workspace_root_path).map_err(|error| error.to_string())?;
-  for candidate_path in stylesheet_candidates {
-    if !candidate_path.is_file() {
-      continue;
-    }
-
-    let canonical_candidate_path = fs::canonicalize(&candidate_path).map_err(|error| error.to_string())?;
-    if !canonical_candidate_path.starts_with(&canonical_workspace_root_path) {
-      return Err("Stylesheet path escapes workspace root.".to_string());
-    }
-
-    return fs::read_to_string(canonical_candidate_path)
-      .map(Some)
-      .map_err(|error| error.to_string());
-  }
-
-  Ok(None)
-}
-
-#[tauri::command]
 pub fn workspace_set_window_bounds(
   app_handle: AppHandle,
   state: State<WorkspaceState>,
@@ -1408,36 +948,6 @@ pub fn workspace_set_window_bounds(
   }
 
   Ok(())
-}
-
-#[tauri::command]
-pub fn workspace_folder_view_styles_get(
-  app_handle: AppHandle,
-  path: String,
-) -> Option<FolderViewStyle> {
-  let normalized = normalize_recent_folder_path(&path);
-  if normalized.is_empty() {
-    return None;
-  }
-  let key = recent_folder_dedupe_key(&normalized);
-  read_folder_view_styles(&app_handle).get(&key).cloned()
-}
-
-#[tauri::command]
-pub fn workspace_folder_view_styles_set(
-  app_handle: AppHandle,
-  path: String,
-  view_type: String,
-  thumbnail_size_px: u32,
-) -> Result<(), String> {
-  let normalized = normalize_recent_folder_path(&path);
-  if normalized.is_empty() {
-    return Ok(());
-  }
-  let key = recent_folder_dedupe_key(&normalized);
-  let mut styles = read_folder_view_styles(&app_handle);
-  styles.insert(key, FolderViewStyle { view_type, thumbnail_size_px });
-  write_folder_view_styles(&app_handle, &styles)
 }
 
 #[cfg(test)]

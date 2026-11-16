@@ -9,6 +9,7 @@ pub const DEFAULT_RIGHT_PANEL_TYPE: &str = "Preview";
 pub const DEFAULT_SPLIT_RATIO: u8 = 50;
 pub const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX: u32 = 22;
 pub const DEFAULT_FILESYSTEM_VIEW_TYPE: &str = "folder-tree";
+pub const DEFAULT_FILESYSTEM_SORT_KEY: &str = "name";
 
 fn default_filesystem_thumbnail_size_px() -> u32 {
   DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX
@@ -16,6 +17,10 @@ fn default_filesystem_thumbnail_size_px() -> u32 {
 
 fn default_filesystem_view_type() -> String {
   DEFAULT_FILESYSTEM_VIEW_TYPE.to_string()
+}
+
+pub(super) fn default_filesystem_sort_key() -> String {
+  DEFAULT_FILESYSTEM_SORT_KEY.to_string()
 }
 
 #[derive(Clone, Serialize)]
@@ -124,6 +129,10 @@ pub struct FilesystemPaneState {
   pub thumbnail_size_px: u32,
   #[serde(default = "default_filesystem_view_type")]
   pub view_type: String,
+  #[serde(default = "default_filesystem_sort_key")]
+  pub sort_key: String,
+  #[serde(default)]
+  pub sort_descending: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
@@ -276,6 +285,8 @@ impl Default for FilesystemPaneState {
       scroll_top: 0.0,
       thumbnail_size_px: DEFAULT_FILESYSTEM_THUMBNAIL_SIZE_PX,
       view_type: DEFAULT_FILESYSTEM_VIEW_TYPE.to_string(),
+      sort_key: DEFAULT_FILESYSTEM_SORT_KEY.to_string(),
+      sort_descending: false,
     }
   }
 }

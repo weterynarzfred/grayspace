@@ -79,6 +79,9 @@ function mockFilesystemInvoke({
     if (command === "delete_paths")
       return null;
 
+    if (command === "filesystem_transfer_conflicts")
+      return [];
+
     throw new Error(`Unhandled invoke: ${command}`);
   });
 }
@@ -149,6 +152,9 @@ describe("useFilesystemNavigation", () => {
 
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
+
+      if (command === "filesystem_transfer_conflicts")
+        return [];
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
@@ -289,6 +295,9 @@ describe("useFilesystemNavigation", () => {
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
 
+      if (command === "filesystem_transfer_conflicts")
+        return [];
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
@@ -368,6 +377,9 @@ describe("useFilesystemNavigation", () => {
 
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
+
+      if (command === "filesystem_transfer_conflicts")
+        return [];
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
@@ -464,6 +476,9 @@ describe("useFilesystemNavigation", () => {
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
 
+      if (command === "filesystem_transfer_conflicts")
+        return [];
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
@@ -523,6 +538,9 @@ describe("useFilesystemNavigation", () => {
       }
 
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+
+      if (command === "filesystem_transfer_conflicts")
+        return [];
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
@@ -602,6 +620,9 @@ describe("useFilesystemNavigation", () => {
 
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
+
+      if (command === "filesystem_transfer_conflicts")
+        return [];
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
@@ -696,6 +717,9 @@ describe("useFilesystemNavigation", () => {
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
 
+      if (command === "filesystem_transfer_conflicts")
+        return [];
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
@@ -762,6 +786,9 @@ describe("useFilesystemNavigation", () => {
 
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
 
+      if (command === "filesystem_transfer_conflicts")
+        return [];
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
@@ -810,6 +837,9 @@ describe("useFilesystemNavigation", () => {
       }
 
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+
+      if (command === "filesystem_transfer_conflicts")
+        return [];
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
@@ -864,6 +894,9 @@ describe("useFilesystemNavigation", () => {
 
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
+
+      if (command === "filesystem_transfer_conflicts")
+        return [];
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
@@ -998,6 +1031,9 @@ describe("useFilesystemNavigation", () => {
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
 
+      if (command === "filesystem_transfer_conflicts")
+        return [];
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
@@ -1026,5 +1062,110 @@ describe("useFilesystemNavigation", () => {
       ]);
       expect(result.current.hasMoreEntries).toBe(false);
     });
+  });
+
+  function mockTransferFolder({ conflicts = [], onImport = async () => ({}), onMove = async () => null } = {}) {
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
+      if (command === "list_directory_page") {
+        const entries = payload?.path === "C:\\Users"
+          ? [
+            { name: "a.txt", path: "C:\\Users\\a.txt", is_dir: false },
+            { name: "b.txt", path: "C:\\Users\\b.txt", is_dir: false },
+          ]
+          : [];
+        return { entries, hasMore: false, totalCount: entries.length };
+      }
+      if (command === "filesystem_transfer_conflicts") return conflicts;
+      if (command === "import_paths") return onImport(payload);
+      if (command === "move_path") return onMove(payload);
+      if (command === "filesystem_transfer_cancel") return null;
+      if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+      throw new Error(`Unhandled invoke: ${command}`);
+    });
+  }
+
+  async function renderTransferNavigation(options) {
+    const hook = renderHook(() => useFilesystemNavigation(
+      { currentDrive: "C:\\", currentPath: "C:\\Users" },
+      options,
+    ));
+    await waitFor(() => {
+      expect(hook.result.current.entries).toHaveLength(2);
+    });
+    return hook;
+  }
+
+  it("skips conflicting items when the user picks Skip", async () => {
+    mockTransferFolder({ conflicts: ["C:\\Users\\a.txt"] });
+    const openChoice = vi.fn(async () => "skip");
+    const { result } = await renderTransferNavigation({ openChoice });
+
+    await act(async () => {
+      await result.current.moveEntries(["C:\\Users\\a.txt", "C:\\Users\\b.txt"], "C:\\Archive");
+    });
+
+    const movedSources = invoke.mock.calls
+      .filter(([command]) => command === "move_path")
+      .map(([, payload]) => payload.source);
+    expect(movedSources).toEqual(["C:\\Users\\b.txt"]);
+    expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
+      conflictPolicy: "fail",
+      jobId: expect.stringMatching(/^filesystem-transfer-/),
+    }));
+  });
+
+  it("copies with the picked conflict policy and does nothing when the prompt is cancelled", async () => {
+    mockTransferFolder({ conflicts: ["C:\\Users\\a.txt"] });
+    const openChoice = vi.fn()
+      .mockResolvedValueOnce("keep-both")
+      .mockResolvedValueOnce(null);
+    const { result } = await renderTransferNavigation({ openChoice });
+
+    await act(async () => {
+      await result.current.copyEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+    });
+    expect(invoke).toHaveBeenCalledWith("import_paths", expect.objectContaining({
+      paths: ["C:\\Users\\a.txt"],
+      destinationDir: "C:\\Archive",
+      conflictPolicy: "keep-both",
+    }));
+
+    invoke.mockClear();
+    await act(async () => {
+      await result.current.copyEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+    });
+    expect(invoke).not.toHaveBeenCalledWith("import_paths", expect.anything());
+  });
+
+  it("shows copy progress and treats a cancelled copy as no error", async () => {
+    const pushNotification = vi.fn();
+    let rejectImport;
+    mockTransferFolder({
+      onImport: () => new Promise((_resolve, reject) => {
+        rejectImport = reject;
+      }),
+    });
+    const { result } = await renderTransferNavigation({ pushNotification });
+
+    let copyPromise;
+    act(() => {
+      copyPromise = result.current.copyEntries(["C:\\Users\\a.txt", "C:\\Users\\b.txt"], "C:\\Archive");
+    });
+    await waitFor(() => {
+      expect(result.current.transferProgress).toMatchObject({ kind: "copy", itemsTotal: 2 });
+    });
+
+    act(() => result.current.cancelTransfer());
+    expect(invoke).toHaveBeenCalledWith("filesystem_transfer_cancel", {
+      jobId: expect.stringMatching(/^filesystem-transfer-/),
+    });
+    await act(async () => {
+      rejectImport(new Error("The transfer was cancelled."));
+      await copyPromise;
+    });
+
+    expect(result.current.transferProgress).toBeNull();
+    expect(pushNotification).not.toHaveBeenCalled();
   });
 });

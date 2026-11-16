@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveFilesystemIconClass } from "./fileIconResolver";
+import { DETAILS_COLUMNS } from "./filesystemEntryDetails";
 import styles from "./EntryItem.module.scss";
 
 function handleExpanderDoubleClick(event) {
@@ -28,6 +29,7 @@ function getEntryButtonClassName({
   isSelected,
   isFile,
   isConfig,
+  isHidden,
   isDraggable,
   isDragging,
   isDropTarget,
@@ -37,6 +39,7 @@ function getEntryButtonClassName({
     isSelected ? styles.selected : "",
     isFile ? styles.file : "",
     isConfig ? styles.configEntry : "",
+    isHidden ? styles.hiddenEntry : "",
     isDraggable ? styles.draggable : "",
     isDragging ? styles.dragging : "",
     isDropTarget ? styles.dropTarget : "",
@@ -73,6 +76,17 @@ function getEntryPreviewNode(thumbnailSrc, entryIconClassName) {
   />;
 }
 
+function getEntryTrailingNode(meta, details) {
+  if (!details) return <span className={styles.entryPath}>{meta}</span>;
+
+  return <span className={styles.entryDetails}>
+    {DETAILS_COLUMNS.map(({ key }) => <span
+      key={key}
+      className={`${styles.entryDetail} ${key === "size" ? styles.alignEnd : ""}`}
+    >{details[key]}</span>)}
+  </span>;
+}
+
 function getEntryContextAttributes({
   contextKind,
   contextId,
@@ -105,6 +119,9 @@ function EntryItem({
   showExpander = false,
   isExpanded = false,
   isConfig = false,
+  isHidden = false,
+  details = null,
+  location = "",
   isDraggable = false,
   isDragging = false,
   isDropTarget = false,
@@ -147,6 +164,7 @@ function EntryItem({
     isSelected,
     isFile,
     isConfig,
+    isHidden,
     isDraggable,
     isDragging,
     isDropTarget,
@@ -202,6 +220,7 @@ function EntryItem({
 
   const indent = getEntryIndentNode(nestingDepth);
   const entryPreview = getEntryPreviewNode(thumbnailSrc, entryIconClassName);
+  const trailing = getEntryTrailingNode(meta, details);
   const contextAttributes = getEntryContextAttributes({
     contextKind,
     contextId,
@@ -234,7 +253,7 @@ function EntryItem({
             onKeyDown={handleRenameKeyDown}
           />
         </span>
-        <span className={styles.entryPath}>{meta}</span>
+        {trailing}
       </div>
     </li>;
   }
@@ -279,8 +298,9 @@ function EntryItem({
           : <span className={styles.entryExpanderSpacer} aria-hidden />}
         {entryPreview}
         <span className={styles.entryName}>{label}</span>
+        {location && <span className={styles.entryLocation}>{location}</span>}
       </span>
-      <span className={styles.entryPath}>{meta}</span>
+      {trailing}
     </button>
   </li>;
 }

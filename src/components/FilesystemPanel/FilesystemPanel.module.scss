@@ -9,7 +9,18 @@
 }
 
 .panelList {
+  --details-columns: 9rem 6.5rem 5rem;
   padding: 1rem;
+}
+
+// Narrower than this, the rows scroll sideways instead of squeezing the name away.
+// Both leave the name about 10rem next to the icon, the expander and the trailing columns.
+.entryRows {
+  min-width: calc(var(--entry-thumbnail-size, 32px) + 16rem);
+}
+
+.detailsRows {
+  min-width: calc(var(--entry-thumbnail-size, 32px) + 35rem);
 }
 
 .panelDropTarget {
@@ -90,6 +101,41 @@
   color: $text-secondary;
   padding: 0 0.45rem;
   white-space: nowrap;
+}
+
+.filterInput {
+  width: 10rem;
+  min-width: 4rem;
+  padding: 0 0.45rem;
+  border: none;
+  border-left: 1px solid $border-default;
+  background: $bg-panel;
+  color: $text-primary;
+  font: inherit;
+
+  &:focus {
+    outline: 1px solid $accent-active;
+    outline-offset: -1px;
+  }
+}
+
+.searchInput {
+  width: 14rem;
+}
+
+.searchStatus {
+  margin: 0.5rem 0 0;
+  font-size: $font-size-small;
+  color: $text-secondary;
+}
+
+.cancelTransferButton {
+  @include interactive-tile;
+  margin-left: 0.5rem;
+  padding: 0 0.45rem;
+  border-left: 1px solid $border-default;
+  color: $text-warning;
+  font: inherit;
 }
 
 .historyNavigationButton {

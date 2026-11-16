@@ -22,6 +22,7 @@ const dndCallbacks = {
 };
 let externalDropCallback;
 let filesystemWatchCallback;
+let filesystemSearchCallback;
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock("../../notifications/notificationCenter", () => ({
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(async (eventName, handler) => {
     if (eventName === "filesystem-watch-event") filesystemWatchCallback = runInAsyncAct(handler);
+    if (eventName === "filesystem-search-results") filesystemSearchCallback = runInAsyncAct(handler);
     return () => {
       filesystemWatchCallback = undefined;
     };
@@ -148,10 +150,12 @@ describe("FilesystemPanel", () => {
         return [{ name: "C:", path: "C:\\" }];
 
       if (command === "list_directory_page") {
-        const entries = directoryState[payload?.path];
-        if (!entries)
+        const folderEntries = directoryState[payload?.path];
+        if (!folderEntries)
           throw new Error(`Unhandled list_directory_page path: ${payload?.path}`);
 
+        const filter = (payload?.filter ?? "").toLowerCase();
+        const entries = folderEntries.filter((entry) => entry.name.toLowerCase().includes(filter));
         const offset = payload?.offset ?? 0;
         const limit = payload?.limit ?? entries.length;
         const pageEntries = entries.slice(offset, offset + limit).map((entry) => ({ ...entry }));
@@ -377,6 +381,12 @@ describe("FilesystemPanel", () => {
 
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop")
         return null;
+
+      if (command === "filesystem_search_start" || command === "filesystem_search_cancel")
+        return null;
+
+      if (command === "filesystem_transfer_conflicts")
+        return [];
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
@@ -686,6 +696,9 @@ describe("FilesystemPanel", () => {
       }
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
       if (command === "thumbnail_resolve_batch") return { results: [] };
+      if (command === "filesystem_transfer_conflicts")
+        return [];
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
@@ -1090,10 +1103,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\notes.txt",
         destinationDir: "C:\\Users",
-      });
+      }));
     });
 
     await waitFor(() => {
@@ -1123,16 +1136,16 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("import_paths", {
+      expect(invoke).toHaveBeenCalledWith("import_paths", expect.objectContaining({
         paths: ["C:\\notes.txt"],
         destinationDir: "C:\\Users",
-      });
+      }));
     });
 
-    expect(invoke).not.toHaveBeenCalledWith("move_path", {
+    expect(invoke).not.toHaveBeenCalledWith("move_path", expect.objectContaining({
       source: "C:\\notes.txt",
       destinationDir: "C:\\Users",
-    });
+    }));
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 
@@ -1194,10 +1207,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\notes.txt",
         destinationDir: "C:\\Users",
-      });
+      }));
     });
   });
 
@@ -1217,10 +1230,10 @@ describe("FilesystemPanel", () => {
       over: { id: "entry:C:\\draft.md" },
     });
 
-    expect(invoke).not.toHaveBeenCalledWith("move_path", {
+    expect(invoke).not.toHaveBeenCalledWith("move_path", expect.objectContaining({
       source: "C:\\notes.txt",
       destinationDir: "C:\\draft.md",
-    });
+    }));
   });
 
   it("moves an entry into another panel current folder when dropped on panel target", async () => {
@@ -1272,10 +1285,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\notes.txt",
         destinationDir: "C:\\Users",
-      });
+      }));
     });
   });
 
@@ -1302,10 +1315,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\Users\\todo.txt",
         destinationDir: "C:\\",
-      });
+      }));
     });
   });
 
@@ -1381,10 +1394,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\notes.txt",
         destinationDir: "C:\\Users",
-      });
+      }));
     });
   });
 
@@ -1410,14 +1423,14 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\notes.txt",
         destinationDir: "C:\\Users",
-      });
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      }));
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\draft.md",
         destinationDir: "C:\\Users",
-      });
+      }));
     });
 
     await waitFor(() => {
@@ -1452,10 +1465,10 @@ describe("FilesystemPanel", () => {
       over: { id: "entry:C:\\Users" },
     });
 
-    expect(invoke).not.toHaveBeenCalledWith("move_path", {
+    expect(invoke).not.toHaveBeenCalledWith("move_path", expect.objectContaining({
       source: "C:\\notes.txt",
       destinationDir: "C:\\Users",
-    });
+    }));
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 
@@ -1535,15 +1548,15 @@ describe("FilesystemPanel", () => {
     }
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\notes.txt",
         destinationDir: "C:\\Users",
-      });
+      }));
     });
-    expect(invoke).not.toHaveBeenCalledWith("import_paths", {
+    expect(invoke).not.toHaveBeenCalledWith("import_paths", expect.objectContaining({
       paths: ["C:\\notes.txt"],
       destinationDir: "C:\\Users",
-    });
+    }));
   });
 
   it("matches returned internal drags when drop paths use extended device prefixes", async () => {
@@ -1598,15 +1611,15 @@ describe("FilesystemPanel", () => {
     }
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\notes.txt",
         destinationDir: "C:\\Users",
-      });
+      }));
     });
-    expect(invoke).not.toHaveBeenCalledWith("import_paths", {
+    expect(invoke).not.toHaveBeenCalledWith("import_paths", expect.objectContaining({
       paths: ["\\\\?\\C:\\notes.txt"],
       destinationDir: "C:\\Users",
-    });
+    }));
   });
 
   it("does not react to drag-over after external drag has started", async () => {
@@ -1686,10 +1699,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\Users\\todo.txt",
         destinationDir: "C:\\",
-      });
+      }));
     });
   });
 
@@ -1714,10 +1727,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\Users\\todo.txt",
         destinationDir: "C:\\",
-      });
+      }));
     });
   });
 
@@ -1748,7 +1761,11 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("list_directory", { path: "C:\\Users" });
+      expect(invoke).toHaveBeenCalledWith("list_directory", {
+        path: "C:\\Users",
+        sortKey: "name",
+        sortDescending: false,
+      });
     });
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
@@ -1908,6 +1925,9 @@ describe("FilesystemPanel", () => {
           })),
         };
       }
+      if (command === "filesystem_transfer_conflicts")
+        return [];
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
@@ -1963,10 +1983,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("import_paths", {
+      expect(invoke).toHaveBeenCalledWith("import_paths", expect.objectContaining({
         paths: ["D:\\Downloads\\clip.mp4"],
         destinationDir: "C:\\",
-      });
+      }));
     });
 
     expect(await screen.findByText("clip.mp4")).toBeInTheDocument();
@@ -2014,15 +2034,15 @@ describe("FilesystemPanel", () => {
     }
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\notes.txt",
         destinationDir: "C:\\Users",
-      });
+      }));
     });
-    expect(invoke).not.toHaveBeenCalledWith("import_paths", {
+    expect(invoke).not.toHaveBeenCalledWith("import_paths", expect.objectContaining({
       paths: ["C:\\notes.txt"],
       destinationDir: "C:\\Users",
-    });
+    }));
   });
 
   it("imports external files into a hovered folder row", async () => {
@@ -2064,10 +2084,10 @@ describe("FilesystemPanel", () => {
     document.elementFromPoint = originalElementFromPoint;
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("import_paths", {
+      expect(invoke).toHaveBeenCalledWith("import_paths", expect.objectContaining({
         paths: ["D:\\Downloads\\clip.mp4"],
         destinationDir: "C:\\Users",
-      });
+      }));
     });
   });
 
@@ -2249,6 +2269,9 @@ describe("FilesystemPanel", () => {
       }
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
       if (command === "thumbnail_resolve_batch") return { results: [] };
+      if (command === "filesystem_transfer_conflicts")
+        return [];
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
@@ -2441,6 +2464,9 @@ describe("FilesystemPanel", () => {
           adjusted: false,
         };
       }
+      if (command === "filesystem_transfer_conflicts")
+        return [];
+
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
@@ -2913,10 +2939,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("import_paths", {
+      expect(invoke).toHaveBeenCalledWith("import_paths", expect.objectContaining({
         paths: ["C:\\notes.txt"],
         destinationDir: "C:\\",
-      });
+      }));
     });
     await flushPromises();
   });
@@ -2958,10 +2984,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("import_paths", {
+      expect(invoke).toHaveBeenCalledWith("import_paths", expect.objectContaining({
         paths: ["C:\\notes.txt"],
         destinationDir: "C:\\Users",
-      });
+      }));
     });
   });
 
@@ -3007,10 +3033,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("import_paths", {
+      expect(invoke).toHaveBeenCalledWith("import_paths", expect.objectContaining({
         paths: ["C:\\notes.txt"],
         destinationDir: "C:\\Users",
-      });
+      }));
     });
   });
 
@@ -3052,10 +3078,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("import_paths", {
+      expect(invoke).toHaveBeenCalledWith("import_paths", expect.objectContaining({
         paths: ["C:\\draft.md"],
         destinationDir: "C:\\",
-      });
+      }));
     });
     await flushPromises();
   });
@@ -3098,10 +3124,10 @@ describe("FilesystemPanel", () => {
     });
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
         source: "C:\\notes.txt",
         destinationDir: "C:\\Users",
-      });
+      }));
     });
 
     act(() => {
@@ -3355,5 +3381,276 @@ describe("FilesystemPanel", () => {
     expect(invoke).not.toHaveBeenCalledWith("delete_paths", expect.anything());
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
-});
 
+  it("shows sortable detail columns and re-lists the folder when a column header is clicked", async () => {
+    const onFilesystemStateChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-details",
+      paneId: "pane-details",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\Users",
+        scrollTop: 0,
+        viewType: "details",
+      },
+      onFilesystemStateChange,
+    });
+
+    const todoButton = await screen.findByRole("button", { name: /todo\.txt/i });
+    expect(within(todoButton).getByText("TXT file")).toBeInTheDocument();
+    const header = screen.getByTestId("filesystem-details-header");
+    expect(within(header).getByRole("button", { name: /Name/ })).toHaveTextContent("▴");
+
+    fireEvent.click(within(header).getByRole("button", { name: /Size/ }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("list_directory_page", expect.objectContaining({
+        path: "C:\\Users",
+        sortKey: "size",
+        sortDescending: true,
+        refresh: false,
+      }));
+    });
+    expect(invoke).toHaveBeenCalledWith("workspace_folder_view_styles_set", {
+      path: "C:\\Users",
+      style: {
+        viewType: "details",
+        thumbnailSizePx: 22,
+        sortKey: "size",
+        sortDescending: true,
+      },
+    });
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        sortKey: "size",
+        sortDescending: true,
+      }));
+    });
+  });
+
+  it("sorts from the command palette without leaving the current view", async () => {
+    renderFilesystemPanel({
+      tabId: "tab-sort-command",
+      paneId: "pane-sort-command",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\Users",
+        scrollTop: 0,
+      },
+    });
+
+    await screen.findByRole("button", { name: /todo\.txt/i });
+    expect(screen.queryByTestId("filesystem-details-header")).not.toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
+          commandId: "filesystem.sort.modified",
+          context: { targetPaneId: "pane-sort-command" },
+        },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("list_directory_page", expect.objectContaining({
+        path: "C:\\Users",
+        sortKey: "modified",
+        sortDescending: true,
+      }));
+    });
+  });
+
+  function dispatchFilesystemCommand(commandId, paneId) {
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: { commandId, context: { targetPaneId: paneId } },
+      }));
+    });
+  }
+
+  it("filters the current folder by name and restores it on Escape", async () => {
+    renderFilesystemPanel({
+      tabId: "tab-filter",
+      paneId: "pane-filter",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    await screen.findByRole("button", { name: /notes\.txt/i });
+
+    dispatchFilesystemCommand("filesystem.filterCurrentFolder", "pane-filter");
+    const filterInput = await screen.findByRole("searchbox", { name: "Filter current folder" });
+    expect(filterInput).toHaveFocus();
+
+    fireEvent.change(filterInput, { target: { value: "NOTES" } });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /draft\.md/i })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("list_directory_page", expect.objectContaining({
+      path: "C:\\",
+      filter: "NOTES",
+      refresh: false,
+    }));
+
+    fireEvent.keyDown(filterInput, { key: "Escape" });
+
+    expect(screen.queryByRole("searchbox", { name: "Filter current folder" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /draft\.md/i })).toBeInTheDocument();
+  });
+
+  it("selects the first match on Enter and says when nothing matches", async () => {
+    renderFilesystemPanel({
+      tabId: "tab-filter-enter",
+      paneId: "pane-filter-enter",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    await screen.findByRole("button", { name: /notes\.txt/i });
+
+    dispatchFilesystemCommand("filesystem.filterCurrentFolder", "pane-filter-enter");
+    const filterInput = await screen.findByRole("searchbox", { name: "Filter current folder" });
+
+    fireEvent.change(filterInput, { target: { value: "draft" } });
+    const draftButton = await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+      return screen.getByRole("button", { name: /draft\.md/i });
+    });
+    fireEvent.keyDown(filterInput, { key: "Enter" });
+    expect(draftButton).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.change(filterInput, { target: { value: "zzz" } });
+    expect(await screen.findByText('No items match "zzz".')).toBeInTheDocument();
+  });
+
+  it("clears the filter when navigating to another folder", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-filter-nav",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    await screen.findByRole("button", { name: /notes\.txt/i });
+
+    dispatchFilesystemCommand("filesystem.filterCurrentFolder", "pane-filter-nav");
+    fireEvent.change(
+      await screen.findByRole("searchbox", { name: "Filter current folder" }),
+      { target: { value: "temp" } },
+    );
+    const tempButton = await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+      return screen.getByRole("button", { name: /Temp/i });
+    });
+
+    fireEvent.doubleClick(tempButton);
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("list_directory_page", expect.objectContaining({
+        path: "C:\\Temp",
+        filter: "",
+      }));
+    });
+    expect(screen.queryByRole("searchbox", { name: "Filter current folder" })).not.toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalledWith("list_directory_page", expect.objectContaining({
+      path: "C:\\Temp",
+      filter: "temp",
+    }));
+  });
+
+  it("searches subfolders in the pane and returns to the folder listing on Escape", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-search",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    await screen.findByRole("button", { name: /notes\.txt/i });
+
+    dispatchFilesystemCommand("filesystem.searchCurrentSubtree", "pane-search");
+    const searchInput = await screen.findByRole("searchbox", {
+      name: "Search current folder and subfolders",
+    });
+    fireEvent.change(searchInput, { target: { value: "todo" } });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("filesystem_search_start", expect.objectContaining({
+        root: "C:\\",
+        query: "todo",
+      }));
+    });
+    const [, { searchId }] = invoke.mock.calls.findLast(([command]) => command === "filesystem_search_start");
+    await filesystemSearchCallback({
+      payload: {
+        searchId,
+        entries: [{ name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false }],
+        done: true,
+        truncated: false,
+      },
+    });
+
+    const resultButton = await screen.findByRole("button", { name: /todo\.txt/i });
+    expect(within(resultButton).getByText("Users")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent('1 result for "todo"');
+    expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(searchInput, { key: "Escape" });
+
+    expect(await screen.findByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
+  });
+
+  it("carries typed text over when switching from filter to search", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-filter-to-search",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    await screen.findByRole("button", { name: /notes\.txt/i });
+
+    dispatchFilesystemCommand("filesystem.filterCurrentFolder", "pane-filter-to-search");
+    const filterInput = await screen.findByRole("searchbox", { name: "Filter current folder" });
+    fireEvent.change(filterInput, { target: { value: "todo" } });
+    fireEvent.keyDown(filterInput, { key: "f", ctrlKey: true, shiftKey: true });
+
+    const searchInput = await screen.findByRole("searchbox", {
+      name: "Search current folder and subfolders",
+    });
+    expect(searchInput).toHaveValue("todo");
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("filesystem_search_start", expect.objectContaining({
+        query: "todo",
+      }));
+    });
+  });
+
+  it("renames the item the Windows menu was opened on, not the earlier selection", async () => {
+    renderFilesystemPanel({ paneId: "pane-shell-menu" });
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => (
+      command === "filesystem_show_shell_menu" ? "rename" : baseInvoke(command, payload)
+    ));
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+    fireEvent.click(await screen.findByRole("button", { name: /draft\.md/i }));
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
+          commandId: "filesystem.showShellMenu",
+          context: {
+            source: "context-menu",
+            targetPaneId: "pane-shell-menu",
+            targetType: "file",
+            targetScope: "tree-entry",
+            targetPath: "C:\\notes.txt",
+            selectedPaths: ["C:\\notes.txt"],
+            pointerX: 12,
+            pointerY: 34,
+          },
+        },
+      }));
+    });
+
+    expect(invoke).toHaveBeenCalledWith("filesystem_show_shell_menu", {
+      target: { kind: "items", paths: ["C:\\notes.txt"] },
+      x: 12,
+      y: 34,
+      extended: false,
+    });
+    expect(await screen.findByRole("textbox")).toHaveValue("notes.txt");
+  });
+});

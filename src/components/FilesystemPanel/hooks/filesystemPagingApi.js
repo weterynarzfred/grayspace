@@ -22,6 +22,9 @@ export async function listDirectoryPage(path, offset, limit, options = {}) {
     offset,
     limit,
     refresh: options.refresh === true,
+    sortKey: options.sortKey,
+    sortDescending: options.sortDescending,
+    filter: options.filter,
   });
   return normalizeDirectoryPageResponse(response);
 }

@@ -318,20 +318,14 @@ export default function useFilesystemPanelInteractions({
     clearSelectedEntries();
   }, [clearSelectedEntries]);
 
-  const handleBeginRenameSelectedEntry = useCallback(() => {
-    if (!isBrowsing || isEntryOperationInProgress) return false;
-    if (selectedEntryPaths.length !== 1) return false;
-    const selectedPath = selectedEntryPaths[0];
-    const selectedEntry = treeData.entryByPath[selectedPath];
-    if (!selectedEntry) return false;
-    setRenamingPath(selectedPath);
+  const beginRenameEntry = useCallback((path) => {
+    if (!isBrowsing || isEntryOperationInProgress || !treeData.entryByPath[path]) return false;
+    setRenamingPath(path);
     return true;
-  }, [
-    isBrowsing,
-    isEntryOperationInProgress,
-    selectedEntryPaths,
-    treeData.entryByPath,
-  ]);
+  }, [isBrowsing, isEntryOperationInProgress, treeData.entryByPath]);
+  const handleBeginRenameSelectedEntry = useCallback(() => (
+    selectedEntryPaths.length === 1 && beginRenameEntry(selectedEntryPaths[0])
+  ), [beginRenameEntry, selectedEntryPaths]);
 
   const handleEntryRenameCancel = useCallback((entryPath) => {
     if (entryPath !== renamingPath) return;
@@ -591,32 +585,31 @@ export default function useFilesystemPanelInteractions({
     return true;
   }, [onToggleDirectoryExpanded, rowByPath, selectedPaths]);
 
-  const handleOpenSelectedEntry = useCallback(() => {
-    if (selectedPaths.length > 1) {
-      const selectedFiles = selectedEntryPaths
-        .map(path => treeData.entryByPath[path])
-        .filter(entry => entry && !entry.is_dir);
-      if (selectedFiles.length > 1) {
-        selectedFiles.forEach((entry) => {
-          openEntry(entry, {
-            isWorkspaceFolder: workspaceFolderPathSet.has(entry.path),
-          });
+  // Several files all open; otherwise the last path opens (a folder is navigated into).
+  const openEntryPaths = useCallback((paths) => {
+    const files = paths
+      .map(path => treeData.entryByPath[path])
+      .filter(entry => entry && !entry.is_dir);
+    if (files.length > 1) {
+      files.forEach((entry) => {
+        openEntry(entry, {
+          isWorkspaceFolder: workspaceFolderPathSet.has(entry.path),
         });
-        return true;
-      }
-    }
-
-    const selectedPath = selectedPaths.at(-1) ?? "";
-    if (!isBrowsing && drivePaths.includes(selectedPath)) {
-      onOpenDrivePath?.(selectedPath);
+      });
       return true;
     }
 
-    const selectedEntry = treeData.entryByPath[selectedPath];
-    if (!selectedEntry) return false;
+    const lastPath = paths.at(-1) ?? "";
+    if (!isBrowsing && drivePaths.includes(lastPath)) {
+      onOpenDrivePath?.(lastPath);
+      return true;
+    }
 
-    openEntry(selectedEntry, {
-      isWorkspaceFolder: workspaceFolderPathSet.has(selectedEntry.path),
+    const lastEntry = treeData.entryByPath[lastPath];
+    if (!lastEntry) return false;
+
+    openEntry(lastEntry, {
+      isWorkspaceFolder: workspaceFolderPathSet.has(lastEntry.path),
     });
     return true;
   }, [
@@ -624,11 +617,13 @@ export default function useFilesystemPanelInteractions({
     isBrowsing,
     onOpenDrivePath,
     openEntry,
-    selectedEntryPaths,
-    selectedPaths,
     treeData.entryByPath,
     workspaceFolderPathSet,
   ]);
+  const handleOpenSelectedEntry = useCallback(
+    () => openEntryPaths(selectedPaths),
+    [openEntryPaths, selectedPaths],
+  );
 
   const handleOpenSelectedEntryInNewTab = useCallback(() => {
     if (!isBrowsing || isEntryOperationInProgress) return false;
@@ -699,6 +694,7 @@ export default function useFilesystemPanelInteractions({
     handleEntryContextMenu,
     handlePanelBackgroundClick,
     handlePanelBackgroundContextMenu,
+    beginRenameEntry,
     handleBeginRenameSelectedEntry,
     handleEntryRenameCancel,
     handleEntryRenameSubmit,
@@ -706,6 +702,8 @@ export default function useFilesystemPanelInteractions({
     handleCreateFolder,
     handleDeleteSelectedEntries,
     handlePanelKeyDown,
+    openEntryPaths,
+    handleOpenSelectedEntry,
     handleOpenSelectedEntryInNewTab,
     isExternalDragOver,
   };

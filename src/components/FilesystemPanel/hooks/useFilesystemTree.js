@@ -145,6 +145,8 @@ export default function useFilesystemTree({
   rootEntries = [],
   initialExpandedPaths = [],
   onExpandedPathsChange = undefined,
+  sortKey = "name",
+  sortDescending = false,
 }) {
   const [expandedByPath, setExpandedByPath] = useState(() => (
     buildExpandedByPath(initialExpandedPaths, currentPath)
@@ -152,6 +154,9 @@ export default function useFilesystemTree({
   const [directoryEntriesByPath, setDirectoryEntriesByPath] = useState({});
   const [loadingByPath, setLoadingByPath] = useState({});
   const lastRootPathRef = useRef(currentPath);
+  const directoryEntriesByPathRef = useRef(directoryEntriesByPath);
+  directoryEntriesByPathRef.current = directoryEntriesByPath;
+  const listedSortRef = useRef({ sortKey, sortDescending });
 
   useEffect(() => {
     if (lastRootPathRef.current === currentPath) return;
@@ -171,7 +176,7 @@ export default function useFilesystemTree({
     }));
 
     try {
-      const loadedEntries = await invoke("list_directory", { path: directoryPath });
+      const loadedEntries = await invoke("list_directory", { path: directoryPath, sortKey, sortDescending });
       setDirectoryEntriesByPath((prev) => ({
         ...prev,
         [directoryPath]: loadedEntries,
@@ -189,7 +194,21 @@ export default function useFilesystemTree({
         return next;
       });
     }
-  }, [directoryEntriesByPath, loadingByPath]);
+  }, [directoryEntriesByPath, loadingByPath, sortDescending, sortKey]);
+
+  // Cached subfolders are re-fetched in place, so expanded folders don't collapse to "Loading...".
+  useEffect(() => {
+    const listedSort = listedSortRef.current;
+    if (listedSort.sortKey === sortKey && listedSort.sortDescending === sortDescending) return;
+    listedSortRef.current = { sortKey, sortDescending };
+    Object.keys(directoryEntriesByPathRef.current).forEach(async (directoryPath) => {
+      const sortedEntries = await invoke("list_directory", { path: directoryPath, sortKey, sortDescending })
+        .catch(() => []);
+      setDirectoryEntriesByPath((prev) => (
+        prev[directoryPath] ? { ...prev, [directoryPath]: sortedEntries } : prev
+      ));
+    });
+  }, [sortDescending, sortKey]);
 
   const toggleDirectoryExpanded = useCallback((directoryPath) => {
     if (!directoryPath) return;
@@ -241,12 +260,12 @@ export default function useFilesystemTree({
   const refreshExpandedDirectory = useCallback(async (watchedPath) => {
     if (!watchedPath || expandedByPath[watchedPath] !== true) return;
 
-    const refreshedEntries = await invoke("list_directory", { path: watchedPath });
+    const refreshedEntries = await invoke("list_directory", { path: watchedPath, sortKey, sortDescending });
     setDirectoryEntriesByPath((prev) => ({
       ...prev,
       [watchedPath]: refreshedEntries,
     }));
-  }, [expandedByPath]);
+  }, [expandedByPath, sortDescending, sortKey]);
 
   useFilesystemDirectoryWatcher({
     watchPaths: expandedDirectoryPaths,

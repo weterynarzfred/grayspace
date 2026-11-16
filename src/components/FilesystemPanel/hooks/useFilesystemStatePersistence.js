@@ -20,6 +20,8 @@ export default function useFilesystemStatePersistence({
   expandedPaths = [],
   thumbnailSizePx,
   viewType = "folder-tree",
+  sortKey = "name",
+  sortDescending = false,
 }) {
   const initialFilesystemStateRef = useRef(
     normalizeFilesystemPaneState(initialFilesystemState),
@@ -33,6 +35,8 @@ export default function useFilesystemStatePersistence({
     expandedPaths,
     thumbnailSizePx,
     viewType,
+    sortKey,
+    sortDescending,
   });
   const latestScrollTopRef = useRef(initialFilesystemStateRef.current.scrollTop);
   const pendingInitialScrollRestoreRef = useRef(true);
@@ -65,12 +69,16 @@ export default function useFilesystemStatePersistence({
       expandedPaths,
       thumbnailSizePx,
       viewType,
+      sortKey,
+      sortDescending,
     };
   }, [
     currentDrive,
     currentPath,
     expandedPaths,
     selectedPaths,
+    sortDescending,
+    sortKey,
     thumbnailSizePx,
     viewType,
   ]);
@@ -87,7 +95,9 @@ export default function useFilesystemStatePersistence({
       || !arePathArraysEqual(normalizedState.expandedPaths, lastState.expandedPaths)
       || normalizedState.scrollTop !== lastState.scrollTop
       || normalizedState.thumbnailSizePx !== lastState.thumbnailSizePx
-      || normalizedState.viewType !== lastState.viewType;
+      || normalizedState.viewType !== lastState.viewType
+      || normalizedState.sortKey !== lastState.sortKey
+      || normalizedState.sortDescending !== lastState.sortDescending;
 
     if (!hasChanged) return;
 
@@ -105,6 +115,8 @@ export default function useFilesystemStatePersistence({
       scrollTop: latestScrollTopRef.current,
       thumbnailSizePx: latestState.thumbnailSizePx,
       viewType: latestState.viewType,
+      sortKey: latestState.sortKey,
+      sortDescending: latestState.sortDescending,
     });
   }, [persistFilesystemState]);
 
@@ -147,6 +159,8 @@ export default function useFilesystemStatePersistence({
     expandedPaths,
     persistCurrentFilesystemState,
     selectedPaths,
+    sortDescending,
+    sortKey,
     thumbnailSizePx,
     viewType,
   ]);

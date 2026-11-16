@@ -1,10 +1,11 @@
+use super::watcher::{
+  create_filesystem_watcher, drain_watchers_in_path_tree, remap_path_prefix, watch_state_key,
+  ManagedFilesystemWatcher,
+};
+use super::listing::{build_directory_page, filter_entries, read_sorted_directory_entries, ListingSort};
 use super::{
-  build_directory_page, read_sorted_directory_entries,
-  create_filesystem_watcher, drain_watchers_in_path_tree,
-  create_folder, create_text_file,
-  delete_paths, filesystem_get_properties, filesystem_resolve_workspace_folders,
-  handle_move_rename_error, import_paths, list_directory, move_path, parent_path, remap_path_prefix, rename_path_core,
-  watch_state_key, ManagedFilesystemWatcher,
+  create_folder, create_text_file, filesystem_get_properties, filesystem_resolve_workspace_folders,
+  list_directory, parent_path, rename_path_core,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -19,16 +20,6 @@ fn unique_test_root(prefix: &str) -> PathBuf {
   std::env::temp_dir().join(format!("{prefix}_{unique_id}"))
 }
 
-#[cfg(target_os = "windows")]
-const CROSS_DEVICE_ERROR_CODE: i32 = 17;
-#[cfg(not(target_os = "windows"))]
-const CROSS_DEVICE_ERROR_CODE: i32 = 18;
-
-#[cfg(target_os = "windows")]
-const NON_CROSS_DEVICE_ERROR_CODE: i32 = 5;
-#[cfg(not(target_os = "windows"))]
-const NON_CROSS_DEVICE_ERROR_CODE: i32 = 13;
-
 #[test]
 fn list_directory_sorts_directories_before_files() {
   let test_root = unique_test_root("grayspace_test");
@@ -39,7 +30,7 @@ fn list_directory_sorts_directories_before_files() {
   fs::write(test_root.join("A.txt"), "a").expect("should create A.txt");
 
   let test_root_path = test_root.to_string_lossy().to_string();
-  let entries = list_directory(&test_root_path).expect("list_directory should succeed");
+  let entries = list_directory(&test_root_path, None, None).expect("list_directory should succeed");
   let ordered_names: Vec<String> = entries.into_iter().map(|entry| entry.name).collect();
 
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
@@ -56,10 +47,11 @@ fn list_directory_page_returns_limited_chunk_with_has_more() {
   fs::write(test_root.join("c.txt"), "c").expect("should create c.txt");
 
   let test_root_path = test_root.to_string_lossy().to_string();
-  let entries = read_sorted_directory_entries(&test_root_path)
+  let entries = read_sorted_directory_entries(&test_root_path, ListingSort::default())
     .expect("read_sorted_directory_entries should succeed");
-  let first_page = build_directory_page(&entries, 0, 2);
-  let second_page = build_directory_page(&entries, 2, 2);
+  let visible_entries = filter_entries(&entries, "");
+  let first_page = build_directory_page(&visible_entries, 0, 2);
+  let second_page = build_directory_page(&visible_entries, 2, 2);
 
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
 
@@ -79,13 +71,14 @@ fn list_directory_page_preserves_directory_first_sorting() {
   fs::write(test_root.join("A.txt"), "a").expect("should create A.txt");
 
   let test_root_path = test_root.to_string_lossy().to_string();
-  let all_entries = list_directory(&test_root_path).expect("list_directory should succeed");
+  let all_entries = list_directory(&test_root_path, None, None).expect("list_directory should succeed");
   let expected_names: Vec<String> = all_entries.into_iter().map(|entry| entry.name).collect();
 
-  let entries = read_sorted_directory_entries(&test_root_path)
+  let entries = read_sorted_directory_entries(&test_root_path, ListingSort::default())
     .expect("read_sorted_directory_entries should succeed");
-  let first_page = build_directory_page(&entries, 0, 2);
-  let second_page = build_directory_page(&entries, 2, 2);
+  let visible_entries = filter_entries(&entries, "");
+  let first_page = build_directory_page(&visible_entries, 0, 2);
+  let second_page = build_directory_page(&visible_entries, 2, 2);
   let mut paged_names: Vec<String> = first_page.entries.into_iter().map(|entry| entry.name).collect();
   paged_names.extend(second_page.entries.into_iter().map(|entry| entry.name));
 
@@ -135,7 +128,7 @@ fn list_directory_returns_error_for_missing_path() {
     .to_string_lossy()
     .to_string();
 
-  let result = list_directory(&missing_path);
+  let result = list_directory(&missing_path, None, None);
   assert!(result.is_err());
 }
 
@@ -205,97 +198,6 @@ fn filesystem_get_properties_returns_folder_details() {
   assert_eq!(properties.path, folder_path_string);
   assert_eq!(properties.entry_type, "Folder");
   assert_eq!(properties.size_bytes, None);
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn move_path_moves_file_into_destination_folder() {
-  let test_root = unique_test_root("grayspace_move");
-  let source_dir = test_root.join("source");
-  let destination_dir = test_root.join("destination");
-  let source_file = source_dir.join("notes.txt");
-
-  fs::create_dir_all(&source_dir).expect("should create source dir");
-  fs::create_dir_all(&destination_dir).expect("should create destination dir");
-  fs::write(&source_file, "hello").expect("should create source file");
-
-  let source = source_file.to_string_lossy().to_string();
-  let destination = destination_dir.to_string_lossy().to_string();
-  move_path(&source, &destination).expect("move_path should move file");
-
-  assert!(!source_file.exists(), "source file should be moved out");
-  assert!(
-    destination_dir.join("notes.txt").exists(),
-    "destination should contain moved file"
-  );
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn move_path_rejects_moving_folder_into_descendant() {
-  let test_root = unique_test_root("grayspace_move_descendant");
-  let parent_dir = test_root.join("photos");
-  let child_dir = parent_dir.join("archive");
-
-  fs::create_dir_all(&child_dir).expect("should create nested directories");
-
-  let source = parent_dir.to_string_lossy().to_string();
-  let destination = child_dir.to_string_lossy().to_string();
-  let result = move_path(&source, &destination);
-
-  assert!(result.is_err());
-  assert!(result
-    .expect_err("should return an error")
-    .contains("Cannot move a folder into itself or one of its descendants."));
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn move_path_rejects_destination_name_collision() {
-  let test_root = unique_test_root("grayspace_move_collision");
-  let source_dir = test_root.join("source");
-  let destination_dir = test_root.join("destination");
-  let source_file = source_dir.join("notes.txt");
-  let destination_file = destination_dir.join("notes.txt");
-
-  fs::create_dir_all(&source_dir).expect("should create source dir");
-  fs::create_dir_all(&destination_dir).expect("should create destination dir");
-  fs::write(&source_file, "source").expect("should create source file");
-  fs::write(&destination_file, "destination").expect("should create destination file");
-
-  let source = source_file.to_string_lossy().to_string();
-  let destination = destination_dir.to_string_lossy().to_string();
-  let result = move_path(&source, &destination);
-
-  assert!(result.is_err());
-  assert!(result
-    .expect_err("should return an error")
-    .contains("already exists in the destination folder"));
-  assert!(source_file.exists(), "source file should remain in place");
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn move_path_rejects_missing_source() {
-  let test_root = unique_test_root("grayspace_move_missing_source");
-  let destination_dir = test_root.join("destination");
-  let missing_source = test_root.join("does-not-exist.txt");
-
-  fs::create_dir_all(&destination_dir).expect("should create destination dir");
-
-  let source = missing_source.to_string_lossy().to_string();
-  let destination = destination_dir.to_string_lossy().to_string();
-  let result = move_path(&source, &destination);
-
-  assert!(result.is_err());
-  assert_eq!(
-    result.expect_err("should return an error"),
-    "The source path does not exist."
-  );
 
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
 }
@@ -508,287 +410,3 @@ fn drain_watchers_in_path_tree_keeps_unrelated_watchers_active() {
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
 }
 
-#[test]
-fn handle_move_rename_error_falls_back_to_copy_and_delete_for_file() {
-  let test_root = unique_test_root("grayspace_move_cross_drive_file");
-  let source_dir = test_root.join("source");
-  let destination_dir = test_root.join("destination");
-  let source_file = source_dir.join("notes.txt");
-  let destination_file = destination_dir.join("notes.txt");
-
-  fs::create_dir_all(&source_dir).expect("should create source dir");
-  fs::create_dir_all(&destination_dir).expect("should create destination dir");
-  fs::write(&source_file, "hello").expect("should create source file");
-
-  let rename_error = std::io::Error::from_raw_os_error(CROSS_DEVICE_ERROR_CODE);
-  handle_move_rename_error(&source_file, &destination_file, rename_error)
-    .expect("cross-device fallback should copy and delete source file");
-
-  assert!(
-    !source_file.exists(),
-    "source file should be removed after fallback"
-  );
-  assert!(
-    destination_file.exists(),
-    "destination file should exist after fallback"
-  );
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn handle_move_rename_error_falls_back_to_copy_and_delete_for_directory() {
-  let test_root = unique_test_root("grayspace_move_cross_drive_dir");
-  let source_dir = test_root.join("source").join("assets");
-  let nested_dir = source_dir.join("nested");
-  let destination_dir = test_root.join("destination");
-  let destination_path = destination_dir.join("assets");
-
-  fs::create_dir_all(&nested_dir).expect("should create nested source dir");
-  fs::create_dir_all(&destination_dir).expect("should create destination dir");
-  fs::write(source_dir.join("root.txt"), "root").expect("should create source root file");
-  fs::write(nested_dir.join("leaf.txt"), "leaf").expect("should create nested source file");
-
-  let rename_error = std::io::Error::from_raw_os_error(CROSS_DEVICE_ERROR_CODE);
-  handle_move_rename_error(&source_dir, &destination_path, rename_error)
-    .expect("cross-device fallback should copy and delete source directory");
-
-  assert!(
-    !source_dir.exists(),
-    "source directory should be removed after fallback"
-  );
-  assert!(
-    destination_path.join("root.txt").exists(),
-    "destination directory should contain copied root file"
-  );
-  assert!(
-    destination_path.join("nested").join("leaf.txt").exists(),
-    "destination directory should contain copied nested file"
-  );
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn handle_move_rename_error_returns_original_error_when_not_cross_device() {
-  let test_root = unique_test_root("grayspace_move_non_cross_error");
-  let source_dir = test_root.join("source");
-  let destination_dir = test_root.join("destination");
-  let source_file = source_dir.join("notes.txt");
-  let destination_file = destination_dir.join("notes.txt");
-
-  fs::create_dir_all(&source_dir).expect("should create source dir");
-  fs::create_dir_all(&destination_dir).expect("should create destination dir");
-  fs::write(&source_file, "hello").expect("should create source file");
-
-  let rename_error = std::io::Error::from_raw_os_error(NON_CROSS_DEVICE_ERROR_CODE);
-  let result = handle_move_rename_error(&source_file, &destination_file, rename_error);
-
-  assert!(
-    result.is_err(),
-    "non cross-device errors should be returned"
-  );
-  assert!(source_file.exists(), "source file should remain in place");
-  assert!(
-    !destination_file.exists(),
-    "destination file should not be created"
-  );
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn delete_paths_removes_file() {
-  let test_root = unique_test_root("grayspace_delete_file");
-  let file_path = test_root.join("notes.txt");
-  fs::create_dir_all(&test_root).expect("should create temp root");
-  fs::write(&file_path, "remove me").expect("should create temp file");
-
-  let delete_target = file_path.to_string_lossy().to_string();
-  delete_paths(vec![delete_target]).expect("delete_paths should remove file");
-
-  assert!(!file_path.exists(), "file should be removed");
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn delete_paths_removes_directory_recursively() {
-  let test_root = unique_test_root("grayspace_delete_dir");
-  let folder_path = test_root.join("workspace");
-  let nested_path = folder_path.join("nested");
-  fs::create_dir_all(&nested_path).expect("should create nested folders");
-  fs::write(folder_path.join("root.txt"), "root").expect("should create root file");
-  fs::write(nested_path.join("leaf.txt"), "leaf").expect("should create nested file");
-
-  let delete_target = folder_path.to_string_lossy().to_string();
-  delete_paths(vec![delete_target]).expect("delete_paths should remove folder recursively");
-
-  assert!(
-    !folder_path.exists(),
-    "folder should be removed recursively"
-  );
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn delete_paths_rejects_missing_path() {
-  let test_root = unique_test_root("grayspace_delete_missing");
-  let missing_path = test_root.join("missing.txt");
-  let delete_target = missing_path.to_string_lossy().to_string();
-
-  let result = delete_paths(vec![delete_target]);
-
-  assert!(result.is_err());
-  assert!(result
-    .expect_err("should return an error")
-    .contains("does not exist."));
-}
-
-#[test]
-fn import_paths_copies_file_into_destination_folder() {
-  let test_root = unique_test_root("grayspace_import_file");
-  let source_dir = test_root.join("source");
-  let destination_dir = test_root.join("destination");
-  let source_file = source_dir.join("notes.txt");
-
-  fs::create_dir_all(&source_dir).expect("should create source dir");
-  fs::create_dir_all(&destination_dir).expect("should create destination dir");
-  fs::write(&source_file, "hello").expect("should create source file");
-
-  let source = source_file.to_string_lossy().to_string();
-  let destination = destination_dir.to_string_lossy().to_string();
-  import_paths(vec![source.clone()], &destination).expect("import_paths should copy file");
-
-  assert!(
-    source_file.exists(),
-    "source file should remain in place after import"
-  );
-  assert!(
-    destination_dir.join("notes.txt").exists(),
-    "destination should contain imported file"
-  );
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn import_paths_copies_directory_recursively() {
-  let test_root = unique_test_root("grayspace_import_dir");
-  let source_dir = test_root.join("assets");
-  let nested_dir = source_dir.join("nested");
-  let destination_dir = test_root.join("destination");
-
-  fs::create_dir_all(&nested_dir).expect("should create nested source dirs");
-  fs::create_dir_all(&destination_dir).expect("should create destination dir");
-  fs::write(source_dir.join("root.txt"), "root").expect("should create source root file");
-  fs::write(nested_dir.join("leaf.txt"), "leaf").expect("should create nested source file");
-
-  let source = source_dir.to_string_lossy().to_string();
-  let destination = destination_dir.to_string_lossy().to_string();
-  import_paths(vec![source], &destination).expect("import_paths should copy directory");
-
-  let imported_root = destination_dir.join("assets");
-  assert!(
-    imported_root.exists(),
-    "destination should contain imported folder"
-  );
-  assert!(
-    imported_root.join("root.txt").exists(),
-    "destination should contain top-level file"
-  );
-  assert!(
-    imported_root.join("nested").join("leaf.txt").exists(),
-    "destination should contain nested file"
-  );
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn import_paths_rejects_destination_name_collision() {
-  let test_root = unique_test_root("grayspace_import_collision");
-  let source_dir = test_root.join("source");
-  let destination_dir = test_root.join("destination");
-  let source_file = source_dir.join("notes.txt");
-  let destination_file = destination_dir.join("notes.txt");
-
-  fs::create_dir_all(&source_dir).expect("should create source dir");
-  fs::create_dir_all(&destination_dir).expect("should create destination dir");
-  fs::write(&source_file, "source").expect("should create source file");
-  fs::write(&destination_file, "destination").expect("should create destination file");
-
-  let source = source_file.to_string_lossy().to_string();
-  let destination = destination_dir.to_string_lossy().to_string();
-  let result = import_paths(vec![source], &destination);
-
-  assert!(result.is_err());
-  assert!(result
-    .expect_err("should return an error")
-    .contains("already exists in the destination folder"));
-  assert!(source_file.exists(), "source file should remain in place");
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn import_paths_rejects_empty_input() {
-  let test_root = unique_test_root("grayspace_import_empty");
-  fs::create_dir_all(&test_root).expect("should create destination dir");
-
-  let destination = test_root.to_string_lossy().to_string();
-  let result = import_paths(Vec::new(), &destination);
-
-  assert!(result.is_err());
-  assert_eq!(
-    result.expect_err("should return an error"),
-    "No paths were provided for import."
-  );
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn import_paths_rejects_destination_that_is_not_a_directory() {
-  let test_root = unique_test_root("grayspace_import_bad_destination");
-  let source_dir = test_root.join("source");
-  let source_file = source_dir.join("notes.txt");
-  let destination_file = test_root.join("destination.txt");
-
-  fs::create_dir_all(&source_dir).expect("should create source dir");
-  fs::write(&source_file, "hello").expect("should create source file");
-  fs::write(&destination_file, "not a directory").expect("should create destination file");
-
-  let source = source_file.to_string_lossy().to_string();
-  let destination = destination_file.to_string_lossy().to_string();
-  let result = import_paths(vec![source], &destination);
-
-  assert!(result.is_err());
-  assert_eq!(
-    result.expect_err("should return an error"),
-    "The destination must be an existing folder."
-  );
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}
-
-#[test]
-fn import_paths_rejects_importing_folder_into_descendant() {
-  let test_root = unique_test_root("grayspace_import_descendant");
-  let source_dir = test_root.join("workspace");
-  let nested_destination = source_dir.join("nested");
-
-  fs::create_dir_all(&nested_destination).expect("should create source and nested destination");
-
-  let source = source_dir.to_string_lossy().to_string();
-  let destination = nested_destination.to_string_lossy().to_string();
-  let result = import_paths(vec![source], &destination);
-
-  assert!(result.is_err());
-  assert!(result
-    .expect_err("should return an error")
-    .contains("Cannot import a folder into itself or one of its descendants."));
-
-  fs::remove_dir_all(&test_root).expect("should clean up temp root");
-}

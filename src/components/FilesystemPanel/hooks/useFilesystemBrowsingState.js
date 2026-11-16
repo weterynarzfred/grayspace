@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import useFilesystemDirectoryWatcher from "./useFilesystemDirectoryWatcher";
+import useFilesystemSearch from "./useFilesystemSearch";
 import {
   DIRECTORY_PAGE_SIZE,
   listDirectoryPage,
@@ -24,6 +25,12 @@ function mergeEntryPages(existingEntries, pageEntries) {
 }
 
 const MAX_BROWSING_HISTORY_ITEMS = 100;
+
+function isSameListing(left, right) {
+  return left.sortKey === right.sortKey
+    && left.sortDescending === right.sortDescending
+    && left.filter === right.filter;
+}
 
 function resolveDriveFromPath(path, fallbackDrive = "") {
   const normalizedPath = typeof path === "string" ? path.trim() : "";
@@ -54,6 +61,8 @@ export default function useFilesystemBrowsingState({
   initialCurrentPath = "",
   clearSelection,
   keepSelectionOnlyInPathSet,
+  sortKey = "name",
+  sortDescending = false,
 }) {
   const initialLocation = normalizeBrowsingLocation({
     currentDrive: initialCurrentDrive,
@@ -70,6 +79,7 @@ export default function useFilesystemBrowsingState({
   const [totalEntriesCount, setTotalEntriesCount] = useState(0);
   const [hasLoadedCurrentPath, setHasLoadedCurrentPath] = useState(initialLocation.currentPath === "");
   const [error, setError] = useState("");
+  const [filter, setFilter] = useState("");
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
   const currentPathRef = useRef(initialLocation.currentPath);
@@ -77,9 +87,25 @@ export default function useFilesystemBrowsingState({
   const loadMoreInFlightRef = useRef(false);
   const historyStackRef = useRef([initialLocation]);
   const historyIndexRef = useRef(0);
+  // Sort and filter wanted now vs. the ones behind the entries on screen. A load replaces
+  // `listedOptionsRef`, so slower responses from an older listing can be recognised and dropped.
+  const listingOptionsRef = useRef({ sortKey, sortDescending, filter });
+  const listedOptionsRef = useRef(listingOptionsRef.current);
+  const {
+    searchQuery,
+    setSearchQuery: setSearchQueryState,
+    isSearchActive,
+    searchResults,
+    searchStatus,
+    refreshSearchResults,
+  } = useFilesystemSearch({ rootPath: currentPath, sortKey, sortDescending });
+  const isSearchActiveRef = useRef(isSearchActive);
+  const searchedPathRef = useRef("");
 
   currentPathRef.current = currentPath;
   entriesRef.current = entries;
+  listingOptionsRef.current = { sortKey, sortDescending, filter };
+  isSearchActiveRef.current = isSearchActive;
 
   const applyLoadedEntries = useCallback((nextEntries) => {
     setEntries(nextEntries);
@@ -129,12 +155,19 @@ export default function useFilesystemBrowsingState({
 
     setCurrentDrive(normalizedLocation.currentDrive);
     setCurrentPath(normalizedLocation.currentPath);
+    setFilter("");
+    setSearchQueryState("");
     clearSelection();
     setError("");
     return normalizedLocation;
-  }, [clearSelection, pushLocationToHistory]);
+  }, [clearSelection, pushLocationToHistory, setSearchQueryState]);
 
-  const loadEntriesUpToCount = useCallback(async (pathToLoad, targetCount, options = {}) => {
+  const setSearchQuery = useCallback((nextQuery) => {
+    setSearchQueryState(nextQuery);
+    clearSelection();
+  }, [clearSelection, setSearchQueryState]);
+
+  const loadEntriesUpToCount = useCallback(async (pathToLoad, targetCount, listingOptions, options = {}) => {
     const { refresh = false } = options;
     const normalizedPath = typeof pathToLoad === "string" ? pathToLoad : "";
     if (!normalizedPath) {
@@ -154,6 +187,7 @@ export default function useFilesystemBrowsingState({
     while (mergedEntries.length < normalizedTargetCount) {
       const pageLimit = Math.min(DIRECTORY_PAGE_SIZE, normalizedTargetCount - mergedEntries.length);
       const page = await listDirectoryPage(normalizedPath, offset, pageLimit, {
+        ...listingOptions,
         refresh: refresh && offset === 0,
       });
       const pageEntries = page.entries;
@@ -176,20 +210,27 @@ export default function useFilesystemBrowsingState({
     };
   }, []);
 
-  const refreshEntriesForPath = useCallback(async (pathToRefresh) => {
+  // `reread: false` only re-sorts / re-filters the backend's cached listing.
+  const refreshEntriesForPath = useCallback(async (pathToRefresh, { reread = true } = {}) => {
     const normalizedPath = typeof pathToRefresh === "string" ? pathToRefresh : "";
     if (!normalizedPath) return;
+    if (isSearchActiveRef.current) {
+      await refreshSearchResults();
+      return;
+    }
 
+    const listingOptions = listingOptionsRef.current;
+    if (normalizedPath === currentPathRef.current) listedOptionsRef.current = listingOptions;
     const targetCount = Math.max(
       DIRECTORY_PAGE_SIZE,
       Math.min(entriesRef.current.length || DIRECTORY_PAGE_SIZE, MAX_REFRESH_ENTRY_COUNT),
     );
 
     try {
-      const refreshedPage = await loadEntriesUpToCount(normalizedPath, targetCount, {
-        refresh: true,
+      const refreshedPage = await loadEntriesUpToCount(normalizedPath, targetCount, listingOptions, {
+        refresh: reread,
       });
-      if (currentPathRef.current !== normalizedPath) return;
+      if (currentPathRef.current !== normalizedPath || listedOptionsRef.current !== listingOptions) return;
       applyLoadedEntries(refreshedPage.entries);
       setHasMoreEntries(refreshedPage.hasMore);
       setTotalEntriesCount(refreshedPage.totalCount);
@@ -197,7 +238,7 @@ export default function useFilesystemBrowsingState({
       if (currentPathRef.current !== normalizedPath) return;
       setError(getNavigationErrorMessage(refreshError, "Failed to refresh folder."));
     }
-  }, [applyLoadedEntries, loadEntriesUpToCount]);
+  }, [applyLoadedEntries, loadEntriesUpToCount, refreshSearchResults]);
 
   const handleWatcherError = useCallback((watchError, watchedPath) => {
     if (currentPathRef.current !== watchedPath) return;
@@ -251,7 +292,9 @@ export default function useFilesystemBrowsingState({
       setError("");
 
       try {
+        listedOptionsRef.current = listingOptionsRef.current;
         const firstPage = await listDirectoryPage(currentPath, 0, DIRECTORY_PAGE_SIZE, {
+          ...listedOptionsRef.current,
           refresh: true,
         });
         if (!cancelled) {
@@ -279,6 +322,24 @@ export default function useFilesystemBrowsingState({
     };
   }, [applyLoadedEntries, clearSelection, currentPath]);
 
+  // Re-sorting and re-filtering keep the current entries on screen until the new ones arrive.
+  useEffect(() => {
+    if (isSearchActiveRef.current) return;
+    if (isSameListing(listedOptionsRef.current, listingOptionsRef.current)) return;
+    refreshEntriesForPath(currentPathRef.current, { reread: false });
+  }, [filter, refreshEntriesForPath, sortDescending, sortKey]);
+
+  // Leaving search in the same folder re-lists it: files may have changed, sort may differ.
+  useEffect(() => {
+    if (isSearchActive) {
+      searchedPathRef.current = currentPathRef.current;
+      return;
+    }
+    const searchedPath = searchedPathRef.current;
+    searchedPathRef.current = "";
+    if (searchedPath && searchedPath === currentPathRef.current) refreshEntriesForPath(searchedPath);
+  }, [isSearchActive, refreshEntriesForPath]);
+
   useFilesystemDirectoryWatcher({
     currentPath,
     onDirectoryChange: refreshEntriesForPath,
@@ -298,6 +359,7 @@ export default function useFilesystemBrowsingState({
     }
 
     const offset = entriesRef.current.length;
+    const listedOptions = listedOptionsRef.current;
     loadMoreInFlightRef.current = true;
     setIsLoadingMoreEntries(true);
 
@@ -306,8 +368,9 @@ export default function useFilesystemBrowsingState({
         pathToLoad,
         offset,
         DIRECTORY_PAGE_SIZE,
+        listedOptions,
       );
-      if (currentPathRef.current !== pathToLoad) return;
+      if (currentPathRef.current !== pathToLoad || listedOptionsRef.current !== listedOptions) return;
 
       let mergedEntries = [];
       setEntries((previousEntries) => {
@@ -406,16 +469,22 @@ export default function useFilesystemBrowsingState({
     currentDrive,
     currentPath,
     currentPathRef,
-    entries,
+    entries: isSearchActive ? searchResults : entries,
     isLoadingDrives,
-    isLoadingEntries,
+    isLoadingEntries: isLoadingEntries && !isSearchActive,
     isLoadingMoreEntries,
-    hasMoreEntries,
-    totalEntriesCount,
+    hasMoreEntries: hasMoreEntries && !isSearchActive,
+    totalEntriesCount: isSearchActive ? searchResults.length : totalEntriesCount,
     hasLoadedCurrentPath,
     error,
     canGoBack,
     canGoForward,
+    filter,
+    setFilter,
+    searchQuery,
+    setSearchQuery,
+    isSearchActive,
+    searchStatus,
     setError,
     navigateToPath,
     selectDrive,

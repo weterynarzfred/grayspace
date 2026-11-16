@@ -2,9 +2,11 @@
 @use "../../styles/mixins" as *;
 
 .gridContainer {
+  // A single column never gets narrower than one cell; long names don't widen their column.
+  min-width: calc(var(--entry-thumbnail-size, 32px) + 40px);
   padding: 8px;
   display: grid;
-  grid-template-columns: repeat(var(--grid-cols, 4), 1fr);
+  grid-template-columns: repeat(var(--grid-cols, 4), minmax(0, 1fr));
   gap: 8px;
   align-content: start;
 }
@@ -41,6 +43,10 @@
   &:focus-visible {
     @include focus-ring;
   }
+}
+
+.cellHidden {
+  opacity: 0.55;
 }
 
 .cellSelected {

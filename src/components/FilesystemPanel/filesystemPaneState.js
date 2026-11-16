@@ -3,8 +3,11 @@ import { getSelectedPathsFromState } from "../../utils/pathSelection";
 export const FILESYSTEM_THUMBNAIL_SIZE_STEPS = [22, 32, 48, 64, 96, 128, 192, 256];
 export const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE = FILESYSTEM_THUMBNAIL_SIZE_STEPS[0];
 
-export const FILESYSTEM_VIEW_TYPES = ["folder-tree", "grid", "foldable-grid"];
+export const FILESYSTEM_VIEW_TYPES = ["folder-tree", "details", "grid", "foldable-grid"];
 export const DEFAULT_FILESYSTEM_VIEW_TYPE = "folder-tree";
+
+export const FILESYSTEM_SORT_KEYS = ["name", "modified", "size", "type"];
+export const DEFAULT_FILESYSTEM_SORT_KEY = "name";
 
 function getExpandedPathsFromState(state = {}) {
   if (!state || typeof state !== "object") return [];
@@ -18,13 +21,6 @@ function getExpandedPathsFromState(state = {}) {
     expandedPaths.push(path);
   });
   return expandedPaths;
-}
-
-export function normalizeFilesystemThumbnailSize(sizePx) {
-  if (!Number.isFinite(sizePx)) return DEFAULT_FILESYSTEM_THUMBNAIL_SIZE;
-  const roundedSize = Math.round(sizePx);
-  if (FILESYSTEM_THUMBNAIL_SIZE_STEPS.includes(roundedSize)) return roundedSize;
-  return DEFAULT_FILESYSTEM_THUMBNAIL_SIZE;
 }
 
 export function arePathArraysEqual(leftPaths = [], rightPaths = []) {
@@ -46,7 +42,33 @@ export function normalizeFilesystemPaneState(filesystemState = {}) {
     selectedPaths,
     expandedPaths,
     scrollTop: Number.isFinite(state.scrollTop) ? Math.max(0, Math.round(state.scrollTop)) : 0,
-    thumbnailSizePx: normalizeFilesystemThumbnailSize(state.thumbnailSizePx),
-    viewType: FILESYSTEM_VIEW_TYPES.includes(state.viewType) ? state.viewType : DEFAULT_FILESYSTEM_VIEW_TYPE,
+    ...normalizeFilesystemViewStyle(state),
+  };
+}
+
+// View type, thumbnail size and sort travel together: they are saved per workspace pane and per folder.
+export function normalizeFilesystemViewStyle(style = {}, fallback = {}) {
+  const pick = (value, isValid, fallbackValue) => (isValid(value) ? value : fallbackValue);
+  return {
+    thumbnailSizePx: pick(
+      style.thumbnailSizePx,
+      (size) => FILESYSTEM_THUMBNAIL_SIZE_STEPS.includes(size),
+      fallback.thumbnailSizePx ?? DEFAULT_FILESYSTEM_THUMBNAIL_SIZE,
+    ),
+    viewType: pick(
+      style.viewType,
+      (viewType) => FILESYSTEM_VIEW_TYPES.includes(viewType),
+      fallback.viewType ?? DEFAULT_FILESYSTEM_VIEW_TYPE,
+    ),
+    sortKey: pick(
+      style.sortKey,
+      (sortKey) => FILESYSTEM_SORT_KEYS.includes(sortKey),
+      fallback.sortKey ?? DEFAULT_FILESYSTEM_SORT_KEY,
+    ),
+    sortDescending: pick(
+      style.sortDescending,
+      (sortDescending) => typeof sortDescending === "boolean",
+      fallback.sortDescending ?? false,
+    ),
   };
 }

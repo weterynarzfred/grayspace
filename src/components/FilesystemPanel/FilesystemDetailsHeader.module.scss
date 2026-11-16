@@ -1,0 +1,57 @@
+@use "../../styles/variables" as *;
+@use "../../styles/mixins" as *;
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  padding: 0 0.5rem;
+  background: $bg-panel;
+  border-bottom: 1px solid $border-default;
+}
+
+.nameColumn {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.detailColumns {
+  display: grid;
+  grid-template-columns: var(--details-columns);
+  gap: 0.5rem;
+}
+
+.column {
+  padding: 0.25rem 0;
+  background: none;
+  border: none;
+  color: $text-secondary;
+  font-size: $font-size-small;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover {
+    color: $text-primary;
+  }
+
+  &:focus-visible {
+    @include focus-ring;
+  }
+}
+
+.alignEnd {
+  text-align: right;
+}
+
+.active {
+  color: $text-primary;
+}
+
+.direction {
+  margin-left: 0.25rem;
+}

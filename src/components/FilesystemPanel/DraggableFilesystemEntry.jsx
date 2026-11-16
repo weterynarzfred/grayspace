@@ -2,6 +2,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { memo } from "react";
 import EntryItem from "./EntryItem";
 import { getDragEntryDndId, getEntryDndId } from "./dndIds";
+import { getEntryDetails } from "./filesystemEntryDetails";
 
 function getDragPaths(isSelectedForDrag, selectedEntryPaths, entryPath) {
   return isSelectedForDrag ? selectedEntryPaths : [entryPath];
@@ -61,6 +62,8 @@ function DraggableFilesystemEntry({
     nestingDepth = 0,
     isExpanded = false,
     isRenaming = false,
+    showDetails = false,
+    location = "",
   } = view;
   const {
     onToggleExpand = undefined,
@@ -130,6 +133,9 @@ function DraggableFilesystemEntry({
     isFile={!isDirectory}
     isDirectory={isDirectory}
     isConfig={shouldUseConfigStyle}
+    isHidden={entry.is_hidden}
+    details={showDetails ? getEntryDetails(entry) : null}
+    location={location}
     isDraggable={!isMovingEntry}
     isDragging={shouldShowDraggingState}
     isDropTarget={isDropTarget}

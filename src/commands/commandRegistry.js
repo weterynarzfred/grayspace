@@ -34,8 +34,16 @@ export const COMMAND_IDS = {
   FILESYSTEM_CREATE_FOLDER: "filesystem.createFolder",
   FILESYSTEM_VIEW: "filesystem.view",
   FILESYSTEM_VIEW_FOLDER_TREE: "filesystem.view.folderTree",
+  FILESYSTEM_VIEW_DETAILS: "filesystem.view.details",
   FILESYSTEM_VIEW_GRID: "filesystem.view.grid",
   FILESYSTEM_VIEW_FOLDABLE_GRID: "filesystem.view.foldableGrid",
+  FILESYSTEM_SORT: "filesystem.sort",
+  FILESYSTEM_SORT_BY_NAME: "filesystem.sort.name",
+  FILESYSTEM_SORT_BY_MODIFIED: "filesystem.sort.modified",
+  FILESYSTEM_SORT_BY_SIZE: "filesystem.sort.size",
+  FILESYSTEM_SORT_BY_TYPE: "filesystem.sort.type",
+  FILESYSTEM_SORT_REVERSE: "filesystem.sort.reverse",
+  FILESYSTEM_SHOW_SHELL_MENU: "filesystem.showShellMenu",
   WORKSPACE_RUN_SCRIPT: "workspace.runScript",
 };
 
@@ -92,6 +100,17 @@ function isFilesystemBrowsing(context) {
 function isFilesystemCommandContext(context) {
   if (isContextMenuSource(context)) return isFilesystemTreeEntryContextTarget(context);
   return isFilesystemPanelActive(context) && isFilesystemBrowsing(context);
+}
+
+function filesystemPanelPaletteCommand(id, title) {
+  return {
+    id,
+    title,
+    triggers: ["palette"],
+    scope: "filesystem",
+    whenText: "activePanelType === \"Filesystem\"",
+    when: isFilesystemPanelActive,
+  };
 }
 
 function hasSelectedEntries(context) {
@@ -518,21 +537,31 @@ export const COMMANDS = [
     id: COMMAND_IDS.FILESYSTEM_FILTER_CURRENT_FOLDER,
     title: "Filter Current Folder",
     shortcut: "Ctrl+F",
-    triggers: [],
+    triggers: ["shortcut", "palette"],
     scope: "filesystem",
-    state: "planned",
     whenText: "activePanelType === \"Filesystem\" && isFilesystemBrowsing",
     when: context => isFilesystemPanelActive(context) && isFilesystemBrowsing(context),
+    shortcutMatcher: event =>
+      event.ctrlKey
+      && !event.shiftKey
+      && !event.altKey
+      && !event.metaKey
+      && event.key.toLowerCase() === "f",
   },
   {
     id: COMMAND_IDS.FILESYSTEM_SEARCH_CURRENT_SUBTREE,
     title: "Search Current Folder and Subfolders",
     shortcut: "Ctrl+Shift+F",
-    triggers: [],
+    triggers: ["shortcut", "palette"],
     scope: "filesystem",
-    state: "planned",
     whenText: "activePanelType === \"Filesystem\" && isFilesystemBrowsing",
     when: context => isFilesystemPanelActive(context) && isFilesystemBrowsing(context),
+    shortcutMatcher: event =>
+      event.ctrlKey
+      && event.shiftKey
+      && !event.altKey
+      && !event.metaKey
+      && event.key.toLowerCase() === "f",
   },
   {
     id: COMMAND_IDS.FILESYSTEM_FOCUS_BREADCRUMB_INPUT,
@@ -621,30 +650,15 @@ export const COMMANDS = [
       && !event.metaKey
       && event.key.toLowerCase() === "n",
   },
-  {
-    id: COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE,
-    title: "View: Folder Tree",
-    triggers: ["palette"],
-    scope: "filesystem",
-    whenText: "activePanelType === \"Filesystem\"",
-    when: isFilesystemPanelActive,
-  },
-  {
-    id: COMMAND_IDS.FILESYSTEM_VIEW_GRID,
-    title: "View: Grid",
-    triggers: ["palette"],
-    scope: "filesystem",
-    whenText: "activePanelType === \"Filesystem\"",
-    when: isFilesystemPanelActive,
-  },
-  {
-    id: COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID,
-    title: "View: Foldable Grid",
-    triggers: ["palette"],
-    scope: "filesystem",
-    whenText: "activePanelType === \"Filesystem\"",
-    when: isFilesystemPanelActive,
-  },
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE, "View: Folder Tree"),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_VIEW_DETAILS, "View: Details"),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_VIEW_GRID, "View: Grid"),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID, "View: Foldable Grid"),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_BY_NAME, "Sort: Name"),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_BY_MODIFIED, "Sort: Date Modified"),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_BY_SIZE, "Sort: Size"),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_BY_TYPE, "Sort: Type"),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_REVERSE, "Sort: Reverse Order"),
   {
     id: COMMAND_IDS.WORKSPACE_RUN_SCRIPT,
     title: "Run Workspace Script",
@@ -657,20 +671,44 @@ export const COMMANDS = [
   },
 ];
 
-const FILESYSTEM_VIEW_SUBMENU = COMMANDS.filter(c =>
-  c.id === COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE
-  || c.id === COMMAND_IDS.FILESYSTEM_VIEW_GRID
-  || c.id === COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID,
+function filesystemPanelSubmenu(id, title, commandIds) {
+  return {
+    id,
+    title,
+    triggers: ["context-menu"],
+    scope: "filesystem",
+    submenu: COMMANDS.filter(command => commandIds.includes(command.id)),
+    whenText: "targetType === \"panel\" && targetPanelType === \"Filesystem\"",
+    when: isFilesystemPanelContextTarget,
+  };
+}
+COMMANDS.push(
+  filesystemPanelSubmenu(COMMAND_IDS.FILESYSTEM_VIEW, "View Type", [
+    COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE,
+    COMMAND_IDS.FILESYSTEM_VIEW_DETAILS,
+    COMMAND_IDS.FILESYSTEM_VIEW_GRID,
+    COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID,
+  ]),
+  filesystemPanelSubmenu(COMMAND_IDS.FILESYSTEM_SORT, "Sort By", [
+    COMMAND_IDS.FILESYSTEM_SORT_BY_NAME,
+    COMMAND_IDS.FILESYSTEM_SORT_BY_MODIFIED,
+    COMMAND_IDS.FILESYSTEM_SORT_BY_SIZE,
+    COMMAND_IDS.FILESYSTEM_SORT_BY_TYPE,
+    COMMAND_IDS.FILESYSTEM_SORT_REVERSE,
+  ]),
+  {
+    id: COMMAND_IDS.FILESYSTEM_SHOW_SHELL_MENU,
+    title: "Show More Options",
+    shortcut: "Shift+Right-click",
+    triggers: ["context-menu"],
+    scope: "filesystem",
+    whenText: "((targetType === \"file\" || targetType === \"folder\") && targetScope === \"tree-entry\" && hasSelectedEntries()) || (targetType === \"panel\" && targetPanelType === \"Filesystem\" && isFilesystemBrowsing)",
+    when: context => (
+      (isFilesystemTreeEntryContextTarget(context) && hasSelectedEntries(context))
+      || (isFilesystemPanelContextTarget(context) && isFilesystemBrowsing(context))
+    ),
+  },
 );
-COMMANDS.push({
-  id: COMMAND_IDS.FILESYSTEM_VIEW,
-  title: "View Type",
-  triggers: ["context-menu"],
-  scope: "filesystem",
-  submenu: FILESYSTEM_VIEW_SUBMENU,
-  whenText: "targetType === \"panel\" && targetPanelType === \"Filesystem\"",
-  when: isFilesystemPanelContextTarget,
-});
 
 const COMMAND_BY_ID = Object.fromEntries(COMMANDS.map(command => [command.id, command]));
 

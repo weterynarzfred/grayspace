@@ -1,4 +1,15 @@
+import { formatEntrySize } from "./filesystemEntryDetails";
 import styles from "./FilesystemPanel.module.scss";
+
+// e.g. "Copying 2 of 5 items, 34% (1.2 GB of 3.4 GB)"
+export function describeTransferProgress({ kind, itemsDone, itemsTotal, bytesDone, bytesTotal }) {
+  const verb = kind === "copy" ? "Copying" : "Moving";
+  const items = itemsTotal > 1 ? ` ${Math.min(itemsDone + 1, itemsTotal)} of ${itemsTotal} items` : "";
+  const bytes = bytesTotal > 0
+    ? `, ${Math.floor((bytesDone / bytesTotal) * 100)}% (${formatEntrySize(bytesDone)} of ${formatEntrySize(bytesTotal)})`
+    : "";
+  return `${verb}${items}${bytes}...`;
+}
 
 function buildStatusMessages({
   isBrowsing,
@@ -7,6 +18,7 @@ function buildStatusMessages({
   isMovingEntry,
   isDeletingEntries,
   isImportingExternal,
+  hasTransferProgress,
   error,
 }) {
   const messages = [];
@@ -24,13 +36,13 @@ function buildStatusMessages({
       tone: "muted",
     });
   }
-  if (isBrowsing && isMovingEntry) {
+  if (isBrowsing && isMovingEntry && !hasTransferProgress) {
     messages.push({ id: "moving-entry", text: "Moving item...", tone: "muted" });
   }
   if (isBrowsing && isDeletingEntries) {
     messages.push({ id: "deleting-entries", text: "Deleting selected items...", tone: "muted" });
   }
-  if (isBrowsing && isImportingExternal) {
+  if (isBrowsing && isImportingExternal && !hasTransferProgress) {
     messages.push({
       id: "importing-external",
       text: "Importing dropped items...",
@@ -49,6 +61,8 @@ function FilesystemStatusMessages({
   isMovingEntry,
   isDeletingEntries,
   isImportingExternal,
+  transferProgress = null,
+  onCancelTransfer = undefined,
   error,
 }) {
   const messages = buildStatusMessages({
@@ -58,13 +72,20 @@ function FilesystemStatusMessages({
     isMovingEntry,
     isDeletingEntries,
     isImportingExternal,
+    hasTransferProgress: Boolean(transferProgress),
     error,
   });
 
-  return messages.map(message => <p
-    key={message.id}
-    className={message.tone === "error" ? styles.error : styles.muted}
-  >{message.text}</p>);
+  return <>
+    {transferProgress && <p className={styles.muted} role="status">
+      {describeTransferProgress(transferProgress)}
+      <button type="button" className={styles.cancelTransferButton} onClick={onCancelTransfer}>Cancel</button>
+    </p>}
+    {messages.map(message => <p
+      key={message.id}
+      className={message.tone === "error" ? styles.error : styles.muted}
+    >{message.text}</p>)}
+  </>;
 }
 
 export default FilesystemStatusMessages;

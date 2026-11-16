@@ -81,7 +81,7 @@ export function NotificationCenterProvider({ children }) {
 
     const resolver = confirmResolversRef.current.get(notificationId);
     if (resolver) {
-      resolver.resolve(false);
+      resolver.resolve(resolver.dismissValue);
       confirmResolversRef.current.delete(notificationId);
     }
   }, [removeNotification]);
@@ -96,10 +96,11 @@ export function NotificationCenterProvider({ children }) {
     removeNotification(notificationId);
   }, [removeNotification]);
 
-  const resolveConfirmNotification = useCallback((notificationId, confirmed) => {
+  // Confirms resolve with true / false, choices with the picked choice id or null.
+  const resolveConfirmNotification = useCallback((notificationId, value) => {
     const resolver = confirmResolversRef.current.get(notificationId);
     if (resolver) {
-      resolver.resolve(Boolean(confirmed));
+      resolver.resolve(value);
       confirmResolversRef.current.delete(notificationId);
     }
 
@@ -144,8 +145,28 @@ export function NotificationCenterProvider({ children }) {
       defaultAction,
     };
 
-    confirmResolversRef.current.set(notificationId, { resolve, defaultAction });
+    confirmResolversRef.current.set(notificationId, { resolve, defaultAction, dismissValue: false });
     setNotifications(previousNotifications => [...previousNotifications, confirmNotification]);
+  }), []);
+
+  // Like openConfirm with several answers: resolves with the picked choice id, or null when
+  // cancelled or dismissed. `choices` is [{ id, label }].
+  const openChoice = useCallback((options = {}) => new Promise((resolve) => {
+    const notificationId = createNotificationId();
+    const choiceNotification = {
+      id: notificationId,
+      kind: "choice",
+      title: options.title || "Please choose",
+      message: options.message || "",
+      tone: resolveNotificationTone(options.tone),
+      choices: options.choices,
+      cancelLabel: options.cancelLabel || "Cancel",
+      position: resolvePopoverPosition(options.position, lastPointerPositionRef.current),
+      dismissOnOutside: options.dismissOnOutside !== false,
+    };
+
+    confirmResolversRef.current.set(notificationId, { resolve, defaultAction: null, dismissValue: null });
+    setNotifications(previousNotifications => [...previousNotifications, choiceNotification]);
   }), []);
 
   const activeNotification = notifications[0] ?? null;
@@ -154,6 +175,7 @@ export function NotificationCenterProvider({ children }) {
     activeNotification,
     pushNotification,
     openConfirm,
+    openChoice,
     dismissNotification,
     closeNotificationWithDefault,
     resolveConfirmNotification,
@@ -161,6 +183,7 @@ export function NotificationCenterProvider({ children }) {
     activeNotification,
     closeNotificationWithDefault,
     dismissNotification,
+    openChoice,
     openConfirm,
     pushNotification,
     resolveConfirmNotification,

@@ -32,11 +32,17 @@ fn update_pane_filesystem_state_detects_real_changes() {
       expanded_paths: vec!["C:\\Users".to_string()],
       scroll_top: 125.7,
       thumbnail_size_px: 64,
+      view_type: "details".to_string(),
+      sort_key: "size".to_string(),
+      sort_descending: true,
     },
   ));
   assert_eq!(active_pane.filesystem_state.current_path, "C:\\Users");
   assert_eq!(active_pane.filesystem_state.scroll_top, 125.7);
   assert_eq!(active_pane.filesystem_state.thumbnail_size_px, 64);
+  assert_eq!(active_pane.filesystem_state.view_type, "details");
+  assert_eq!(active_pane.filesystem_state.sort_key, "size");
+  assert!(active_pane.filesystem_state.sort_descending);
 
   assert!(update_pane_filesystem_state(
     active_pane,
@@ -47,10 +53,15 @@ fn update_pane_filesystem_state_detects_real_changes() {
       expanded_paths: vec!["C:\\Users".to_string()],
       scroll_top: f64::NAN,
       thumbnail_size_px: 33,
+      view_type: "unknown-view".to_string(),
+      sort_key: "unknown-sort".to_string(),
+      sort_descending: false,
     },
   ));
   assert_eq!(active_pane.filesystem_state.scroll_top, 0.0);
   assert_eq!(active_pane.filesystem_state.thumbnail_size_px, 22);
+  assert_eq!(active_pane.filesystem_state.view_type, "folder-tree");
+  assert_eq!(active_pane.filesystem_state.sort_key, "name");
 }
 
 #[test]
@@ -80,6 +91,7 @@ fn update_pane_filesystem_state_normalizes_multi_selection() {
       ],
       scroll_top: 1.0,
       thumbnail_size_px: 256,
+      ..FilesystemPaneState::default()
     },
   ));
 

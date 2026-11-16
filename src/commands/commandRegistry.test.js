@@ -606,4 +606,35 @@ describe("commandRegistry", () => {
       activePaneId: "pane-1",
     })).toBe(false);
   });
+
+  it("offers the Windows menu for selected entries and browsed panel space", () => {
+    const shellMenuIds = context => getCommandIds(getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      activePaneId: "pane-1",
+      activePanelType: "Filesystem",
+      ...context,
+    }));
+
+    expect(shellMenuIds({
+      targetType: "file",
+      targetScope: "tree-entry",
+      selectedPaths: ["C:\\notes.txt"],
+    })).toContain("filesystem.showShellMenu");
+    expect(shellMenuIds({
+      targetType: "panel",
+      targetPanelType: "Filesystem",
+      isFilesystemBrowsing: true,
+      selectedPaths: [],
+    }).at(-1)).toBe("filesystem.showShellMenu");
+    expect(shellMenuIds({
+      targetType: "panel",
+      targetPanelType: "Filesystem",
+      isFilesystemBrowsing: false,
+      selectedPaths: [],
+    })).not.toContain("filesystem.showShellMenu");
+    expect(shellMenuIds({
+      targetType: "tab",
+      selectedPaths: ["C:\\notes.txt"],
+    })).not.toContain("filesystem.showShellMenu");
+  });
 });

@@ -10,12 +10,12 @@ Usable scaffolding, but missing core file-manager features.
 
 * multi-window, tabs, arbitrary panels
 * workspace detection + layout persistence
-* filesystem panel (basic ops, thumbnails for images, watcher)
+* filesystem panel (basic ops, folder tree / details / grid / foldable grid views, sorting, thumbnails for images, watcher)
 * terminal (Git Bash, multi instances)
-* preview (media + text editing via CodeMirror)
+* preview (media + text editing via CodeMirror, tabbed)
 * file properties (read-only)
 * drag & drop in/out
-* custom context menu
+* custom context menu with submenus, plus the Windows context menu ("Show More Options" / `Shift+Right-click`)
 * external UI panel from workspace config
 * popover notifications and confirmation dialogs
 * command palette + centralized command registry
@@ -38,6 +38,11 @@ npm install
 npm run tauri_dev
 ```
 
+## opening from outside
+
+* `grayspace.exe <folder>` opens the folder; `grayspace.exe <file>` opens its folder with the file selected
+* only one instance runs: launching again with a path opens it as a new tab in the last focused window, launching again without one opens a new window
+
 ## keyboard shortcuts
 
 ### active
@@ -46,7 +51,7 @@ npm run tauri_dev
 * `Ctrl+T` new tab
 * `Ctrl+N` new window
 * `Ctrl+Tab` switch to next tab
-* `Ctrl+F4` close tab
+* `Ctrl+F4` or middle-click tab: close tab
 * `Alt+V` split active pane vertically
 * `Alt+H` split active pane horizontally
 * `Ctrl+Shift+E` switch active pane to filesystem
@@ -66,19 +71,26 @@ npm run tauri_dev
   * `Alt+Arrow Up` go one folder up (with workspace-exit confirmation when needed)
   * `Delete` delete selected item(s)
   * `F2` rename selected file/folder
+  * `Ctrl+C` / `Ctrl+X` / `Ctrl+V` copy / cut / paste (shares the Windows clipboard)
   * `Ctrl+Shift+T` create text file and rename immediately
   * `Ctrl+Shift+N` create folder and rename immediately
   * `Ctrl+Z` undo filesystem action
   * `Ctrl+Y` redo filesystem action
   * `Ctrl+L` or `Alt+D` focus breadcrumb path input
+  * `Ctrl+F` filter current folder by name (`Enter` / `Arrow Down` back to the list, `Esc` clears; cleared when leaving the folder)
+  * `Ctrl+Shift+F` search current folder and subfolders by name; results replace the listing and work like normal entries (first 5000 matches, symlinks/junctions not followed); `Ctrl+F` / `Ctrl+Shift+F` inside the box switch between filter and search
+  * `Ctrl+Wheel` change thumbnail size
+  * view type (folder tree / details / grid / foldable grid) from command palette or context menu; remembered per workspace, or per folder outside workspaces
+  * sort by name / date modified / size / type from details column headers, command palette or context menu ("Sort By"); same key again reverses the order; remembered with the view type
   * mouse: middle-click folder or `Ctrl+DoubleClick` folder opens it in a new tab
+  * `Shift+Right-click` (or "Show More Options" in the context menu) opens the Windows context menu for the selection or the folder background (7-Zip, Git, "Open with", "Send to", ...); `Shift+Right-click` also lists the extended entries (e.g. "Copy as path"); Open and Rename picked there run grayspace's own versions
+* text preview:
+  * `Ctrl+Wheel` change font size
 
 ### planned (inactive)
 
 * `Ctrl+Space` toggle active pane maximize
 * `F2` (multiple selection) bulk rename
-* `Ctrl+F` filter current folder
-* `Ctrl+Shift+F` search current folder and subfolders
 
 ## TODO
 
@@ -90,7 +102,7 @@ npm run tauri_dev
 * [ ] menu bar
 * [x] custom context menu
   * [ ] custom commands, global and per workspace
-  * [ ] multi-level entries
+  * [x] multi-level entries
 * [x] command palette window (`Ctrl+Shift+P`)
 * [x] settings panel with read-only command list
 * [ ] global config system
@@ -99,6 +111,8 @@ npm run tauri_dev
 * [ ] when closing a window, first check if tabs don't require a confirmation
 * [ ] trigger thumbnail cache pruning
 * [ ] remember last window's size and position
+* [x] open a folder / file passed on the command line
+* [x] single instance (later launches open a tab or window in the running app)
 
 ### workspaces
 
@@ -138,20 +152,36 @@ npm run tauri_dev
   * [ ] maybe try integrating providers through the Windows shell?
 * [x] rename (F2)
   * [ ] bulk rename
+* [x] copy / move / delete run in the background (progress and Cancel in the panel header)
+  * [x] name conflicts ask: Replace (old item to the Recycle Bin) / Keep both / Skip
+  * [x] copying into the same folder keeps both
+  * [ ] merge folders on Replace (currently the whole folder is replaced)
+  * [ ] operation queue (the panel waits for its running operation)
 * [x] cut / copy / paste
   * [x] system integration
 * [x] undo (ctrl+z)
 * [x] keyboard navigation
 * [x] path input / navigation
 * [x] back/forward history
-* [ ] search + filtering
-* [ ] "open with"
+* [x] filter current folder (`Ctrl+F`)
+* [x] recursive search (`Ctrl+Shift+F`)
+  * [ ] skip list (`node_modules`, `.git`, ...)
+  * [ ] content search
+* [x] Windows context menu ("Open with", "Send to", shell extensions)
+  * [ ] own "open with" list
 * [ ] drag between tabs
 * [ ] history
-* [x] thumbnail sizing
+* [x] thumbnail sizing (incl. `Ctrl+Wheel`)
+* [x] grid / foldable grid views
+  * [x] persist view type and thumbnail size per workspace, and per folder outside workspaces
+* [x] details view (date modified, type, size columns)
+  * [ ] resizable / configurable columns
+* [x] sorting (name / date modified / size / type, natural order, folders first)
+* [x] hidden files dimmed
+  * [ ] toggle to hide them
 * [ ] filters (incl. custom JS)
 * [ ] archive (zip, rar, 7z, etc) operations
-* [ ] add middle click on breadcrumbs, drives, and ".."
+* [ ] add middle click on breadcrumbs and drives
 * [x] allow "sub" filesystem panels that don't hijack the workspace context
 * [x] deselect file on empty space click
 * [x] virtualize file lists in large folders

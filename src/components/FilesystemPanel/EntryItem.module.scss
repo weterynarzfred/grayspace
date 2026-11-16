@@ -133,6 +133,17 @@
   font-size: var(--entry-font-size, 0.8rem);
 }
 
+.entryLocation {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: 0.75em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: $font-size-small;
+  color: $text-tertiary;
+}
+
 .entryRenameInput {
   min-width: 0;
   flex: 1 1 auto;
@@ -165,6 +176,29 @@
 
 .dropTarget {
   @include drop-target-outline;
+}
+
+.hiddenEntry {
+  opacity: 0.55;
+}
+
+.entryDetails {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: var(--details-columns);
+  gap: 0.5rem;
+  font-size: $font-size-small;
+  color: $text-secondary;
+}
+
+.entryDetail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alignEnd {
+  text-align: right;
 }
 
 .entryPath {

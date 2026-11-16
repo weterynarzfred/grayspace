@@ -3,12 +3,20 @@ import { normalizeInitialFilesystemState } from "./filesystemNavigationUtils";
 import useFilesystemBrowsingState from "./useFilesystemBrowsingState";
 import useFilesystemEntryOperations from "./useFilesystemEntryOperations";
 import useFilesystemSelectionState from "./useFilesystemSelectionState";
+import useFilesystemTransfers from "./useFilesystemTransfers";
 
 export default function useFilesystemNavigation(
   initialFilesystemState = undefined,
   options = {},
 ) {
-  const { tabId = "", tabWorkspaceRoot = "", pushNotification = undefined } = options;
+  const {
+    tabId = "",
+    tabWorkspaceRoot = "",
+    pushNotification = undefined,
+    openChoice = undefined,
+    sortKey = "name",
+    sortDescending = false,
+  } = options;
   const initialStateRef = useRef(
     normalizeInitialFilesystemState(initialFilesystemState),
   );
@@ -40,6 +48,12 @@ export default function useFilesystemNavigation(
     error,
     canGoBack,
     canGoForward,
+    filter,
+    setFilter,
+    searchQuery,
+    setSearchQuery,
+    isSearchActive,
+    searchStatus,
     setError,
     navigateToPath,
     selectDrive,
@@ -53,11 +67,21 @@ export default function useFilesystemNavigation(
     initialCurrentPath: initialStateRef.current.currentPath,
     clearSelection,
     keepSelectionOnlyInPathSet,
+    sortKey,
+    sortDescending,
   });
 
   const [isMovingEntry, setIsMovingEntry] = useState(false);
   const [isDeletingEntries, setIsDeletingEntries] = useState(false);
   const [isImportingExternal, setIsImportingExternal] = useState(false);
+  const {
+    transferProgress,
+    beginTransfer,
+    advanceTransfer,
+    endTransfer,
+    cancelTransfer,
+    resolveConflicts,
+  } = useFilesystemTransfers({ openChoice });
 
   const selectEntry = useCallback((entryPath, options = {}) => {
     const entryPaths = Array.isArray(options.entryPaths) && options.entryPaths.length > 0
@@ -96,6 +120,10 @@ export default function useFilesystemNavigation(
     setIsMovingEntry,
     setIsDeletingEntries,
     setIsImportingExternal,
+    beginTransfer,
+    advanceTransfer,
+    endTransfer,
+    resolveConflicts,
   });
 
   return {
@@ -112,9 +140,17 @@ export default function useFilesystemNavigation(
     hasLoadedCurrentPath,
     canGoBack,
     canGoForward,
+    filter,
+    setFilter,
+    searchQuery,
+    setSearchQuery,
+    isSearchActive,
+    searchStatus,
     isMovingEntry,
     isDeletingEntries,
     isImportingExternal,
+    transferProgress,
+    cancelTransfer,
     error,
     navigateToPath,
     setSelectedPath,

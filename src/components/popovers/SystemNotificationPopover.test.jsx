@@ -117,4 +117,29 @@ describe("SystemNotificationPopover", () => {
     fireEvent.keyDown(root, { key: "Enter" });
     expect(onResolveConfirm).toHaveBeenCalledWith("n-1", true);
   });
+
+  it("renders choice actions and resolves with the picked id or null", () => {
+    const onResolveConfirm = vi.fn();
+    const notification = createNotification({
+      kind: "choice",
+      title: "Item already exists",
+      cancelLabel: "Cancel",
+      choices: [
+        { id: "replace", label: "Replace" },
+        { id: "keep-both", label: "Keep both" },
+      ],
+    });
+
+    render(<SystemNotificationPopover
+      open
+      notification={notification}
+      onResolveConfirm={onResolveConfirm}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep both" }));
+    expect(onResolveConfirm).toHaveBeenCalledWith("n-1", "keep-both");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(onResolveConfirm).toHaveBeenCalledWith("n-1", null);
+  });
 });

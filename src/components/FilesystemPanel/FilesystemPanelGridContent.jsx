@@ -61,6 +61,7 @@ function GridEntryCell({
     styles.cell,
     isSelected ? styles.cellSelected : "",
     isConfig ? styles.cellConfig : "",
+    entry.is_hidden ? styles.cellHidden : "",
   ].filter(Boolean).join(" ");
 
   const preview = (

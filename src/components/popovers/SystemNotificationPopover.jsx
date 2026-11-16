@@ -33,6 +33,20 @@ function SystemNotificationPopover({
         },
       ];
     }
+    if (notification.kind === "choice") {
+      return [
+        {
+          id: "cancel",
+          label: notification.cancelLabel || "Cancel",
+          execute: () => onResolveConfirm?.(notification.id, null),
+        },
+        ...notification.choices.map((choice) => ({
+          id: choice.id,
+          label: choice.label,
+          execute: () => onResolveConfirm?.(notification.id, choice.id),
+        })),
+      ];
+    }
 
     return [{
       id: "dismiss",
@@ -41,6 +55,7 @@ function SystemNotificationPopover({
     }];
   }, [notification, onDismiss, onResolveConfirm]);
   const defaultActionIndex = useMemo(() => {
+    if (notification?.kind === "choice") return 1;
     if (notification?.kind !== "confirm") return 0;
     return notification.defaultAction ? 1 : 0;
   }, [notification]);
