@@ -1,16 +1,7 @@
-import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { memo } from "react";
 import EntryItem from "./EntryItem";
-import { getDragEntryDndId, getEntryDndId } from "./dndIds";
 import { getEntryDetails } from "./filesystemEntryDetails";
-
-function getDragPaths(isSelectedForDrag, selectedEntryPaths, entryPath) {
-  return isSelectedForDrag ? selectedEntryPaths : [entryPath];
-}
-
-function getDestinationPath(isDirectory, entryPath, dropDestinationPath) {
-  return isDirectory ? entryPath : dropDestinationPath;
-}
+import useFilesystemEntryDnd from "./hooks/useFilesystemEntryDnd";
 
 function getMetaPresentation(entryName, isDirectory, isWorkspaceFolder) {
   const isConfigFolder = isDirectory && (entryName ?? "").toLowerCase() === ".grayspace";
@@ -28,18 +19,6 @@ function getMetaPresentation(entryName, isDirectory, isWorkspaceFolder) {
   };
 }
 
-function getIsDropTarget({
-  isDirectory,
-  destinationPath,
-  activeDropDestinationPath,
-  activeDragPathSet,
-}) {
-  if (!isDirectory) return false;
-  if (destinationPath !== activeDropDestinationPath) return false;
-  if (!activeDragPathSet || activeDragPathSet.size === 0) return false;
-  return !activeDragPathSet.has(destinationPath);
-}
-
 function DraggableFilesystemEntry({
   paneId = "",
   entry,
@@ -47,14 +26,6 @@ function DraggableFilesystemEntry({
   view = {},
   actions = {},
 }) {
-  const {
-    dropDestinationPath = "",
-    selectedEntryPaths = [],
-    isSelectedForDrag = false,
-    isMovingEntry = false,
-    activeDragPathSet = undefined,
-    activeDropDestinationPath = "",
-  } = drag;
   const {
     isSelected = false,
     isWorkspaceFolder = false,
@@ -76,49 +47,14 @@ function DraggableFilesystemEntry({
   } = actions;
 
   const isDirectory = entry.is_dir;
-  const dragPaths = getDragPaths(isSelectedForDrag, selectedEntryPaths, entry.path);
-  const draggableId = getDragEntryDndId(paneId, entry.path);
-  const droppableId = getEntryDndId(entry.path);
-  const destinationPath = getDestinationPath(isDirectory, entry.path, dropDestinationPath);
   const {
+    setNodeRef,
     attributes,
     listeners,
-    setNodeRef: setDraggableNodeRef,
-    isDragging,
-  } = useDraggable({
-    id: draggableId,
-    disabled: isMovingEntry || isRenaming,
-    data: {
-      kind: "filesystem-entry",
-      sourcePath: entry.path,
-      sourcePaneId: paneId,
-      dragPaths,
-    },
-  });
-  const { setNodeRef: setDroppableNodeRef } = useDroppable({
-    id: droppableId,
-    disabled: isMovingEntry || isRenaming || !destinationPath,
-    data: {
-      kind: "entry",
-      path: destinationPath,
-      isDirectory: true,
-      paneId,
-    },
-  });
-
-  function setNodeRef(node) {
-    setDraggableNodeRef(node);
-    setDroppableNodeRef(node);
-  }
-
-  const isDropTarget = getIsDropTarget({
-    isDirectory,
     destinationPath,
-    activeDropDestinationPath,
-    activeDragPathSet,
-  });
-  const isActiveDragSource = activeDragPathSet?.has(entry.path) ?? false;
-  const shouldShowDraggingState = isDragging && isActiveDragSource;
+    isDragging,
+    isDropTarget,
+  } = useFilesystemEntryDnd({ paneId, entry, drag, isRenaming });
   const {
     metaLabel,
     shouldUseConfigStyle,
@@ -136,8 +72,8 @@ function DraggableFilesystemEntry({
     isHidden={entry.is_hidden}
     details={showDetails ? getEntryDetails(entry) : null}
     location={location}
-    isDraggable={!isMovingEntry}
-    isDragging={shouldShowDraggingState}
+    isDraggable={!drag.isMovingEntry}
+    isDragging={isDragging}
     isDropTarget={isDropTarget}
     thumbnailSrc={thumbnailValue ?? thumbnailSrc}
     dropDestinationPath={destinationPath}

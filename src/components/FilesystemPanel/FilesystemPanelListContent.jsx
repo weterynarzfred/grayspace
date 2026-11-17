@@ -110,6 +110,7 @@ export default function FilesystemPanelListContent({
     renamingPath: gridRenamingPath = "",
     onEntryClick: onGridEntryClick = undefined,
     onEntryDoubleClick: onGridEntryDoubleClick = undefined,
+    onEntryMiddleClick: onGridEntryMiddleClick = undefined,
     onEntryContextMenu: onGridEntryContextMenu = undefined,
     onEntryRenameSubmit: onGridEntryRenameSubmit = undefined,
     onEntryRenameCancel: onGridEntryRenameCancel = undefined,
@@ -174,8 +175,15 @@ export default function FilesystemPanelListContent({
           bottomSpacerHeight={gridBottomSpacerHeight}
           isWindowingEnabled={isGridWindowingEnabled}
           renamingPath={gridRenamingPath}
+          drag={{
+            selectedEntryPaths,
+            isMovingEntry: isEntryOperationInProgress,
+            activeDragPathSet,
+            activeDropDestinationPath,
+          }}
           onEntryClick={onGridEntryClick}
           onEntryDoubleClick={onGridEntryDoubleClick}
+          onEntryMiddleClick={onGridEntryMiddleClick}
           onEntryContextMenu={onGridEntryContextMenu}
           onEntryRenameSubmit={onGridEntryRenameSubmit}
           onEntryRenameCancel={onGridEntryRenameCancel}

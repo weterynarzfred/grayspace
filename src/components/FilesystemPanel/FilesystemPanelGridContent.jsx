@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveFilesystemIconClass } from "./fileIconResolver";
+import useFilesystemEntryDnd from "./hooks/useFilesystemEntryDnd";
+import { getParentDirectoryPath } from "../../utils/pathWatch";
 import styles from "./FilesystemPanelGridContent.module.scss";
 
 function GridEntryCell({
@@ -9,8 +11,10 @@ function GridEntryCell({
   isConfig,
   isRenaming,
   thumbnailSrc,
+  drag,
   onEntryClick,
   onEntryDoubleClick,
+  onEntryMiddleClick,
   onEntryContextMenu,
   onEntryRenameSubmit,
   onEntryRenameCancel,
@@ -22,6 +26,16 @@ function GridEntryCell({
   const renameInputRef = useRef(null);
   const renameSettledRef = useRef(false);
   const [renameValue, setRenameValue] = useState(entry.name);
+  const dnd = useFilesystemEntryDnd({
+    paneId,
+    entry,
+    isRenaming,
+    drag: {
+      ...drag,
+      dropDestinationPath: getParentDirectoryPath(entry.path),
+      isSelectedForDrag: isSelected,
+    },
+  });
 
   useEffect(() => {
     if (!isRenaming) return;
@@ -62,6 +76,8 @@ function GridEntryCell({
     isSelected ? styles.cellSelected : "",
     isConfig ? styles.cellConfig : "",
     entry.is_hidden ? styles.cellHidden : "",
+    dnd.isDragging ? styles.cellDragging : "",
+    dnd.isDropTarget ? styles.cellDropTarget : "",
   ].filter(Boolean).join(" ");
 
   const preview = (
@@ -98,9 +114,13 @@ function GridEntryCell({
 
   return (
     <button
+      ref={dnd.setNodeRef}
       type="button"
       className={cellClassName}
       aria-selected={isSelected}
+      {...dnd.attributes}
+      {...dnd.listeners}
+      data-drop-destination-path={dnd.destinationPath || undefined}
       data-contextmenu-boundary="filesystem-entry"
       data-context-kind={entry.is_dir ? "folder" : "file"}
       data-context-id={entry.path}
@@ -110,6 +130,10 @@ function GridEntryCell({
       data-context-pane-id={paneId}
       onClick={(event) => onEntryClick?.(entry.path, event)}
       onDoubleClick={(event) => onEntryDoubleClick?.(entry, event)}
+      onMouseDown={(event) => {
+        if (event.button === 1) event.preventDefault();
+      }}
+      onMouseUp={(event) => onEntryMiddleClick?.(entry, event)}
       onContextMenu={(event) => onEntryContextMenu?.(entry.path, event)}
     >
       {preview}
@@ -130,8 +154,10 @@ export default function FilesystemPanelGridContent({
   bottomSpacerHeight = 0,
   isWindowingEnabled = false,
   renamingPath = "",
+  drag = {},
   onEntryClick = undefined,
   onEntryDoubleClick = undefined,
+  onEntryMiddleClick = undefined,
   onEntryContextMenu = undefined,
   onEntryRenameSubmit = undefined,
   onEntryRenameCancel = undefined,
@@ -161,8 +187,10 @@ export default function FilesystemPanelGridContent({
             isConfig={isConfig}
             isRenaming={entry.path === renamingPath}
             thumbnailSrc={thumbnailSrcByPath[entry.path] ?? ""}
+            drag={drag}
             onEntryClick={onEntryClick}
             onEntryDoubleClick={onEntryDoubleClick}
+            onEntryMiddleClick={onEntryMiddleClick}
             onEntryContextMenu={onEntryContextMenu}
             onEntryRenameSubmit={onEntryRenameSubmit}
             onEntryRenameCancel={onEntryRenameCancel}

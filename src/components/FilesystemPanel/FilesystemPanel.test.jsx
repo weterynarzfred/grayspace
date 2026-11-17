@@ -2,7 +2,7 @@ import path from "node:path";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { cursorPosition } from "@tauri-apps/api/window";
-import { useDroppable } from "@dnd-kit/core";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import FilesystemPanel from "./FilesystemPanel";
 import { clearFilesystemClipboardState } from "./filesystemClipboardStore";
 import PanelsDndLayer from "../PanelsDndLayer";
@@ -3380,6 +3380,67 @@ describe("FilesystemPanel", () => {
     });
     expect(invoke).not.toHaveBeenCalledWith("delete_paths", expect.anything());
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+  });
+
+  it("lets grid cells be dragged and folders in the grid take drops", async () => {
+    renderFilesystemPanel({
+      tabId: "tab-grid",
+      paneId: "pane-grid",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\Users",
+        scrollTop: 0,
+        viewType: "grid",
+      },
+    });
+
+    const todoCell = await screen.findByRole("button", { name: /todo\.txt/i });
+    const projectsCell = screen.getByRole("button", { name: /Projects/ });
+    expect(screen.queryByText("Folder")).not.toBeInTheDocument();
+    expect(todoCell).toHaveAttribute("data-drop-destination-path", "C:\\Users");
+    expect(projectsCell).toHaveAttribute("data-drop-destination-path", "C:\\Users\\Projects");
+    expect(useDraggable).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        kind: "filesystem-entry",
+        sourcePath: "C:\\Users\\todo.txt",
+        sourcePaneId: "pane-grid",
+        dragPaths: ["C:\\Users\\todo.txt"],
+      }),
+    }));
+    expect(useDroppable).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ kind: "entry", path: "C:\\Users\\Projects", paneId: "pane-grid" }),
+    }));
+  });
+
+  it("middle-clicks grid cells like list rows", async () => {
+    const onTabSelectedFilesChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-1",
+      onTabSelectedFilesChange,
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\",
+        scrollTop: 0,
+        viewType: "grid",
+      },
+    });
+
+    const fileCell = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.mouseDown(fileCell, { button: 1 });
+    fireEvent.mouseUp(fileCell, { button: 1 });
+    expect(onTabSelectedFilesChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      selectedPaths: ["C:\\notes.txt"],
+      previewOpenMode: "pinned",
+    }));
+
+    const folderCell = screen.getByRole("button", { name: /Temp/i });
+    fireEvent.mouseDown(folderCell, { button: 1 });
+    fireEvent.mouseUp(folderCell, { button: 1 });
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("workspace_open_folder_from_tab", {
+        payload: { tabId: "tab-1", path: "C:\\Temp" },
+      });
+    });
   });
 
   it("shows sortable detail columns and re-lists the folder when a column header is clicked", async () => {

@@ -741,6 +741,7 @@ function FilesystemPanel({
           renamingPath,
           onEntryClick: handleEntryClick,
           onEntryDoubleClick: handleEntryDoubleClick,
+          onEntryMiddleClick: handleEntryMiddleClick,
           onEntryContextMenu: handleEntryContextMenu,
           onEntryRenameSubmit: handleEntryRenameSubmit,
           onEntryRenameCancel: handleEntryRenameCancel,
