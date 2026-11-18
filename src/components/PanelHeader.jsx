@@ -6,7 +6,7 @@ function PanelHeader({ panelType, panelLabel = "", onPanelTypeChange, children }
   const paneActions = usePaneHeaderActions();
   const headerClassName = `${styles.header} ${paneActions?.isActive ? styles.headerActive : ""}`;
 
-  return <header className={headerClassName}>
+  return <header className={headerClassName} data-pane-header>
     <PanelTypeSwitcher
       panelType={panelType}
       panelLabel={panelLabel}

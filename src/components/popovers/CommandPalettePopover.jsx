@@ -7,6 +7,7 @@ function CommandPalettePopover({
   open = false,
   position = { x: 8, y: 8 },
   commands = [],
+  context = {},
   onCommand = undefined,
   onClose = undefined,
 }) {
@@ -93,19 +94,26 @@ function CommandPalettePopover({
       />
     </label>
     <ul ref={commandListRef} className={styles.commandList}>
-      {visibleCommands.map((command, index) => <li key={command.id} className={styles.commandItem}>
-        <button
-          type="button"
-          data-command-index={index}
-          className={`${styles.commandRow} ${selectedIndex === index ? styles.commandRowSelected : ""}`.trim()}
-          onMouseDown={event => event.preventDefault()}
-          onMouseEnter={() => setSelectedIndex(index)}
-          onClick={() => onCommand?.(command.id)}
-        >
-          <span className={styles.commandName}>{command.title}</span>
-          <span className={styles.commandShortcut}>{command.shortcut || ""}</span>
-        </button>
-      </li>)}
+      {visibleCommands.map((command, index) => {
+        const mark = command.getMark?.(context);
+        return <li key={command.id} className={styles.commandItem}>
+          <button
+            type="button"
+            data-command-index={index}
+            className={`${styles.commandRow} ${selectedIndex === index ? styles.commandRowSelected : ""}`.trim()}
+            aria-pressed={command.getMark ? Boolean(mark) : undefined}
+            onMouseDown={event => event.preventDefault()}
+            onMouseEnter={() => setSelectedIndex(index)}
+            onClick={() => onCommand?.(command.id)}
+          >
+            <span className={styles.commandName}>
+              {command.title}
+              {mark && <span className={styles.commandMark} aria-hidden>{mark}</span>}
+            </span>
+            <span className={styles.commandShortcut}>{command.shortcut || ""}</span>
+          </button>
+        </li>;
+      })}
       {visibleCommands.length === 0 ? <li className={styles.emptyRow}>No commands available</li> : null}
     </ul>
   </FloatingPopover>;

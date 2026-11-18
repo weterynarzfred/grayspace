@@ -87,3 +87,20 @@ describe("CommandPalettePopover", () => {
     }
   });
 });
+
+describe("CommandPalettePopover option marks", () => {
+  it("marks commands for options that are currently on", () => {
+    render(<CommandPalettePopover
+      open
+      context={{ sortKey: "name" }}
+      commands={[
+        { id: "sort-name", title: "Sort: Name", getMark: context => (context.sortKey === "name" ? "▴" : "") },
+        { id: "sort-size", title: "Sort: Size", getMark: context => (context.sortKey === "size" ? "▴" : "") },
+      ]}
+    />);
+
+    expect(screen.getByRole("button", { name: "Sort: Name" })).toHaveTextContent("Sort: Name▴");
+    expect(screen.getByRole("button", { name: "Sort: Name" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Sort: Size" })).toHaveAttribute("aria-pressed", "false");
+  });
+});

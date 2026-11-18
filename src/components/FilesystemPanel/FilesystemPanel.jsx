@@ -7,6 +7,7 @@ import FilesystemQueryInput from "./FilesystemQueryInput";
 import FilesystemPanelListContent from "./FilesystemPanelListContent";
 import FilesystemStatusMessages from "./FilesystemStatusMessages";
 import { normalizeFilesystemPaneState } from "./filesystemPaneState";
+import { areSearchOptionsEqual, isSkippingFolders } from "./filesystemSearchOptions";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
 import useFilesystemPanelInteractions from "./hooks/useFilesystemPanelInteractions";
 import useFilesystemStatePersistence from "./hooks/useFilesystemStatePersistence";
@@ -19,7 +20,7 @@ import useFilesystemPanelLoadMore from "./hooks/useFilesystemPanelLoadMore";
 import useFilesystemShellMenu from "./hooks/useFilesystemShellMenu";
 import useFilesystemClipboardCommands from "./hooks/useFilesystemClipboardCommands";
 import useWorkspaceExitNavigation from "./hooks/useWorkspaceExitNavigation";
-import useGridColumnCount from "./hooks/useGridColumnCount";
+import useGridLayout from "./hooks/useGridLayout";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
 import isEditableKeyboardTarget from "../../utils/isEditableKeyboardTarget";
 import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
@@ -34,9 +35,19 @@ const ENTRY_WINDOWING_THRESHOLD = 200;
 const GRID_GAP_PX = 8;
 const GRID_PADDING_PX = 8;
 const GRID_LABEL_HEIGHT_PX = 32;
+const GRID_CELL_CHROME_PX = 10; // a grid cell's padding and border, both sides
+const GRID_MIN_CELL_WIDTH_PX = 72; // room for the name under a small icon
 const THUMBNAIL_SIZE_TOGGLE_TITLE = "Toggle icon/thumbnail size";
 const HISTORY_BACK_BUTTON_TITLE = "Go back in folder history";
 const HISTORY_FORWARD_BUTTON_TITLE = "Go forward in folder history";
+
+// After clicking a header button the keyboard belongs to the list of the pane under the pointer,
+// which is this one: the button doesn't take focus, and whatever had it (the path editor, another
+// pane's list) lets go. Keys on a header control focused with Tab stay with that control.
+const releaseFocusOnMouseDown = (event) => {
+  event.preventDefault();
+  document.activeElement.blur();
+};
 
 function FilesystemPanel({
   tabId = "",
@@ -53,17 +64,26 @@ function FilesystemPanel({
   filesystemState = undefined,
   recentFoldersEntries = [],
   recentFoldersLoading = false,
+  showHiddenFiles = true,
 }) {
   const panelRef = useRef(null);
   const panelScrollRef = useRef(null);
   const entryWindowAnchorRef = useRef(null);
   const gridAnchorRef = useRef(null);
+  // State, not a ref: the grid is measured once it mounts, and it only exists in grid view.
+  const [gridElement, setGridElement] = useState(null);
   const onCurrentPathChangeRef = useRef(onCurrentPathChange);
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
   const [expandedPaths, setExpandedPaths] = useState(initialFilesystemStateRef.current.expandedPaths);
   const [breadcrumbFocusRequestKey, setBreadcrumbFocusRequestKey] = useState(0);
   const [queryMode, setQueryMode] = useState("");
   const [queryFocusRequestKey, setQueryFocusRequestKey] = useState(0);
+  const [searchOptions, setSearchOptions] = useState(initialFilesystemStateRef.current.searchOptions);
+  // Keeps the same object when nothing changed, so committing an unedited list does not rerun the search.
+  const updateSearchOptions = (patch) => setSearchOptions((current) => {
+    const next = { ...current, ...patch };
+    return areSearchOptionsEqual(current, next) ? current : next;
+  });
   const {
     viewStyle,
     updateViewStyle,
@@ -88,6 +108,8 @@ function FilesystemPanel({
     openChoice,
     sortKey,
     sortDescending,
+    searchOptions,
+    showHidden: showHiddenFiles,
   });
   const {
     currentDrive,
@@ -109,6 +131,7 @@ function FilesystemPanel({
     setSearchQuery,
     isSearchActive,
     searchStatus,
+    searchError,
     isMovingEntry,
     isDeletingEntries,
     isImportingExternal,
@@ -151,6 +174,7 @@ function FilesystemPanel({
     viewType,
     sortKey,
     sortDescending,
+    searchOptions,
   });
   const isBrowsing = currentPath !== "";
   const isEntryOperationInProgress = isMovingEntry || isDeletingEntries || isImportingExternal;
@@ -166,6 +190,7 @@ function FilesystemPanel({
     onExpandedPathsChange: setExpandedPaths,
     sortKey,
     sortDescending,
+    showHidden: showHiddenFiles,
   });
   const totalRootEntryCount = Math.max(totalEntriesCount, entries.length);
   const unresolvedRootEntryCount = Math.max(0, totalRootEntryCount - entries.length);
@@ -193,10 +218,18 @@ function FilesystemPanel({
   const visibleEntries = useMemo(() => renderedRows.map((row) => row.entry), [renderedRows]);
 
   const isGridView = viewType === "grid" && isBrowsing;
-  const gridCellMinWidthPx = Math.max(72, thumbnailSizePx + 24);
-  const gridCellHeightPx = thumbnailSizePx + GRID_LABEL_HEIGHT_PX;
-  const gridRowHeightPx = gridCellHeightPx + GRID_GAP_PX;
-  const gridColumns = useGridColumnCount(panelScrollRef, gridCellMinWidthPx, GRID_GAP_PX, GRID_PADDING_PX);
+  const gridMinCellWidthPx = Math.max(GRID_MIN_CELL_WIDTH_PX, thumbnailSizePx + GRID_CELL_CHROME_PX);
+  const { columnCount: gridColumns, cellWidthPx: gridCellWidthPx } = useGridLayout(
+    gridElement,
+    gridMinCellWidthPx,
+    GRID_GAP_PX,
+    GRID_PADDING_PX,
+  );
+  // Thumbnails fill their cell, so the chosen size is the smallest they get. Small icons keep
+  // their size: those cells are only wider to fit the name.
+  const isGridFillingCells = thumbnailSizePx + GRID_CELL_CHROME_PX >= GRID_MIN_CELL_WIDTH_PX;
+  const gridPreviewPx = isGridFillingCells ? gridCellWidthPx - GRID_CELL_CHROME_PX : thumbnailSizePx;
+  const gridRowHeightPx = gridPreviewPx + GRID_LABEL_HEIGHT_PX + GRID_GAP_PX;
   const gridRowCount = Math.ceil(totalRootEntryCount / Math.max(1, gridColumns));
   const isGridWindowingEnabled = isGridView && gridRowCount >= ENTRY_WINDOWING_THRESHOLD;
   const {
@@ -223,7 +256,10 @@ function FilesystemPanel({
   const { thumbnailSrcByPath } = useFilesystemThumbnails({
     currentPath,
     visibleEntries: effectiveVisibleEntries,
-    thumbnailSizePx,
+    // Filling previews grow with the pane up to about twice the chosen size (one column just short
+    // of fitting two). Asking for that from the chosen size, not the measured one, means resizing
+    // never swaps the cached size (and blanks the thumbnails) back and forth.
+    thumbnailSizePx: isGridView && isGridFillingCells ? thumbnailSizePx * 2 : thumbnailSizePx,
   });
   const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
   const workspaceFolderPathSet = useFilesystemWorkspaceFolders({
@@ -249,6 +285,7 @@ function FilesystemPanel({
     handleEntryClick,
     handleEntryDoubleClick,
     handleEntryMiddleClick,
+    handleFolderPathMiddleClick,
     handleEntryContextMenu,
     handlePanelBackgroundClick,
     handlePanelBackgroundContextMenu,
@@ -384,12 +421,13 @@ function FilesystemPanel({
       if (!Array.isArray(entries)) return [];
       return entries
         .filter((entry) => entry?.is_dir === true && typeof entry?.path === "string")
+        .filter((entry) => showHiddenFiles || !entry.is_hidden)
         .map((entry) => entry.path.trim())
         .filter(Boolean);
     } catch {
       return [];
     }
-  }, []);
+  }, [showHiddenFiles]);
   const requestBreadcrumbInputFocus = useCallback(() => {
     setBreadcrumbFocusRequestKey((current) => current + 1);
   }, []);
@@ -619,6 +657,8 @@ function FilesystemPanel({
         mode={queryMode}
         value={queryMode === "search" ? searchQuery : filter}
         focusRequestKey={queryFocusRequestKey}
+        searchOptions={searchOptions}
+        onSearchOptionsChange={updateSearchOptions}
         onChange={queryMode === "search" ? setSearchQuery : setFilter}
         onModeChange={openQueryInput}
         onClose={() => setQueryMode("")}
@@ -631,6 +671,7 @@ function FilesystemPanel({
           type="button"
           className={styles.historyNavigationButton}
           onClick={goBack}
+          onMouseDown={releaseFocusOnMouseDown}
           title={HISTORY_BACK_BUTTON_TITLE}
           aria-label={HISTORY_BACK_BUTTON_TITLE}
           disabled={!canGoBack}
@@ -639,6 +680,7 @@ function FilesystemPanel({
           type="button"
           className={styles.historyNavigationButton}
           onClick={goForward}
+          onMouseDown={releaseFocusOnMouseDown}
           title={HISTORY_FORWARD_BUTTON_TITLE}
           aria-label={HISTORY_FORWARD_BUTTON_TITLE}
           disabled={!canGoForward}
@@ -647,6 +689,7 @@ function FilesystemPanel({
           type="button"
           className={styles.thumbnailSizeToggle}
           onClick={() => stepThumbnailSize(1, { wrap: true })}
+          onMouseDown={releaseFocusOnMouseDown}
           title={THUMBNAIL_SIZE_TOGGLE_TITLE}
           aria-label={`Toggle icon and thumbnail size. Current: ${thumbnailSizePx}px`}
         >{thumbnailSizePx}px</button>
@@ -654,7 +697,7 @@ function FilesystemPanel({
     </PanelHeader>
     <div
       ref={panelScrollRef}
-      className={shellStyles.panelBody}
+      className={`${shellStyles.panelBody} ${isGridView ? styles.gridPanelBody : ""}`}
       data-testid="filesystem-panel-scroll-container"
       data-panel-scroll="true"
       onClick={handlePanelBackgroundClick}
@@ -671,7 +714,13 @@ function FilesystemPanel({
           isEntryOperationInProgress,
           unmatchedFilter: filter && !isSearchActive && hasLoadedCurrentPath && entries.length === 0 ? filter : "",
           search: isSearchActive
-            ? { query: searchQuery.trim(), status: searchStatus, resultCount: entries.length }
+            ? {
+              query: searchQuery.trim(),
+              status: searchStatus,
+              error: searchError,
+              resultCount: entries.length,
+              skipsFolders: isSkippingFolders(searchOptions),
+            }
             : null,
         }}
         drives={{
@@ -679,11 +728,13 @@ function FilesystemPanel({
           selectedPathSet,
           onSelect: setSelectedPath,
           onOpen: selectDrive,
+          onMiddleClick: handleFolderPathMiddleClick,
         }}
         breadcrumbs={{
           currentPath,
           currentDrive,
           onSelect: navigateWithExitConfirm,
+          onMiddleClick: handleFolderPathMiddleClick,
           onPathSubmit: openFolderPath,
           loadSubfoldersForPath,
           focusPathInputRequestKey: breadcrumbFocusRequestKey,
@@ -733,7 +784,10 @@ function FilesystemPanel({
           selectedPathSet,
           thumbnailSrcByPath,
           workspaceFolderPathSet,
+          containerRef: setGridElement,
           columnCount: gridColumns,
+          minCellWidthPx: gridMinCellWidthPx,
+          previewSizePx: gridPreviewPx,
           anchorRef: gridAnchorRef,
           topSpacerHeight: gridTopSpacerHeight,
           bottomSpacerHeight: gridBottomSpacerHeight,

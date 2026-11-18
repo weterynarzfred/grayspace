@@ -21,11 +21,11 @@ use commands::terminal::{
   terminal_write, TerminalState,
 };
 use commands::thumbnail::{
-  thumbnail_clear_cache, thumbnail_prune_cache, thumbnail_resolve_batch, ThumbnailState,
+  start_thumbnail_cache_pruning, thumbnail_clear_cache, thumbnail_resolve_batch, ThumbnailState,
 };
 use commands::workspace::{
-  handle_runtime_window_destroyed, handle_second_instance_launch, resolve_launch_target,
-  workspace_bootstrap, LaunchState, workspace_close_tab,
+  app_preferences_get, app_preferences_set, handle_runtime_window_destroyed, handle_second_instance_launch, resolve_launch_target,
+  open_startup_window, workspace_bootstrap, LaunchState, workspace_close_tab,
   workspace_close_tab_pane, workspace_close_window, workspace_detach_tab_to_new_window,
   workspace_folder_view_styles_get, workspace_folder_view_styles_set,
   workspace_get_snapshot, workspace_move_tab, workspace_new_tab, workspace_new_window,
@@ -48,7 +48,7 @@ pub fn run() {
 
   tauri::Builder::default()
     .plugin(tauri_plugin_single_instance::init(handle_second_instance_launch))
-    .manage(LaunchState::new(launch_target))
+    .manage(LaunchState::default())
     .manage(TerminalState::default())
     .manage(WorkspaceState::default())
     .manage(FilesystemWatchState::default())
@@ -56,6 +56,11 @@ pub fn run() {
     .manage(FilesystemSearchState::default())
     .manage(FilesystemTransferState::default())
     .manage(ThumbnailState::default())
+    .setup(move |app| {
+      start_thumbnail_cache_pruning(app.handle().clone());
+      open_startup_window(app.handle(), launch_target).ok_or("Could not open the grayspace window.")?;
+      Ok(())
+    })
     .on_window_event(|window, event| {
       if let tauri::WindowEvent::Focused(true) = event {
         window.app_handle().state::<LaunchState>().remember_focused_window(window.label());
@@ -100,7 +105,6 @@ pub fn run() {
       preview_read_file,
       preview_write_text_file,
       thumbnail_resolve_batch,
-      thumbnail_prune_cache,
       thumbnail_clear_cache,
       filesystem_watch_start,
       filesystem_watch_stop,
@@ -134,6 +138,8 @@ pub fn run() {
       workspace_recent_folders_remove,
       workspace_folder_view_styles_get,
       workspace_folder_view_styles_set,
+      app_preferences_get,
+      app_preferences_set,
       workspace_read_folder_config,
       workspace_read_folder_stylesheet,
       workspace_move_tab,

@@ -101,6 +101,7 @@ fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState
     view_type,
     sort_key,
     sort_descending,
+    search_options,
   } = state;
   let normalized_selected_paths = normalize_selected_paths(selected_paths);
   let normalized_expanded_paths = normalize_selected_paths(expanded_paths);
@@ -119,6 +120,7 @@ fn normalize_filesystem_state(state: FilesystemPaneState) -> FilesystemPaneState
     view_type: normalize_choice(view_type, &FILESYSTEM_VIEW_TYPES, DEFAULT_FILESYSTEM_VIEW_TYPE),
     sort_key: normalize_choice(sort_key, &FILESYSTEM_SORT_KEYS, DEFAULT_FILESYSTEM_SORT_KEY),
     sort_descending,
+    search_options,
   }
 }
 

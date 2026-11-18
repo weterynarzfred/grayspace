@@ -25,8 +25,16 @@ fn thumbnail_bucket_from_size_hint_uses_expected_buckets() {
     ThumbnailBucket::Px256
   );
   assert_eq!(
-    ThumbnailBucket::from_size_hint(Some(512)),
+    ThumbnailBucket::from_size_hint(Some(256)),
     ThumbnailBucket::Px256
+  );
+  assert_eq!(
+    ThumbnailBucket::from_size_hint(Some(257)),
+    ThumbnailBucket::Px512
+  );
+  assert_eq!(
+    ThumbnailBucket::from_size_hint(Some(1024)),
+    ThumbnailBucket::Px512
   );
 }
 

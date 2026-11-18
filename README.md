@@ -50,7 +50,7 @@ npm run tauri_dev
 
 * `Ctrl+Shift+P` open command palette
 * `Ctrl+T` new tab
-* `Ctrl+N` new window
+* `Ctrl+N` new window (32 px down and right of the current one, same size and maximized state)
 * `Ctrl+Tab` switch to next tab
 * `Ctrl+F4` or middle-click tab: close tab
 * `Alt+V` split active pane vertically
@@ -80,10 +80,16 @@ npm run tauri_dev
   * `Ctrl+L` or `Alt+D` focus breadcrumb path input
   * `Ctrl+F` filter current folder by name (`Enter` / `Arrow Down` back to the list, `Esc` clears; cleared when leaving the folder)
   * `Ctrl+Shift+F` search current folder and subfolders by name; results replace the listing and work like normal entries (first 5000 matches, symlinks/junctions not followed); `Ctrl+F` / `Ctrl+Shift+F` inside the box switch between filter and search
-  * `Ctrl+Wheel` change thumbnail size
-  * view type (folder tree / details / grid / foldable grid) from command palette or context menu; remembered per workspace, or per folder outside workspaces
+    * skip list: folders named `.git`, `.hg`, `.svn`, `node_modules`, `__pycache__`, `.venv`, `$RECYCLE.BIN`, `System Volume Information` are listed as matches but not searched inside (the folder the search starts in always is); the list is editable (comma-separated) and can be switched off in the `▾` options next to the box
+    * optional: skip folders containing a `CACHEDIR.TAG` file (e.g. Rust `target/`), off by default
+    * `.*` toggles regex: matched case-insensitively against the path relative to the current folder, `/` between folders (e.g. `src/components/.*\.jsx$`)
+    * "Reset to defaults" in the options; the options are saved per pane in workspaces (`.grayspace/panels.json`), elsewhere kept for the session
+  * `Ctrl+Wheel` change thumbnail size; in grid view thumbnails fill their cell, so the size is the smallest they get (from 64 px up)
+  * `Ctrl+H` show / hide hidden files (also in the command palette and the context menu's "View"); one setting for all panes and windows, kept across restarts; shown (dimmed) by default; when hidden, search skips hidden items and does not look inside hidden folders
+  * view type (folder tree / details / grid / foldable grid) from command palette or context menu ("View"); remembered per workspace, or per folder outside workspaces
   * sort by name / date modified / size / type from details column headers, command palette or context menu ("Sort By"); same key again reverses the order; remembered with the view type
-  * mouse: middle-click folder or `Ctrl+DoubleClick` folder opens it in a new tab
+  * the palette and context menu mark the current view type and hidden-files setting with `✓`, and the current sort key with its direction (`▴` / `▾`)
+  * mouse: middle-click folder, breadcrumb or drive, or `Ctrl+DoubleClick` folder, opens it in a new tab
   * `Shift+Right-click` (or "Show More Options" in the context menu) opens the Windows context menu for the selection or the folder background (7-Zip, Git, "Open with", "Send to", ...); `Shift+Right-click` also lists the extended entries (e.g. "Copy as path"); Open and Rename picked there run grayspace's own versions
 * text preview:
   * `Ctrl+Wheel` change font size
@@ -110,8 +116,8 @@ npm run tauri_dev
 * [x] remove the native window bar at the top, add draggable region and minimize/maximize/close buttons
 * [ ] when closing a tab, first check if any panels don't require a confirmation
 * [ ] when closing a window, first check if tabs don't require a confirmation
-* [ ] trigger thumbnail cache pruning
-* [ ] remember last window's size and position
+* [x] trigger thumbnail cache pruning (thumbnails unused for 30 days, or the oldest above 2 GB; checked 30 s after start, then daily)
+* [x] remember last window's size and position (the most recently moved, resized or maximized window; new windows open cascaded from the last focused one)
 * [x] open a folder / file passed on the command line
 * [x] single instance (later launches open a tab or window in the running app)
 
@@ -166,23 +172,24 @@ npm run tauri_dev
 * [x] back/forward history
 * [x] filter current folder (`Ctrl+F`)
 * [x] recursive search (`Ctrl+Shift+F`)
-  * [ ] skip list (`node_modules`, `.git`, ...)
+  * [x] skip list (`node_modules`, `.git`, ...)
   * [ ] content search
 * [x] Windows context menu ("Open with", "Send to", shell extensions)
   * [ ] own "open with" list
 * [ ] drag between tabs
 * [ ] history
 * [x] thumbnail sizing (incl. `Ctrl+Wheel`)
+  * [x] grid previews fill their cell; cached at 64 / 256 / 512 px, and grid sizes from 192 px up use 512 px so the bigger previews stay sharp
 * [x] grid / foldable grid views
   * [x] persist view type and thumbnail size per workspace, and per folder outside workspaces
 * [x] details view (date modified, type, size columns)
   * [ ] resizable / configurable columns
 * [x] sorting (name / date modified / size / type, natural order, folders first)
 * [x] hidden files dimmed
-  * [ ] toggle to hide them
+  * [x] toggle to hide them (`Ctrl+H`)
 * [ ] filters (incl. custom JS)
 * [ ] archive (zip, rar, 7z, etc) operations
-* [ ] add middle click on breadcrumbs and drives
+* [x] add middle click on breadcrumbs and drives
 * [x] allow "sub" filesystem panels that don't hijack the workspace context
 * [x] deselect file on empty space click
 * [x] virtualize file lists in large folders

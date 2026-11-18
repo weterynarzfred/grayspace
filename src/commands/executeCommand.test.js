@@ -292,6 +292,20 @@ describe("executeCommand", () => {
     expect(openRecentFolders).toHaveBeenCalledTimes(1);
   });
 
+  it("toggles hidden files through the app callback instead of a pane command", () => {
+    const toggleShowHiddenFiles = vi.fn();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    const didExecute = executeCommand(COMMAND_IDS.FILESYSTEM_TOGGLE_HIDDEN, {
+      context: { source: "shortcut", activePaneId: "pane-1" },
+      toggleShowHiddenFiles,
+    });
+
+    expect(didExecute).toBe(true);
+    expect(toggleShowHiddenFiles).toHaveBeenCalledTimes(1);
+    expect(dispatchSpy).not.toHaveBeenCalled();
+  });
+
   it("closes active tab when context does not target a tab id", () => {
     const handleCloseTab = vi.fn();
 

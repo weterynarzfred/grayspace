@@ -96,7 +96,7 @@ fn filter_matches_names_case_insensitively_and_pages_over_matches() {
     entry("photo2.jpg", false, Some(1), Some(1)),
   ];
 
-  let matches = filter_entries(&entries, "  PHOTO ");
+  let matches = filter_entries(&entries, "  PHOTO ", true);
   let names: Vec<&str> = matches.iter().map(|entry| entry.name.as_str()).collect();
   assert_eq!(names, vec!["Photos", "photo1.JPG", "photo2.jpg"]);
 
@@ -105,7 +105,28 @@ fn filter_matches_names_case_insensitively_and_pages_over_matches() {
   assert_eq!(page.total_count, 3);
   assert!(!page.has_more);
 
-  assert_eq!(filter_entries(&entries, "").len(), 4);
+  assert_eq!(filter_entries(&entries, "", true).len(), 4);
+}
+
+#[test]
+fn filter_drops_hidden_entries_unless_shown() {
+  let hidden = |name: &str, is_dir: bool| FsEntry { is_hidden: true, ..entry(name, is_dir, None, Some(1)) };
+  let entries = vec![
+    hidden(".git", true),
+    entry("src", true, None, Some(1)),
+    hidden("desktop.ini", false),
+    entry("notes.txt", false, Some(1), Some(1)),
+  ];
+  let names = |matches: Vec<&FsEntry>| matches.iter().map(|entry| entry.name.clone()).collect::<Vec<_>>();
+
+  assert_eq!(names(filter_entries(&entries, "", false)), vec!["src", "notes.txt"]);
+  assert_eq!(names(filter_entries(&entries, "", true)).len(), 4);
+  assert_eq!(names(filter_entries(&entries, "T", false)), vec!["notes.txt"]);
+  assert_eq!(names(filter_entries(&entries, "T", true)), vec![".git", "desktop.ini", "notes.txt"]);
+
+  let page = build_directory_page(&filter_entries(&entries, "", false), 0, 1);
+  assert_eq!(page.total_count, 2);
+  assert!(page.has_more);
 }
 
 #[test]

@@ -13,6 +13,12 @@
   padding: 1rem;
 }
 
+// Grid cells grow with the pane's width, so the row height does too. A scrollbar that took width
+// when it appeared could make the rows fit again and disappear, over and over.
+.gridPanelBody {
+  scrollbar-gutter: stable;
+}
+
 // Narrower than this, the rows scroll sideways instead of squeezing the name away.
 // Both leave the name about 10rem next to the icon, the expander and the trailing columns.
 .entryRows {
@@ -123,10 +129,82 @@
   width: 14rem;
 }
 
+.queryBox {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.queryOptionButton {
+  @include interactive-tile;
+  border-left: 1px solid $border-default;
+  color: $text-secondary;
+  padding: 0 0.4rem;
+  white-space: nowrap;
+
+  &[aria-pressed="true"],
+  &[aria-expanded="true"] {
+    background: $bg-accent;
+    color: $text-accent;
+  }
+}
+
+.searchOptionsPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  width: min(20rem, calc(100vw - 1rem));
+  padding: 0.5rem;
+  font-family: $font-sans;
+  font-size: $font-size-small;
+  line-height: 1.3;
+  color: $text-primary;
+}
+
+.searchOptionsRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+
+  input {
+    flex: 0 0 auto;
+    accent-color: $accent-active;
+  }
+}
+
+.searchOptionsNames {
+  width: 100%;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid $border-secondary;
+  background: $bg-panel;
+  font-family: $font-mono;
+  font-size: $font-size-mono;
+
+  &:focus {
+    outline: 1px solid $accent-active;
+    outline-offset: -1px;
+  }
+}
+
+.searchOptionsReset {
+  @include popover-action-button($full-width: false);
+  align-self: flex-start;
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+}
+
 .searchStatus {
   margin: 0.5rem 0 0;
   font-size: $font-size-small;
   color: $text-secondary;
+}
+
+.searchError {
+  color: $text-warning;
 }
 
 .cancelTransferButton {

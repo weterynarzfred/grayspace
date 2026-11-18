@@ -12,8 +12,8 @@ export function workspaceGetSnapshot() {
   return invoke("workspace_get_snapshot");
 }
 
-export function workspaceNewWindow(options = null) {
-  return invoke("workspace_new_window", { options });
+export function workspaceNewWindow() {
+  return invoke("workspace_new_window");
 }
 
 export function workspaceNewTab(windowId) {
@@ -114,8 +114,8 @@ export function workspaceCloseWindow(windowId) {
   return invoke("workspace_close_window", { windowId });
 }
 
-export function workspaceSetWindowBounds(windowId, bounds) {
-  return invoke("workspace_set_window_bounds", { windowId, bounds });
+export function workspaceSetWindowBounds(windowId, bounds, minimized) {
+  return invoke("workspace_set_window_bounds", { windowId, bounds, minimized });
 }
 
 export function listenWorkspaceUpdated(handler) {

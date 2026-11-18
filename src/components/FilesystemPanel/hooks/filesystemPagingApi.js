@@ -25,6 +25,7 @@ export async function listDirectoryPage(path, offset, limit, options = {}) {
     sortKey: options.sortKey,
     sortDescending: options.sortDescending,
     filter: options.filter,
+    showHidden: options.showHidden,
   });
   return normalizeDirectoryPageResponse(response);
 }

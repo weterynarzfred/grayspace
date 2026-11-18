@@ -35,7 +35,12 @@ export function buildBreadcrumbs(currentPath, currentDrive) {
   return crumbs;
 }
 
-function StaticCrumbButton({ crumb, onSelect, isWorkspaceFolder = false }) {
+// Middle mousedown would otherwise start the browser's autoscroll.
+function handleCrumbMouseDown(event) {
+  if (event.button === 1) event.preventDefault();
+}
+
+function StaticCrumbButton({ crumb, onSelect, onMiddleClick, isWorkspaceFolder = false }) {
   return <button
     type="button"
     className={`${styles.crumbButton} ${isWorkspaceFolder ? styles.workspaceCrumb : ""}`}
@@ -46,6 +51,8 @@ function StaticCrumbButton({ crumb, onSelect, isWorkspaceFolder = false }) {
     data-context-label={crumb.label}
     data-context-path={crumb.path || undefined}
     onClick={() => onSelect(crumb.path)}
+    onMouseDown={handleCrumbMouseDown}
+    onMouseUp={crumb.path ? (event) => onMiddleClick?.(crumb.path, event) : undefined}
   >
     <span>{crumb.label}</span>
   </button>;
@@ -56,6 +63,7 @@ function DroppableCrumbButton({
   index,
   paneId,
   onSelect,
+  onMiddleClick,
   isMovingEntry,
   activeDragPaths,
   dropId,
@@ -89,6 +97,8 @@ function DroppableCrumbButton({
     data-context-label={crumb.label}
     data-context-path={crumb.path || undefined}
     onClick={() => onSelect(crumb.path)}
+    onMouseDown={handleCrumbMouseDown}
+    onMouseUp={crumb.path ? (event) => onMiddleClick?.(crumb.path, event) : undefined}
   >
     <span>{crumb.label}</span>
   </button>;
@@ -99,6 +109,7 @@ function Breadcrumbs({
   currentPath,
   currentDrive,
   onSelect,
+  onMiddleClick,
   onPathSubmit,
   activeDragPaths = [],
   isMovingEntry = false,
@@ -244,6 +255,11 @@ function Breadcrumbs({
     setSelectedSuggestionIndex(-1);
     setIsPathEditing(true);
   }, [currentPath, focusPathInputRequestKey, isPathEditing]);
+
+  // A new loader lists differently (hidden folders toggled), so earlier suggestions are stale.
+  useEffect(() => {
+    setFolderSuggestionsByParentPath({});
+  }, [loadSubfoldersForPath]);
 
   useEffect(() => {
     if (!isPathEditing) return;
@@ -443,6 +459,7 @@ function Breadcrumbs({
             index={index}
             paneId={paneId}
             onSelect={onSelect}
+            onMiddleClick={onMiddleClick}
             isMovingEntry={isMovingEntry}
             activeDragPaths={activeDragPaths}
             dropId={getDropIdForPath(crumb.path)}
@@ -451,6 +468,7 @@ function Breadcrumbs({
             key={`${crumb.path}-${index}`}
             crumb={crumb}
             onSelect={onSelect}
+            onMiddleClick={onMiddleClick}
             isWorkspaceFolder={workspaceFolderPathSet.has(crumb.path)}
           />
         )}

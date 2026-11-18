@@ -22,6 +22,7 @@ import useWorkspaceActions from "./workspace/useWorkspaceActions";
 import useWorkspaceTabTitles from "./workspace/useWorkspaceTabTitles";
 import useWorkspaceFolderStyles from "./workspace/useWorkspaceFolderStyles";
 import useWorkspaceScripts from "./workspace/useWorkspaceScripts";
+import useAppPreferences from "./workspace/useAppPreferences";
 import { getErrorMessage } from "./workspace/appRuntime";
 import { useNotificationCenter } from "./notifications/notificationCenter";
 import resolveContextMenuTarget from "./context/resolveContextMenuTarget";
@@ -114,6 +115,7 @@ function App() {
     closeNotificationWithDefault,
     resolveConfirmNotification,
   } = useNotificationCenter();
+  const { preferences, toggleShowHiddenFiles } = useAppPreferences({ pushNotification });
   const {
     commandPaletteState,
     contextMenuState,
@@ -174,6 +176,12 @@ function App() {
     isFilesystemBrowsing: Boolean(activePaneState?.filesystemState?.currentPath),
     selectedPaths: activePaneSelectedPaths,
     selectedEntryKinds: activeSelectedEntryKinds,
+    // For marking the current view and sort in menus. The pane under the pointer is the active
+    // one, so for the context menu this is also the right-clicked pane.
+    filesystemViewType: activePaneState?.filesystemState?.viewType,
+    filesystemSortKey: activePaneState?.filesystemState?.sortKey,
+    filesystemSortDescending: activePaneState?.filesystemState?.sortDescending,
+    showHiddenFiles: preferences?.showHiddenFiles, // null until loaded; the loading shell shows then
   }), [
     activePaneSelectedPaths,
     activeSelectedEntryKinds,
@@ -181,6 +189,7 @@ function App() {
     activePaneState?.panelType,
     activeTab?.tabId,
     activeTab?.activePaneId,
+    preferences?.showHiddenFiles,
   ]);
   const paletteContext = useMemo(
     () => ({ ...commandContextBase, source: "palette" }),
@@ -269,8 +278,16 @@ function App() {
       workspaceActions: workspaceActionsForCommands,
       openCommandPalette,
       openRecentFolders,
+      toggleShowHiddenFiles,
     },
-  ), [activeTab, currentWindow, openCommandPalette, openRecentFolders, workspaceActionsForCommands]);
+  ), [
+    activeTab,
+    currentWindow,
+    openCommandPalette,
+    openRecentFolders,
+    toggleShowHiddenFiles,
+    workspaceActionsForCommands,
+  ]);
   const handleContextMenu = useCallback((event) => {
     event.preventDefault();
     const target = resolveContextMenuTarget(event.target);
@@ -443,7 +460,7 @@ function App() {
     refreshRecentFolders({ notifyOnError: false });
   }, [activeTab?.tabId, activeTab?.terminalCwdHint, refreshRecentFolders]);
 
-  if (!currentWindow || !activeTab) {
+  if (!currentWindow || !activeTab || !preferences) {
     return <main className={styles.appShell}>
       <div className={styles.loadingShell}>
         <p className={styles.loadingText}>Loading workspace...</p>
@@ -486,6 +503,7 @@ function App() {
             cwdHint={activeTab.terminalCwdHint ?? ""}
             recentFoldersEntries={recentFoldersState.entries}
             recentFoldersLoading={recentFoldersState.isLoading}
+            showHiddenFiles={preferences.showHiddenFiles}
             onOpenFolderInCurrentTab={openFolderInCurrentTabViaRecentFlow}
             onCurrentPathChange={workspaceActions.handleSetTabCwdHint}
             onFilesystemStateChange={workspaceActions.handleSetPaneFilesystemState}
@@ -510,6 +528,7 @@ function App() {
       open={commandPaletteState.isOpen}
       position={commandPaletteState.position}
       commands={paletteCommands}
+      context={paletteContext}
       onCommand={handlePaletteCommand}
       onClose={closeCommandPalette}
     />
@@ -518,6 +537,7 @@ function App() {
       position={contextMenuState.position}
       target={contextMenuState.target}
       commands={contextMenuCommands}
+      context={contextMenuState.context}
       onCommand={handleContextMenuCommand}
       onClose={closeContextMenu}
     />

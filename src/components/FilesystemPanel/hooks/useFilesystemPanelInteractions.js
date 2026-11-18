@@ -299,6 +299,16 @@ export default function useFilesystemPanelInteractions({
       isWorkspaceFolder: workspaceFolderPathSet.has(entry.path),
     });
   }, [emitTabSelectedFiles, openEntry, selectEntry, treeData.entryPaths, workspaceFolderPathSet]);
+  // Breadcrumbs and drive rows only know a folder path, not a listed entry.
+  const handleFolderPathMiddleClick = useCallback((path, event) => {
+    if (event.button !== 1) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openEntry({ path, is_dir: true }, {
+      forceOpenInNewTab: true,
+      isWorkspaceFolder: workspaceFolderPathSet.has(path),
+    });
+  }, [openEntry, workspaceFolderPathSet]);
   const handleEntryContextMenu = useCallback((entryPath) => {
     if (selectedEntryPathSet.has(entryPath)) return;
     const nextSelectedEntryPaths = selectEntry(entryPath, {
@@ -659,6 +669,9 @@ export default function useFilesystemPanelInteractions({
     if (isEntryOperationInProgress) return;
     if (isEditableKeyboardTarget(event.target)) return;
     if (hasCommandModifiers(event)) return;
+    // Enter, arrows and Delete on any pane's header buttons and in the (portaled) search options
+    // panel belong to those controls, not to the list of the pane under the pointer.
+    if (event.target.closest?.("[data-pane-header], [data-search-options]")) return;
 
     handlePanelNavigationCommand(event, {
       handleDeleteKeyPress,
@@ -691,6 +704,7 @@ export default function useFilesystemPanelInteractions({
     handleEntryClick,
     handleEntryDoubleClick,
     handleEntryMiddleClick,
+    handleFolderPathMiddleClick,
     handleEntryContextMenu,
     handlePanelBackgroundClick,
     handlePanelBackgroundContextMenu,

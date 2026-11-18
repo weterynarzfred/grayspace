@@ -35,6 +35,7 @@ fn update_pane_filesystem_state_detects_real_changes() {
       view_type: "details".to_string(),
       sort_key: "size".to_string(),
       sort_descending: true,
+      search_options: Some(serde_json::json!({ "useRegex": true })),
     },
   ));
   assert_eq!(active_pane.filesystem_state.current_path, "C:\\Users");
@@ -43,6 +44,10 @@ fn update_pane_filesystem_state_detects_real_changes() {
   assert_eq!(active_pane.filesystem_state.view_type, "details");
   assert_eq!(active_pane.filesystem_state.sort_key, "size");
   assert!(active_pane.filesystem_state.sort_descending);
+  assert_eq!(
+    active_pane.filesystem_state.search_options,
+    Some(serde_json::json!({ "useRegex": true }))
+  );
 
   assert!(update_pane_filesystem_state(
     active_pane,
@@ -56,6 +61,7 @@ fn update_pane_filesystem_state_detects_real_changes() {
       view_type: "unknown-view".to_string(),
       sort_key: "unknown-sort".to_string(),
       sort_descending: false,
+      search_options: None,
     },
   ));
   assert_eq!(active_pane.filesystem_state.scroll_top, 0.0);

@@ -1,5 +1,5 @@
 use super::WorkspaceModel;
-use crate::commands::workspace::types::{LayoutAxis, TabLayoutNode};
+use crate::commands::workspace::types::{LayoutAxis, TabLayoutNode, WindowBounds};
 
 fn find_first_layout_pane_id(layout: &TabLayoutNode) -> Option<String> {
   match layout {
@@ -171,4 +171,71 @@ fn close_window_if_empty_or_fix_active_repairs_invalid_active_tab() {
     .get(&window_id)
     .expect("window should still exist");
   assert_eq!(window.active_tab_id, first_tab_id);
+}
+
+#[test]
+fn window_created_with_bounds_saves_them() {
+  let mut model = WorkspaceModel::default();
+  let bounds = WindowBounds { x: 10, y: 20, width: 900, height: 700, maximized: true };
+  model.create_window_with_new_tab("window-1".to_string(), "main".to_string(), bounds.clone());
+
+  assert_eq!(model.windows["window-1"].saved_bounds(), bounds);
+}
+
+#[test]
+fn set_bounds_keeps_the_normal_rect_while_maximized() {
+  let mut model = WorkspaceModel::default();
+  let window_id = model.ensure_window_exists_for_label("main");
+  let window = model.windows.get_mut(&window_id).expect("window should exist");
+
+  let normal = WindowBounds { x: 10, y: 20, width: 900, height: 700, maximized: false };
+  window.set_bounds(normal.clone());
+  assert_eq!(window.saved_bounds(), normal);
+
+  let maximized = WindowBounds { x: 0, y: 0, width: 1920, height: 1040, maximized: true };
+  window.set_bounds(maximized.clone());
+  assert_eq!(window.bounds, maximized);
+  assert_eq!(window.saved_bounds(), WindowBounds { maximized: true, ..normal });
+}
+
+#[test]
+fn set_bounds_moves_the_normal_rect_to_the_monitor_maximized_on() {
+  let mut model = WorkspaceModel::default();
+  let window_id = model.ensure_window_exists_for_label("main");
+  let window = model.windows.get_mut(&window_id).expect("window should exist");
+
+  window.set_bounds(WindowBounds { x: 100, y: 20, width: 1600, height: 900, maximized: false });
+  window.set_bounds(WindowBounds { x: 1920, y: 0, width: 1280, height: 1000, maximized: true });
+
+  assert_eq!(
+    window.saved_bounds(),
+    WindowBounds { x: 1920, y: 50, width: 1280, height: 900, maximized: true },
+  );
+}
+
+#[test]
+fn minimized_report_only_sets_the_flag() {
+  let mut model = WorkspaceModel::default();
+  let window_id = model.ensure_window_exists_for_label("main");
+  let maximized = WindowBounds { x: 0, y: 0, width: 1920, height: 1040, maximized: true };
+  // How Windows reports a minimized window, even one that was maximized.
+  let offscreen = WindowBounds { x: -32000, y: -32000, width: 160, height: 28, maximized: false };
+
+  let window = model.windows.get_mut(&window_id).expect("window should exist");
+  assert!(window.apply_bounds_report(maximized.clone(), false));
+  let saved = window.saved_bounds();
+
+  assert!(window.apply_bounds_report(offscreen.clone(), true));
+  assert!(!window.apply_bounds_report(offscreen, true));
+  assert_eq!(window.bounds, maximized);
+  assert_eq!(window.saved_bounds(), saved);
+  assert!(model.snapshot().windows[0].minimized);
+
+  let window = model.windows.get_mut(&window_id).expect("window should exist");
+  assert!(
+    window.apply_bounds_report(maximized.clone(), false),
+    "restoring to the same rect should clear the flag",
+  );
+  assert!(!window.apply_bounds_report(maximized, false));
+  assert!(!model.snapshot().windows[0].minimized);
 }

@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_SEARCH_OPTIONS, toBackendSearchOptions } from "../filesystemSearchOptions";
+import { getNavigationErrorMessage } from "./filesystemNavigationUtils";
 
 const FILESYSTEM_SEARCH_EVENT = "filesystem-search-results";
 const SEARCH_DEBOUNCE_MS = 250;
@@ -33,17 +35,32 @@ export function sortSearchResults(entries, sortKey, sortDescending) {
   });
 }
 
-// Recursive name search under `rootPath`. Results stream in from the backend walker. A refresh
-// drops results that no longer exist right away, then reruns the search in the background and
-// swaps in its results once it finishes, so renames and new matches show up without a blank list.
-export default function useFilesystemSearch({ rootPath = "", sortKey = "name", sortDescending = false }) {
+// Recursive search under `rootPath`, by name or by regex on the relative path (see
+// `searchOptions`). Results stream in from the backend walker. A refresh drops results that no
+// longer exist right away, then reruns the search in the background and swaps in its results once
+// it finishes, so renames and new matches show up without a blank list. Changing the options or
+// `showHidden` reruns the search like typing does; with `showHidden` off the walk neither matches
+// nor enters hidden entries. A search the backend refuses (e.g. an invalid regex) ends with status
+// "error" and the reason in `searchError`.
+export default function useFilesystemSearch({
+  rootPath = "",
+  sortKey = "name",
+  sortDescending = false,
+  searchOptions = DEFAULT_SEARCH_OPTIONS,
+  showHidden = true,
+}) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [status, setStatus] = useState("idle");
+  const [error, setError] = useState("");
   const rootPathRef = useRef(rootPath);
   rootPathRef.current = rootPath;
   const queryRef = useRef(query);
   queryRef.current = query;
+  const searchOptionsRef = useRef(searchOptions);
+  searchOptionsRef.current = searchOptions;
+  const showHiddenRef = useRef(showHidden);
+  showHiddenRef.current = showHidden;
   const resultsRef = useRef(results);
   resultsRef.current = results;
   const runRef = useRef(null);
@@ -61,14 +78,17 @@ export default function useFilesystemSearch({ rootPath = "", sortKey = "name", s
     runRef.current = run;
     if (!isRerun) setResults([]);
     setStatus("running");
+    setError("");
     invoke("filesystem_search_start", {
       searchId: run.searchId,
       root: rootPathRef.current,
       query: searchQuery,
-    }).catch(() => {
+      options: { ...toBackendSearchOptions(searchOptionsRef.current), skipHidden: !showHiddenRef.current },
+    }).catch((startError) => {
       if (runRef.current !== run) return;
       runRef.current = null;
-      setStatus("done");
+      setError(getNavigationErrorMessage(startError, "Search failed."));
+      setStatus("error");
     });
   }, [cancelRun]);
 
@@ -104,7 +124,7 @@ export default function useFilesystemSearch({ rootPath = "", sortKey = "name", s
     }
     const timer = setTimeout(() => startRun(trimmedQuery), SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [cancelRun, query, startRun]);
+  }, [cancelRun, query, searchOptions, showHidden, startRun]);
 
   useEffect(() => () => {
     clearTimeout(rerunTimerRef.current);
@@ -137,6 +157,7 @@ export default function useFilesystemSearch({ rootPath = "", sortKey = "name", s
     isSearchActive: query.trim() !== "",
     searchResults: sortedResults,
     searchStatus: status,
+    searchError: error,
     refreshSearchResults: refreshResults,
   };
 }

@@ -10,15 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "title": "grayspace",
-        "width": 800,
-        "height": 600,
-        "decorations": false,
-        "shadow": false
-      }
-    ],
+    "windows": [],
     "security": {
       "assetProtocol": {
         "enable": true,

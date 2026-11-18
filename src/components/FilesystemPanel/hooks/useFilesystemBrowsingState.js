@@ -29,7 +29,8 @@ const MAX_BROWSING_HISTORY_ITEMS = 100;
 function isSameListing(left, right) {
   return left.sortKey === right.sortKey
     && left.sortDescending === right.sortDescending
-    && left.filter === right.filter;
+    && left.filter === right.filter
+    && left.showHidden === right.showHidden;
 }
 
 function resolveDriveFromPath(path, fallbackDrive = "") {
@@ -63,6 +64,8 @@ export default function useFilesystemBrowsingState({
   keepSelectionOnlyInPathSet,
   sortKey = "name",
   sortDescending = false,
+  searchOptions = undefined,
+  showHidden = true,
 }) {
   const initialLocation = normalizeBrowsingLocation({
     currentDrive: initialCurrentDrive,
@@ -87,9 +90,10 @@ export default function useFilesystemBrowsingState({
   const loadMoreInFlightRef = useRef(false);
   const historyStackRef = useRef([initialLocation]);
   const historyIndexRef = useRef(0);
-  // Sort and filter wanted now vs. the ones behind the entries on screen. A load replaces
-  // `listedOptionsRef`, so slower responses from an older listing can be recognised and dropped.
-  const listingOptionsRef = useRef({ sortKey, sortDescending, filter });
+  // Sort, filter and hidden-entry visibility wanted now vs. the ones behind the entries on screen.
+  // A load replaces `listedOptionsRef`, so slower responses from an older listing can be
+  // recognised and dropped.
+  const listingOptionsRef = useRef({ sortKey, sortDescending, filter, showHidden });
   const listedOptionsRef = useRef(listingOptionsRef.current);
   const {
     searchQuery,
@@ -97,14 +101,15 @@ export default function useFilesystemBrowsingState({
     isSearchActive,
     searchResults,
     searchStatus,
+    searchError,
     refreshSearchResults,
-  } = useFilesystemSearch({ rootPath: currentPath, sortKey, sortDescending });
+  } = useFilesystemSearch({ rootPath: currentPath, sortKey, sortDescending, searchOptions, showHidden });
   const isSearchActiveRef = useRef(isSearchActive);
   const searchedPathRef = useRef("");
 
   currentPathRef.current = currentPath;
   entriesRef.current = entries;
-  listingOptionsRef.current = { sortKey, sortDescending, filter };
+  listingOptionsRef.current = { sortKey, sortDescending, filter, showHidden };
   isSearchActiveRef.current = isSearchActive;
 
   const applyLoadedEntries = useCallback((nextEntries) => {
@@ -327,7 +332,13 @@ export default function useFilesystemBrowsingState({
     if (isSearchActiveRef.current) return;
     if (isSameListing(listedOptionsRef.current, listingOptionsRef.current)) return;
     refreshEntriesForPath(currentPathRef.current, { reread: false });
-  }, [filter, refreshEntriesForPath, sortDescending, sortKey]);
+  }, [filter, refreshEntriesForPath, showHidden, sortDescending, sortKey]);
+
+  // New search options or hidden-file visibility rerun the search from an empty list, like a new
+  // query does, so the selection goes too instead of keeping entries that may no longer be listed.
+  useEffect(() => {
+    if (isSearchActiveRef.current) clearSelection();
+  }, [clearSelection, searchOptions, showHidden]);
 
   // Leaving search in the same folder re-lists it: files may have changed, sort may differ.
   useEffect(() => {
@@ -485,6 +496,7 @@ export default function useFilesystemBrowsingState({
     setSearchQuery,
     isSearchActive,
     searchStatus,
+    searchError,
     setError,
     navigateToPath,
     selectDrive,

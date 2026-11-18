@@ -37,6 +37,7 @@ export const COMMAND_IDS = {
   FILESYSTEM_VIEW_DETAILS: "filesystem.view.details",
   FILESYSTEM_VIEW_GRID: "filesystem.view.grid",
   FILESYSTEM_VIEW_FOLDABLE_GRID: "filesystem.view.foldableGrid",
+  FILESYSTEM_TOGGLE_HIDDEN: "filesystem.view.toggleHidden",
   FILESYSTEM_SORT: "filesystem.sort",
   FILESYSTEM_SORT_BY_NAME: "filesystem.sort.name",
   FILESYSTEM_SORT_BY_MODIFIED: "filesystem.sort.modified",
@@ -102,7 +103,8 @@ function isFilesystemCommandContext(context) {
   return isFilesystemPanelActive(context) && isFilesystemBrowsing(context);
 }
 
-function filesystemPanelPaletteCommand(id, title) {
+// `getMark(context)` returns what menus show next to an option that is currently on ("" when off).
+function filesystemPanelPaletteCommand(id, title, getMark = undefined) {
   return {
     id,
     title,
@@ -110,8 +112,17 @@ function filesystemPanelPaletteCommand(id, title) {
     scope: "filesystem",
     whenText: "activePanelType === \"Filesystem\"",
     when: isFilesystemPanelActive,
+    getMark,
   };
 }
+
+const markCurrentViewType = viewType => context => (context.filesystemViewType === viewType ? "✓" : "");
+
+// The arrow also tells the direction, like the details column headers.
+const markCurrentSortKey = sortKey => (context) => {
+  if (context.filesystemSortKey !== sortKey) return "";
+  return context.filesystemSortDescending ? "▾" : "▴";
+};
 
 function hasSelectedEntries(context) {
   return getSelectedEntryPaths(context).length > 0;
@@ -650,14 +661,42 @@ export const COMMANDS = [
       && !event.metaKey
       && event.key.toLowerCase() === "n",
   },
-  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE, "View: Folder Tree"),
-  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_VIEW_DETAILS, "View: Details"),
-  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_VIEW_GRID, "View: Grid"),
-  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID, "View: Foldable Grid"),
-  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_BY_NAME, "Sort: Name"),
-  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_BY_MODIFIED, "Sort: Date Modified"),
-  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_BY_SIZE, "Sort: Size"),
-  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_BY_TYPE, "Sort: Type"),
+  filesystemPanelPaletteCommand(
+    COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE,
+    "View: Folder Tree",
+    markCurrentViewType("folder-tree"),
+  ),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_VIEW_DETAILS, "View: Details", markCurrentViewType("details")),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_VIEW_GRID, "View: Grid", markCurrentViewType("grid")),
+  filesystemPanelPaletteCommand(
+    COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID,
+    "View: Foldable Grid",
+    markCurrentViewType("foldable-grid"),
+  ),
+  {
+    id: COMMAND_IDS.FILESYSTEM_TOGGLE_HIDDEN,
+    title: "View: Show Hidden Files",
+    getMark: context => (context.showHiddenFiles ? "✓" : ""),
+    shortcut: "Ctrl+H",
+    triggers: ["shortcut", "palette"],
+    scope: "filesystem",
+    whenText: "activePanelType === \"Filesystem\"",
+    when: isFilesystemPanelActive,
+    shortcutMatcher: event =>
+      event.ctrlKey
+      && !event.shiftKey
+      && !event.altKey
+      && !event.metaKey
+      && event.key.toLowerCase() === "h",
+  },
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_BY_NAME, "Sort: Name", markCurrentSortKey("name")),
+  filesystemPanelPaletteCommand(
+    COMMAND_IDS.FILESYSTEM_SORT_BY_MODIFIED,
+    "Sort: Date Modified",
+    markCurrentSortKey("modified"),
+  ),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_BY_SIZE, "Sort: Size", markCurrentSortKey("size")),
+  filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_BY_TYPE, "Sort: Type", markCurrentSortKey("type")),
   filesystemPanelPaletteCommand(COMMAND_IDS.FILESYSTEM_SORT_REVERSE, "Sort: Reverse Order"),
   {
     id: COMMAND_IDS.WORKSPACE_RUN_SCRIPT,
@@ -683,11 +722,12 @@ function filesystemPanelSubmenu(id, title, commandIds) {
   };
 }
 COMMANDS.push(
-  filesystemPanelSubmenu(COMMAND_IDS.FILESYSTEM_VIEW, "View Type", [
+  filesystemPanelSubmenu(COMMAND_IDS.FILESYSTEM_VIEW, "View", [
     COMMAND_IDS.FILESYSTEM_VIEW_FOLDER_TREE,
     COMMAND_IDS.FILESYSTEM_VIEW_DETAILS,
     COMMAND_IDS.FILESYSTEM_VIEW_GRID,
     COMMAND_IDS.FILESYSTEM_VIEW_FOLDABLE_GRID,
+    COMMAND_IDS.FILESYSTEM_TOGGLE_HIDDEN,
   ]),
   filesystemPanelSubmenu(COMMAND_IDS.FILESYSTEM_SORT, "Sort By", [
     COMMAND_IDS.FILESYSTEM_SORT_BY_NAME,

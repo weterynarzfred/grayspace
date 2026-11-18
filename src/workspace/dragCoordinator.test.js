@@ -88,6 +88,27 @@ describe("dragCoordinator", () => {
     });
   });
 
+  it("ignores a minimized window under the pointer", () => {
+    const action = resolveTabDropAction({
+      snapshot: {
+        ...snapshot,
+        windows: [{ ...snapshot.windows[0], minimized: true }, snapshot.windows[1]],
+      },
+      sourceWindowId: "window-2",
+      tabOrder: ["tab-1", "tab-2"],
+      activeTabId: "tab-2",
+      overId: null,
+      pointer: { x: 250, y: 80 },
+    });
+
+    expect(action).toEqual({
+      kind: "detach",
+      sourceWindowId: "window-2",
+      tabId: "tab-2",
+      point: { x: 250, y: 80 },
+    });
+  });
+
   it("returns noop when pointer is inside source window without tab target", () => {
     const action = resolveTabDropAction({
       snapshot,

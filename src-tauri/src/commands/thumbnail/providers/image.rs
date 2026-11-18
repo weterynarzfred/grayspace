@@ -19,7 +19,7 @@ impl ImageThumbnailProvider {
   fn resize_options_for_bucket(bucket: ThumbnailBucket) -> fir::ResizeOptions {
     match bucket {
       ThumbnailBucket::Px64 => fir::ResizeOptions::new().resize_alg(fir::ResizeAlg::Nearest),
-      ThumbnailBucket::Px256 => {
+      ThumbnailBucket::Px256 | ThumbnailBucket::Px512 => {
         fir::ResizeOptions::new().resize_alg(fir::ResizeAlg::Convolution(fir::FilterType::Bilinear))
       }
     }

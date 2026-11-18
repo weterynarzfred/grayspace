@@ -2,8 +2,9 @@
 @use "../../styles/mixins" as *;
 
 .gridContainer {
-  // A single column never gets narrower than one cell; long names don't widen their column.
-  min-width: calc(var(--entry-thumbnail-size, 32px) + 40px);
+  // A single column never gets narrower than one cell (a narrower pane scrolls sideways);
+  // long names don't widen their column.
+  min-width: calc(var(--grid-min-cell-width, 72px) + 16px);
   padding: 8px;
   display: grid;
   grid-template-columns: repeat(var(--grid-cols, 4), minmax(0, 1fr));
@@ -67,9 +68,10 @@
   }
 }
 
+// Sized in JS: the cell's full inner width (see FilesystemPanel), which the row height relies on.
 .cellPreview {
-  width: var(--entry-thumbnail-size, 32px);
-  height: var(--entry-thumbnail-size, 32px);
+  width: var(--grid-preview-size, 32px);
+  height: var(--grid-preview-size, 32px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -87,7 +89,7 @@
   &::before {
     text-align: center;
     width: 100% !important;
-    font-size: calc(var(--entry-thumbnail-size, 32px) * 0.7) !important;
+    font-size: calc(var(--grid-preview-size, 32px) * 0.7) !important;
   }
 
   &:global(.folder-icon)::before {

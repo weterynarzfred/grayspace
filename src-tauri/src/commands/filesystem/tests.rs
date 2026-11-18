@@ -49,7 +49,7 @@ fn list_directory_page_returns_limited_chunk_with_has_more() {
   let test_root_path = test_root.to_string_lossy().to_string();
   let entries = read_sorted_directory_entries(&test_root_path, ListingSort::default())
     .expect("read_sorted_directory_entries should succeed");
-  let visible_entries = filter_entries(&entries, "");
+  let visible_entries = filter_entries(&entries, "", true);
   let first_page = build_directory_page(&visible_entries, 0, 2);
   let second_page = build_directory_page(&visible_entries, 2, 2);
 
@@ -76,7 +76,7 @@ fn list_directory_page_preserves_directory_first_sorting() {
 
   let entries = read_sorted_directory_entries(&test_root_path, ListingSort::default())
     .expect("read_sorted_directory_entries should succeed");
-  let visible_entries = filter_entries(&entries, "");
+  let visible_entries = filter_entries(&entries, "", true);
   let first_page = build_directory_page(&visible_entries, 0, 2);
   let second_page = build_directory_page(&visible_entries, 2, 2);
   let mut paged_names: Vec<String> = first_page.entries.into_iter().map(|entry| entry.name).collect();

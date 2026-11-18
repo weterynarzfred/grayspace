@@ -69,6 +69,7 @@ pub struct WindowState {
   pub tab_order: Vec<String>,
   pub active_tab_id: String,
   pub bounds: WindowBounds,
+  pub minimized: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -133,6 +134,9 @@ pub struct FilesystemPaneState {
   pub sort_key: String,
   #[serde(default)]
   pub sort_descending: bool,
+  /// Recursive search options; the frontend owns their shape and defaults, so they are kept as-is.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub search_options: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Serialize, Deserialize, PartialEq)]
@@ -142,20 +146,16 @@ pub struct TabSelectedFilesState {
   pub selected_paths: Vec<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+/// Outer position and inner size in physical pixels.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowBounds {
   pub x: i32,
   pub y: i32,
   pub width: u32,
   pub height: u32,
-}
-
-#[derive(Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NewWindowOptions {
-  pub x: Option<i32>,
-  pub y: Option<i32>,
+  #[serde(default)]
+  pub maximized: bool,
 }
 
 #[derive(Clone, Deserialize)]
@@ -287,6 +287,7 @@ impl Default for FilesystemPaneState {
       view_type: DEFAULT_FILESYSTEM_VIEW_TYPE.to_string(),
       sort_key: DEFAULT_FILESYSTEM_SORT_KEY.to_string(),
       sort_descending: false,
+      search_options: None,
     }
   }
 }
@@ -306,6 +307,7 @@ impl Default for WindowBounds {
       y: 80,
       width: DEFAULT_WINDOW_WIDTH,
       height: DEFAULT_WINDOW_HEIGHT,
+      maximized: false,
     }
   }
 }

@@ -30,6 +30,64 @@ pub(crate) struct WorkspaceWindow {
   pub(crate) tab_order: Vec<String>,
   pub(crate) active_tab_id: String,
   pub(crate) bounds: WindowBounds,
+  /// The last non-maximized rect. `bounds` holds the actual area, which tab drops hit-test against.
+  restore_bounds: WindowBounds,
+  /// A minimized window keeps its last on-screen `bounds`, which tab drops must skip.
+  pub(crate) minimized: bool,
+}
+
+/// True when the centre of `inner` lies within `outer`.
+fn contains_centre_of(outer: &WindowBounds, inner: &WindowBounds) -> bool {
+  let centre_x = i64::from(inner.x) + i64::from(inner.width / 2);
+  let centre_y = i64::from(inner.y) + i64::from(inner.height / 2);
+  let left = i64::from(outer.x);
+  let top = i64::from(outer.y);
+  (left..left + i64::from(outer.width)).contains(&centre_x)
+    && (top..top + i64::from(outer.height)).contains(&centre_y)
+}
+
+impl WorkspaceWindow {
+  /// Applies a bounds report and returns whether the window changed. Minimized windows report
+  /// -32000,-32000 on Windows, so a minimized report only sets the flag and keeps the last rect.
+  pub(crate) fn apply_bounds_report(&mut self, bounds: WindowBounds, minimized: bool) -> bool {
+    if minimized {
+      let changed = !self.minimized;
+      self.minimized = true;
+      return changed;
+    }
+    if !self.minimized && self.bounds == bounds {
+      return false;
+    }
+    self.minimized = false;
+    self.set_bounds(bounds);
+    true
+  }
+
+  pub(crate) fn set_bounds(&mut self, bounds: WindowBounds) {
+    if !bounds.maximized {
+      self.restore_bounds = bounds.clone();
+    } else if !contains_centre_of(&bounds, &self.restore_bounds) {
+      // Maximized on another monitor, where Windows moves the normal rect too.
+      let width = self.restore_bounds.width.min(bounds.width);
+      let height = self.restore_bounds.height.min(bounds.height);
+      self.restore_bounds = WindowBounds {
+        x: bounds.x + ((bounds.width - width) / 2) as i32,
+        y: bounds.y + ((bounds.height - height) / 2) as i32,
+        width,
+        height,
+        maximized: false,
+      };
+    }
+    self.bounds = bounds;
+  }
+
+  /// What is saved for the next launch: the normal rect plus whether the window is maximized.
+  pub(crate) fn saved_bounds(&self) -> WindowBounds {
+    WindowBounds {
+      maximized: self.bounds.maximized,
+      ..self.restore_bounds.clone()
+    }
+  }
 }
 
 #[derive(Clone)]
@@ -87,6 +145,7 @@ impl WorkspaceModel {
         tab_order: window.tab_order.clone(),
         active_tab_id: window.active_tab_id.clone(),
         bounds: window.bounds.clone(),
+        minimized: window.minimized,
       })
       .collect();
     let tabs = self
@@ -198,7 +257,12 @@ impl WorkspaceModel {
       label: label.clone(),
       tab_order: vec![tab_id.clone()],
       active_tab_id: tab_id,
+      restore_bounds: WindowBounds {
+        maximized: false,
+        ..bounds.clone()
+      },
       bounds,
+      minimized: false,
     };
     self.windows.insert(window_id.clone(), window);
     self.window_ids_by_label.insert(label, window_id);

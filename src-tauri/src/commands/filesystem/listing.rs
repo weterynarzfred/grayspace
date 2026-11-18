@@ -165,10 +165,12 @@ pub(super) fn read_sorted_directory_entries(path: &str, sort: ListingSort) -> Re
 }
 
 /// Case-insensitive substring match on the entry name; a blank filter matches everything.
-pub(super) fn filter_entries<'a>(entries: &'a [FsEntry], filter: &str) -> Vec<&'a FsEntry> {
+/// Hidden entries are dropped unless `show_hidden` is set.
+pub(super) fn filter_entries<'a>(entries: &'a [FsEntry], filter: &str, show_hidden: bool) -> Vec<&'a FsEntry> {
   let needle = filter.trim().to_lowercase();
   entries
     .iter()
+    .filter(|entry| show_hidden || !entry.is_hidden)
     .filter(|entry| needle.is_empty() || entry.name.to_lowercase().contains(&needle))
     .collect()
 }
@@ -204,6 +206,7 @@ pub fn list_directory_page(
   sort_key: Option<String>,
   sort_descending: Option<bool>,
   filter: Option<String>,
+  show_hidden: Option<bool>,
 ) -> Result<FsDirectoryPage, String> {
   let normalized_path = path.trim();
   if normalized_path.is_empty() {
@@ -232,7 +235,12 @@ pub fn list_directory_page(
     listing.sort = sort;
   }
 
-  let visible_entries = filter_entries(&listing.entries, filter.as_deref().unwrap_or(""));
+  // The cache keeps hidden entries, so toggling them only re-filters.
+  let visible_entries = filter_entries(
+    &listing.entries,
+    filter.as_deref().unwrap_or(""),
+    show_hidden.unwrap_or(true),
+  );
   Ok(build_directory_page(&visible_entries, offset, limit))
 }
 

@@ -36,7 +36,7 @@ pub trait ThumbnailProvider: Send + Sync {
 pub(super) fn webp_quality(bucket: ThumbnailBucket) -> f32 {
   match bucket {
     ThumbnailBucket::Px64 => 48.0,
-    ThumbnailBucket::Px256 => 68.0,
+    ThumbnailBucket::Px256 | ThumbnailBucket::Px512 => 68.0,
   }
 }
 

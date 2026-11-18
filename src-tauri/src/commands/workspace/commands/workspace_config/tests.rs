@@ -148,6 +148,7 @@ fn workspace_panels_persist_only_for_durable_filesystem_state_changes() {
     view_type: "folder-tree".to_string(),
     sort_key: "name".to_string(),
     sort_descending: false,
+    search_options: None,
   };
 
   let mut next_state = previous_state.clone();
@@ -201,6 +202,13 @@ fn workspace_panels_persist_only_for_durable_filesystem_state_changes() {
 
   next_state = previous_state.clone();
   next_state.sort_descending = true;
+  assert!(should_persist_workspace_panels_for_filesystem_state_change(
+    &previous_state,
+    &next_state,
+  ));
+
+  next_state = previous_state.clone();
+  next_state.search_options = Some(serde_json::json!({ "useRegex": true }));
   assert!(should_persist_workspace_panels_for_filesystem_state_change(
     &previous_state,
     &next_state,

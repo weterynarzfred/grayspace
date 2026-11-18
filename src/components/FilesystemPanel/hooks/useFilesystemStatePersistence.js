@@ -3,6 +3,7 @@ import {
   arePathArraysEqual,
   normalizeFilesystemPaneState,
 } from "../filesystemPaneState";
+import { areSearchOptionsEqual, DEFAULT_SEARCH_OPTIONS } from "../filesystemSearchOptions";
 
 export default function useFilesystemStatePersistence({
   tabId = "",
@@ -22,6 +23,7 @@ export default function useFilesystemStatePersistence({
   viewType = "folder-tree",
   sortKey = "name",
   sortDescending = false,
+  searchOptions = DEFAULT_SEARCH_OPTIONS,
 }) {
   const initialFilesystemStateRef = useRef(
     normalizeFilesystemPaneState(initialFilesystemState),
@@ -37,6 +39,7 @@ export default function useFilesystemStatePersistence({
     viewType,
     sortKey,
     sortDescending,
+    searchOptions,
   });
   const latestScrollTopRef = useRef(initialFilesystemStateRef.current.scrollTop);
   const pendingInitialScrollRestoreRef = useRef(true);
@@ -71,11 +74,13 @@ export default function useFilesystemStatePersistence({
       viewType,
       sortKey,
       sortDescending,
+      searchOptions,
     };
   }, [
     currentDrive,
     currentPath,
     expandedPaths,
+    searchOptions,
     selectedPaths,
     sortDescending,
     sortKey,
@@ -97,12 +102,19 @@ export default function useFilesystemStatePersistence({
       || normalizedState.thumbnailSizePx !== lastState.thumbnailSizePx
       || normalizedState.viewType !== lastState.viewType
       || normalizedState.sortKey !== lastState.sortKey
-      || normalizedState.sortDescending !== lastState.sortDescending;
+      || normalizedState.sortDescending !== lastState.sortDescending
+      || !areSearchOptionsEqual(normalizedState.searchOptions, lastState.searchOptions);
 
     if (!hasChanged) return;
 
     lastPersistedStateRef.current = normalizedState;
-    onFilesystemStateChange(normalizedState);
+    // Default options are sent as null, so untouched panes save no copy of today's defaults.
+    onFilesystemStateChange({
+      ...normalizedState,
+      searchOptions: areSearchOptionsEqual(normalizedState.searchOptions, DEFAULT_SEARCH_OPTIONS)
+        ? null
+        : normalizedState.searchOptions,
+    });
   }, [paneId, tabId]);
 
   const persistCurrentFilesystemState = useCallback(() => {
@@ -117,6 +129,7 @@ export default function useFilesystemStatePersistence({
       viewType: latestState.viewType,
       sortKey: latestState.sortKey,
       sortDescending: latestState.sortDescending,
+      searchOptions: latestState.searchOptions,
     });
   }, [persistFilesystemState]);
 
@@ -158,6 +171,7 @@ export default function useFilesystemStatePersistence({
     currentPath,
     expandedPaths,
     persistCurrentFilesystemState,
+    searchOptions,
     selectedPaths,
     sortDescending,
     sortKey,

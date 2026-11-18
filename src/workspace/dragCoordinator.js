@@ -20,7 +20,8 @@ function isPointWithinBounds(point, bounds) {
 
 export function resolveWindowAtPoint(snapshot, point) {
   if (!snapshot || !point) return null;
-  return snapshot.windows.find(window => isPointWithinBounds(point, window.bounds)) ?? null;
+  // A minimized window keeps its last on-screen bounds.
+  return snapshot.windows.find(window => !window.minimized && isPointWithinBounds(point, window.bounds)) ?? null;
 }
 
 export function resolveTabDropAction({

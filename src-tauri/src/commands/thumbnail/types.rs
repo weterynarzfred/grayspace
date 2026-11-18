@@ -6,6 +6,9 @@ pub enum ThumbnailBucket {
   Px64,
   #[serde(rename = "256")]
   Px256,
+  // For grid previews, which grow with the pane to about twice the chosen size.
+  #[serde(rename = "512")]
+  Px512,
 }
 
 impl ThumbnailBucket {
@@ -13,13 +16,15 @@ impl ThumbnailBucket {
     match self {
       Self::Px64 => 64,
       Self::Px256 => 256,
+      Self::Px512 => 512,
     }
   }
 
   pub fn from_size_hint(size_hint_px: Option<u32>) -> Self {
     match size_hint_px.unwrap_or(64) {
       0..=64 => Self::Px64,
-      _ => Self::Px256,
+      65..=256 => Self::Px256,
+      _ => Self::Px512,
     }
   }
 }
@@ -88,14 +93,6 @@ pub struct ThumbnailUpdatePayload {
   pub thumbnail_path: Option<String>,
   pub mime: Option<String>,
   pub error: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ThumbnailPruneResult {
-  pub removed_files: usize,
-  pub removed_bytes: u64,
-  pub total_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]

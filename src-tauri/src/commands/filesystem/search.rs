@@ -1,6 +1,7 @@
 use super::listing::{read_fs_entry, FsEntry};
-use serde::Serialize;
-use std::collections::{HashMap, VecDeque};
+use regex::{Regex, RegexBuilder};
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::mem;
 use std::path::{Path, PathBuf};
@@ -33,18 +34,88 @@ struct FilesystemSearchPayload {
   truncated: bool,
 }
 
+/// Sent by the frontend, which owns the defaults. `skip_folder_names` is already empty when
+/// skipping is switched off. `skip_hidden` follows the app's hidden-files preference.
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchOptions {
+  use_regex: bool,
+  skip_folder_names: Vec<String>,
+  skip_cache_dir_tagged: bool,
+  skip_hidden: bool,
+}
+
+enum EntryMatcher {
+  NameContains(String),
+  RelativePathRegex(Regex),
+}
+
+/// What a search matches and which folders it does not descend into. Built before the walk
+/// starts, so an invalid regex is returned by the command instead of ending the search silently.
+pub(super) struct SearchCriteria {
+  matcher: EntryMatcher,
+  skipped_folder_names: HashSet<String>,
+  skip_cache_dir_tagged: bool,
+  skip_hidden: bool,
+}
+
+impl SearchCriteria {
+  fn new(query: &str, options: SearchOptions) -> Result<Self, String> {
+    let query = query.trim();
+    let matcher = if options.use_regex {
+      let regex = RegexBuilder::new(query)
+        .case_insensitive(true)
+        .build()
+        .map_err(|error| {
+          // Parse errors span several lines (pattern, caret, reason); the last one is the reason.
+          let message = error.to_string();
+          let reason = message.lines().last().unwrap_or_default();
+          format!("Invalid regex: {}", reason.trim_start_matches("error: "))
+        })?;
+      EntryMatcher::RelativePathRegex(regex)
+    } else {
+      EntryMatcher::NameContains(query.to_lowercase())
+    };
+
+    Ok(Self {
+      matcher,
+      skipped_folder_names: options
+        .skip_folder_names
+        .iter()
+        .map(|name| name.to_lowercase())
+        .collect(),
+      skip_cache_dir_tagged: options.skip_cache_dir_tagged,
+      skip_hidden: options.skip_hidden,
+    })
+  }
+
+  fn matches(&self, name: &str, relative_path: &str) -> bool {
+    match &self.matcher {
+      EntryMatcher::NameContains(needle) => name.to_lowercase().contains(needle),
+      EntryMatcher::RelativePathRegex(regex) => regex.is_match(relative_path),
+    }
+  }
+
+  fn should_descend(&self, name: &str, path: &Path) -> bool {
+    !self.skipped_folder_names.contains(&name.to_lowercase())
+      && !(self.skip_cache_dir_tagged && path.join("CACHEDIR.TAG").is_file())
+  }
+}
+
 /// Breadth-first, so shallow matches arrive first. Symlinks and junctions are not followed
-/// (they can loop), unreadable folders are skipped. `on_match` returns false to stop early.
+/// (they can loop), unreadable folders are skipped. Skipped folders are still matched by name,
+/// just not descended into; skipped hidden entries are neither matched nor descended into. The
+/// root itself is always searched. Regexes see the path relative to the root with "/" between
+/// folders. `on_match` returns false to stop early.
 pub(super) fn walk_matching_entries(
   root: &Path,
-  query: &str,
+  criteria: &SearchCriteria,
   cancelled: &AtomicBool,
   mut on_match: impl FnMut(FsEntry) -> bool,
 ) {
-  let needle = query.trim().to_lowercase();
-  let mut pending_dirs = VecDeque::from([root.to_path_buf()]);
+  let mut pending_dirs = VecDeque::from([(root.to_path_buf(), String::new())]);
 
-  while let Some(dir_path) = pending_dirs.pop_front() {
+  while let Some((dir_path, dir_relative_path)) = pending_dirs.pop_front() {
     if cancelled.load(Ordering::Relaxed) {
       return;
     }
@@ -55,12 +126,21 @@ pub(super) fn walk_matching_entries(
       let Ok(entry) = read_fs_entry(&dir_entry) else {
         continue;
       };
-      let is_symlink = dir_entry.file_type().is_ok_and(|file_type| file_type.is_symlink());
-      if entry.is_dir && !is_symlink {
-        pending_dirs.push_back(dir_entry.path());
+      if criteria.skip_hidden && entry.is_hidden {
+        continue;
       }
-      if entry.name.to_lowercase().contains(&needle) && !on_match(entry) {
+      let relative_path = if dir_relative_path.is_empty() {
+        entry.name.clone()
+      } else {
+        format!("{dir_relative_path}/{}", entry.name)
+      };
+      let is_symlink = dir_entry.file_type().is_ok_and(|file_type| file_type.is_symlink());
+      let descend = entry.is_dir && !is_symlink && criteria.should_descend(&entry.name, &dir_entry.path());
+      if criteria.matches(&entry.name, &relative_path) && !on_match(entry) {
         return;
+      }
+      if descend {
+        pending_dirs.push_back((dir_entry.path(), relative_path));
       }
     }
   }
@@ -88,6 +168,7 @@ pub fn filesystem_search_start(
   search_id: String,
   root: String,
   query: String,
+  options: SearchOptions,
 ) -> Result<(), String> {
   if query.trim().is_empty() {
     return Err("A search query is required.".to_string());
@@ -96,6 +177,7 @@ pub fn filesystem_search_start(
   if !root_path.is_dir() {
     return Err("The search root must be an existing folder.".to_string());
   }
+  let criteria = SearchCriteria::new(&query, options)?;
 
   let cancelled = Arc::new(AtomicBool::new(false));
   state
@@ -120,7 +202,7 @@ pub fn filesystem_search_start(
     let mut match_count = 0;
     let mut last_emit = Instant::now();
 
-    walk_matching_entries(&root_path, &query, &cancelled, |entry| {
+    walk_matching_entries(&root_path, &criteria, &cancelled, |entry| {
       batch.push(entry);
       match_count += 1;
       if last_emit.elapsed() >= RESULT_BATCH_INTERVAL {

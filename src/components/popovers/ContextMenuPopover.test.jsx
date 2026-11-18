@@ -46,3 +46,31 @@ describe("ContextMenuPopover", () => {
     expect(onCommand).toHaveBeenCalledWith("two");
   });
 });
+
+describe("ContextMenuPopover option marks", () => {
+  it("marks the options in a submenu that are currently on", () => {
+    const markCurrentView = viewType => context => (context.viewType === viewType ? "✓" : "");
+    render(<ContextMenuPopover
+      open
+      target={createTarget()}
+      context={{ viewType: "grid" }}
+      commands={[{
+        id: "view",
+        title: "View",
+        submenu: [
+          { id: "grid", title: "Grid", getMark: markCurrentView("grid") },
+          { id: "details", title: "Details", getMark: markCurrentView("details") },
+          { id: "refresh", title: "Refresh" },
+        ],
+      }]}
+    />);
+
+    fireEvent.click(screen.getByRole("button", { name: /View/ }));
+
+    const gridButton = screen.getByRole("button", { name: "Grid" });
+    expect(gridButton).toHaveAttribute("aria-pressed", "true");
+    expect(gridButton).toHaveTextContent("Grid✓");
+    expect(screen.getByRole("button", { name: "Details" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: "Refresh" })).not.toHaveAttribute("aria-pressed");
+  });
+});

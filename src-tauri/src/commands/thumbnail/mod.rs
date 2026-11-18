@@ -12,19 +12,20 @@ use self::providers::{
   ThumbnailProvider,
 };
 use self::types::{
-  ThumbnailBucket, ThumbnailClearResult, ThumbnailPriority, ThumbnailPruneResult,
-  ThumbnailResolveBatchRequest, ThumbnailResolveBatchResponse, ThumbnailResolveItemInput,
-  ThumbnailResolveItemResult, ThumbnailStatus, ThumbnailUpdatePayload,
+  ThumbnailBucket, ThumbnailClearResult, ThumbnailPriority, ThumbnailResolveBatchRequest,
+  ThumbnailResolveBatchResponse, ThumbnailResolveItemInput, ThumbnailResolveItemResult,
+  ThumbnailStatus, ThumbnailUpdatePayload,
 };
 
+mod cache;
 mod providers;
 mod types;
+
+pub use cache::start_thumbnail_cache_pruning;
 
 const THUMBNAIL_SCHEMA_VERSION: &str = "v1";
 const THUMBNAIL_UPDATE_EVENT: &str = "thumbnail:update";
 const THUMBNAIL_MAX_WORKERS: usize = 4;
-const THUMBNAIL_CACHE_MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-const THUMBNAIL_CACHE_MAX_AGE_SECS: u64 = 30 * 24 * 60 * 60;
 const WEBP_MIME: &str = "image/webp";
 
 #[derive(Clone)]
@@ -52,13 +53,6 @@ struct ThumbnailQueueRuntime {
 pub struct ThumbnailState {
   runtime: Arc<Mutex<ThumbnailQueueRuntime>>,
   providers: ProviderRegistry,
-}
-
-#[derive(Clone)]
-struct CachedFile {
-  path: PathBuf,
-  size: u64,
-  modified_secs: Option<u64>,
 }
 
 fn normalize_source_path(value: &str) -> Option<String> {
@@ -107,14 +101,16 @@ fn compute_thumbnail_key(
   format!("{:x}", hasher.finalize())
 }
 
-fn thumbnail_cache_root(app: &AppHandle) -> Result<PathBuf, String> {
+fn thumbnails_dir(app: &AppHandle) -> Result<PathBuf, String> {
   let app_data_dir = app
     .path()
     .app_data_dir()
     .map_err(|error| error.to_string())?;
-  let root = app_data_dir
-    .join("thumbnails")
-    .join(THUMBNAIL_SCHEMA_VERSION);
+  Ok(app_data_dir.join("thumbnails"))
+}
+
+fn thumbnail_cache_root(app: &AppHandle) -> Result<PathBuf, String> {
+  let root = thumbnails_dir(app)?.join(THUMBNAIL_SCHEMA_VERSION);
   fs::create_dir_all(&root).map_err(|error| error.to_string())?;
   Ok(root)
 }
@@ -434,7 +430,8 @@ fn resolve_item(
 
   let key = compute_thumbnail_key(provider.as_ref(), &canonical_source_path, &metadata, bucket);
   let output_path = thumbnail_output_path(cache_root, bucket, &key);
-  if output_path.is_file() {
+  if let Ok(cached) = fs::metadata(&output_path) {
+    cache::mark_used(&output_path, &cached);
     return create_ready_result(source_path, key, bucket, output_path);
   }
   if let Some(reason) = known_unsupported_reason(state, &key) {
@@ -455,118 +452,6 @@ fn resolve_item(
     },
   );
   create_pending_result(source_path, key, bucket)
-}
-
-fn collect_cached_files(root: &Path) -> Result<Vec<CachedFile>, String> {
-  if !root.exists() {
-    return Ok(Vec::new());
-  }
-
-  let mut stack = vec![root.to_path_buf()];
-  let mut files = Vec::new();
-
-  while let Some(directory) = stack.pop() {
-    let read_dir = fs::read_dir(&directory).map_err(|error| error.to_string())?;
-    for entry in read_dir {
-      let dir_entry = entry.map_err(|error| error.to_string())?;
-      let path = dir_entry.path();
-      let file_type = dir_entry.file_type().map_err(|error| error.to_string())?;
-      if file_type.is_dir() {
-        stack.push(path);
-        continue;
-      }
-
-      if !file_type.is_file() {
-        continue;
-      }
-
-      let metadata = dir_entry.metadata().map_err(|error| error.to_string())?;
-      files.push(CachedFile {
-        path,
-        size: metadata.len(),
-        modified_secs: system_time_to_unix_secs(metadata.modified()),
-      });
-    }
-  }
-
-  Ok(files)
-}
-
-fn prune_cached_files(root: &Path) -> Result<ThumbnailPruneResult, String> {
-  let mut files = collect_cached_files(root)?;
-  if files.is_empty() {
-    return Ok(ThumbnailPruneResult {
-      removed_files: 0,
-      removed_bytes: 0,
-      total_bytes: 0,
-    });
-  }
-
-  let now_secs = SystemTime::now()
-    .duration_since(UNIX_EPOCH)
-    .ok()
-    .map(|duration| duration.as_secs())
-    .unwrap_or(0);
-  let mut removed_files = 0usize;
-  let mut removed_bytes = 0u64;
-
-  files.retain(|file| {
-    let is_expired = file
-      .modified_secs
-      .map(|modified| now_secs.saturating_sub(modified) > THUMBNAIL_CACHE_MAX_AGE_SECS)
-      .unwrap_or(false);
-    if !is_expired {
-      return true;
-    }
-
-    if fs::remove_file(&file.path).is_ok() {
-      removed_files += 1;
-      removed_bytes = removed_bytes.saturating_add(file.size);
-      return false;
-    }
-
-    true
-  });
-
-  let mut total_bytes = files.iter().map(|file| file.size).sum::<u64>();
-  if total_bytes > THUMBNAIL_CACHE_MAX_BYTES {
-    files.sort_by_key(|file| file.modified_secs.unwrap_or(0));
-    for file in files {
-      if total_bytes <= THUMBNAIL_CACHE_MAX_BYTES {
-        break;
-      }
-
-      if fs::remove_file(&file.path).is_err() {
-        continue;
-      }
-
-      removed_files += 1;
-      removed_bytes = removed_bytes.saturating_add(file.size);
-      total_bytes = total_bytes.saturating_sub(file.size);
-    }
-  }
-
-  Ok(ThumbnailPruneResult {
-    removed_files,
-    removed_bytes,
-    total_bytes,
-  })
-}
-
-fn clear_cached_files(root: &Path) -> Result<ThumbnailClearResult, String> {
-  let files = collect_cached_files(root)?;
-  let removed_files = files.len();
-  let removed_bytes = files.iter().map(|file| file.size).sum::<u64>();
-
-  if root.exists() {
-    fs::remove_dir_all(root).map_err(|error| error.to_string())?;
-  }
-  fs::create_dir_all(root).map_err(|error| error.to_string())?;
-
-  Ok(ThumbnailClearResult {
-    removed_files,
-    removed_bytes,
-  })
 }
 
 #[tauri::command]
@@ -590,21 +475,12 @@ pub fn thumbnail_resolve_batch(
 }
 
 #[tauri::command]
-pub fn thumbnail_prune_cache(
-  app: AppHandle,
-  _state: State<'_, ThumbnailState>,
-) -> Result<ThumbnailPruneResult, String> {
-  let cache_root = thumbnail_cache_root(&app)?;
-  prune_cached_files(&cache_root)
-}
-
-#[tauri::command]
 pub fn thumbnail_clear_cache(
   app: AppHandle,
   _state: State<'_, ThumbnailState>,
 ) -> Result<ThumbnailClearResult, String> {
   let cache_root = thumbnail_cache_root(&app)?;
-  clear_cached_files(&cache_root)
+  cache::clear_cached_files(&cache_root)
 }
 
 #[cfg(test)]

@@ -149,6 +149,7 @@ pub(super) fn should_persist_workspace_panels_for_filesystem_state_change(
     || previous_state.view_type != next_state.view_type
     || previous_state.sort_key != next_state.sort_key
     || previous_state.sort_descending != next_state.sort_descending
+    || previous_state.search_options != next_state.search_options
 }
 
 #[tauri::command]

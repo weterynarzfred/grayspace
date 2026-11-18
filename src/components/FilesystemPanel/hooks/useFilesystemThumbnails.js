@@ -5,11 +5,12 @@ import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 
 const THUMBNAIL_UPDATE_EVENT = "thumbnail:update";
 const DEFAULT_THUMBNAIL_SIZE_HINT_PX = 22;
-const LARGER_THUMBNAIL_BUCKET_MIN_SIZE_PX = 128;
 const THUMBNAIL_REQUEST_DEBOUNCE_MS = 40;
 
+// The same split as ThumbnailBucket::from_size_hint in Rust, which picks the cached size.
 function resolveThumbnailBucketPx(sizeHintPx) {
-  return sizeHintPx >= LARGER_THUMBNAIL_BUCKET_MIN_SIZE_PX ? 256 : 64;
+  if (sizeHintPx <= 64) return 64;
+  return sizeHintPx <= 256 ? 256 : 512;
 }
 
 function getEntryFilePaths(entries = []) {
@@ -135,7 +136,8 @@ export default function useFilesystemThumbnails({
     const request = {
       items: visibleFilePaths.map((sourcePath) => ({
         sourcePath,
-        sizeHintPx: thumbnailSizePx,
+        // The cached size, not the drawn one: grid previews change size with the pane's width.
+        sizeHintPx: thumbnailBucketPx,
         priority: "visible",
       })),
     };
@@ -159,7 +161,7 @@ export default function useFilesystemThumbnails({
       cancelled = true;
       if (timeoutId !== null) clearTimeout(timeoutId);
     };
-  }, [currentPath, thumbnailSizePx, visibleFilePaths]);
+  }, [currentPath, thumbnailBucketPx, visibleFilePaths]);
 
   return {
     thumbnailSrcByPath,

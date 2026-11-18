@@ -50,7 +50,7 @@ describe("workspaceApi command contracts", () => {
   it.each([
     ["workspaceBootstrap", () => workspaceBootstrap("main"), "workspace_bootstrap", { windowLabel: "main" }],
     ["workspaceGetSnapshot", () => workspaceGetSnapshot(), "workspace_get_snapshot"],
-    ["workspaceNewWindow", () => workspaceNewWindow(), "workspace_new_window", { options: null }],
+    ["workspaceNewWindow", () => workspaceNewWindow(), "workspace_new_window"],
     ["workspaceNewTab", () => workspaceNewTab("window-1"), "workspace_new_tab", { windowId: "window-1" }],
     [
       "workspaceSetActiveTab",
@@ -79,9 +79,9 @@ describe("workspaceApi command contracts", () => {
     ],
     [
       "workspaceSetWindowBounds",
-      () => workspaceSetWindowBounds("window-1", { x: 20, y: 30 }),
+      () => workspaceSetWindowBounds("window-1", { x: 20, y: 30 }, true),
       "workspace_set_window_bounds",
-      { windowId: "window-1", bounds: { x: 20, y: 30 } },
+      { windowId: "window-1", bounds: { x: 20, y: 30 }, minimized: true },
     ],
   ])("%s invokes correct command and args", async (_label, run, expectedCommand, expectedArgs) => {
     await run();

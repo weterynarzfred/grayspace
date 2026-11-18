@@ -255,6 +255,30 @@ describe("commandRegistry", () => {
     })).toBe(true);
   });
 
+  it("maps the hidden-files toggle to ctrl+h in filesystem panes and lists it under View", () => {
+    const ctrlH = { key: "h", ctrlKey: true, shiftKey: false, altKey: false, metaKey: false };
+    expect(isCommandShortcutMatch("filesystem.view.toggleHidden", ctrlH)).toBe(true);
+    expect(isCommandShortcutMatch("filesystem.view.toggleHidden", { ...ctrlH, shiftKey: true })).toBe(false);
+    expect(isCommandShortcutMatch("filesystem.view.toggleHidden", { ...ctrlH, ctrlKey: false, altKey: true }))
+      .toBe(false);
+
+    const filesystemContext = { activePaneId: "pane-1", activePanelType: "Filesystem" };
+    expect(getCommandIds(getCommandsForTrigger("shortcut", filesystemContext)))
+      .toContain("filesystem.view.toggleHidden");
+    expect(getCommandIds(getCommandsForTrigger("palette", filesystemContext)))
+      .toContain("filesystem.view.toggleHidden");
+    expect(getCommandIds(getCommandsForTrigger("shortcut", { ...filesystemContext, activePanelType: "Terminal" })))
+      .not.toContain("filesystem.view.toggleHidden");
+
+    const viewSubmenu = getCommandsForTrigger("context-menu", {
+      source: "context-menu",
+      targetType: "panel",
+      targetPanelType: "Filesystem",
+    }).find(command => command.id === "filesystem.view");
+    expect(viewSubmenu.title).toBe("View");
+    expect(getCommandIds(viewSubmenu.submenu)).toContain("filesystem.view.toggleHidden");
+  });
+
   it("maps open-recent shortcut to ctrl+r", () => {
     expect(isCommandShortcutMatch("filesystem.openRecentFolders", {
       key: "r",
@@ -636,5 +660,49 @@ describe("commandRegistry", () => {
       targetType: "tab",
       selectedPaths: ["C:\\notes.txt"],
     })).not.toContain("filesystem.showShellMenu");
+  });
+});
+
+describe("option marks", () => {
+  function getMark(commandId, context) {
+    return COMMANDS.find(command => command.id === commandId).getMark(context);
+  }
+
+  it("marks the current view type, hidden files when shown, and the sort key with its direction", () => {
+    const context = {
+      filesystemViewType: "grid",
+      filesystemSortKey: "modified",
+      filesystemSortDescending: true,
+      showHiddenFiles: true,
+    };
+
+    expect(getMark("filesystem.view.grid", context)).toBe("✓");
+    expect(getMark("filesystem.view.details", context)).toBe("");
+    expect(getMark("filesystem.view.toggleHidden", context)).toBe("✓");
+    expect(getMark("filesystem.view.toggleHidden", { ...context, showHiddenFiles: false })).toBe("");
+    expect(getMark("filesystem.sort.modified", context)).toBe("▾");
+    expect(getMark("filesystem.sort.modified", { ...context, filesystemSortDescending: false })).toBe("▴");
+    expect(getMark("filesystem.sort.name", context)).toBe("");
+  });
+
+  it("puts the marked options in the View and Sort By submenus", () => {
+    const submenuIds = ["filesystem.view", "filesystem.sort"];
+    const marked = COMMANDS
+      .filter(command => submenuIds.includes(command.id))
+      .flatMap(command => command.submenu)
+      .filter(command => command.getMark)
+      .map(command => command.id);
+
+    expect(marked).toEqual([
+      "filesystem.view.folderTree",
+      "filesystem.view.details",
+      "filesystem.view.grid",
+      "filesystem.view.foldableGrid",
+      "filesystem.view.toggleHidden",
+      "filesystem.sort.name",
+      "filesystem.sort.modified",
+      "filesystem.sort.size",
+      "filesystem.sort.type",
+    ]);
   });
 });

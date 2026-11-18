@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import useFilesystemSearch, { sortSearchResults } from "./useFilesystemSearch";
+import { DEFAULT_SEARCH_OPTIONS, DEFAULT_SKIPPED_FOLDER_NAMES } from "../filesystemSearchOptions";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -67,6 +68,7 @@ describe("useFilesystemSearch", () => {
       searchId: expect.any(String),
       root: "C:\\Root",
       query: "img",
+      options: { useRegex: false, skipFolderNames: DEFAULT_SKIPPED_FOLDER_NAMES, skipCacheDirTagged: false, skipHidden: false },
     });
     const searchId = lastSearchId();
 
@@ -108,6 +110,62 @@ describe("useFilesystemSearch", () => {
     emitSearchResults({ searchId: rerunId, entries: [file("a3.txt")], done: true, truncated: false });
     expect(resultNames(result)).toEqual(["a1.txt", "a3.txt"]);
     expect(result.current.searchStatus).toBe("done");
+  });
+
+  it("reruns the current search with the new options when they change", async () => {
+    const { result, rerender } = renderHook(
+      ({ searchOptions }) => useFilesystemSearch({ rootPath: "C:\\Root", searchOptions }),
+      { initialProps: { searchOptions: DEFAULT_SEARCH_OPTIONS } },
+    );
+    act(() => result.current.setSearchQuery("src/.*\\.jsx$"));
+    await waitFor(() => expect(searchStartCount()).toBe(1));
+    const firstSearchId = lastSearchId();
+
+    rerender({
+      searchOptions: { ...DEFAULT_SEARCH_OPTIONS, useRegex: true, skipFolders: false, skipCacheDirTagged: true },
+    });
+
+    await waitFor(() => expect(searchStartCount()).toBe(2));
+    expect(invoke).toHaveBeenCalledWith("filesystem_search_cancel", { searchId: firstSearchId });
+    expect(invoke).toHaveBeenLastCalledWith("filesystem_search_start", {
+      searchId: expect.any(String),
+      root: "C:\\Root",
+      query: "src/.*\\.jsx$",
+      options: { useRegex: true, skipFolderNames: [], skipCacheDirTagged: true, skipHidden: false },
+    });
+  });
+
+  it("reruns the current search skipping hidden entries when they get hidden", async () => {
+    const { result, rerender } = renderHook(
+      ({ showHidden }) => useFilesystemSearch({ rootPath: "C:\\Root", showHidden }),
+      { initialProps: { showHidden: true } },
+    );
+    act(() => result.current.setSearchQuery("config"));
+    await waitFor(() => expect(searchStartCount()).toBe(1));
+    const firstSearchId = lastSearchId();
+
+    rerender({ showHidden: false });
+
+    await waitFor(() => expect(searchStartCount()).toBe(2));
+    expect(invoke).toHaveBeenCalledWith("filesystem_search_cancel", { searchId: firstSearchId });
+    expect(invoke).toHaveBeenLastCalledWith("filesystem_search_start", expect.objectContaining({
+      query: "config",
+      options: expect.objectContaining({ skipHidden: true }),
+    }));
+  });
+
+  it("ends with an error status carrying the reason when the backend refuses the search", async () => {
+    invoke.mockImplementation(async (command) => {
+      if (command === "filesystem_search_start") throw "Invalid regex: unclosed group";
+      return null;
+    });
+    const searchOptions = { ...DEFAULT_SEARCH_OPTIONS, useRegex: true };
+    const { result } = renderHook(() => useFilesystemSearch({ rootPath: "C:\\Root", searchOptions }));
+
+    act(() => result.current.setSearchQuery("a("));
+
+    await waitFor(() => expect(result.current.searchStatus).toBe("error"));
+    expect(result.current.searchError).toBe("Invalid regex: unclosed group");
   });
 
   it("cancels a running search when the query is cleared", async () => {

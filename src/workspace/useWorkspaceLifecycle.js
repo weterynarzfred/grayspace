@@ -9,26 +9,35 @@ import {
 } from "./workspaceApi";
 import { getErrorMessage } from "./appRuntime";
 
+// Moves and resizes fire per pixel; each report rebroadcasts the snapshot and may write the saved bounds.
+export const BOUNDS_SYNC_DELAY_MS = 250;
+
 export default function useWorkspaceLifecycle({
   dispatch,
   currentWindowIdRef,
 }) {
   useEffect(() => {
     let isDisposed = false;
+    let boundsSyncTimer = null;
     const unlistenCallbacks = [];
 
+    // Inner size, because that is what Rust applies with set_size when it builds the window next launch.
     const syncBounds = async (appWindow, windowId) => {
       if (!windowId) return;
-      const [position, size] = await Promise.all([
+      const [position, size, maximized, minimized] = await Promise.all([
         appWindow.outerPosition(),
-        appWindow.outerSize(),
+        appWindow.innerSize(),
+        appWindow.isMaximized(),
+        appWindow.isMinimized(),
       ]);
+      // Minimized windows report -32000,-32000 on Windows, so Rust only records the flag for them.
       await workspaceSetWindowBounds(windowId, {
         x: position.x,
         y: position.y,
         width: size.width,
         height: size.height,
-      });
+        maximized,
+      }, minimized);
     };
 
     const initializeWorkspace = async () => {
@@ -40,7 +49,10 @@ export default function useWorkspaceLifecycle({
       await syncBounds(appWindow, bootstrap.windowId);
 
       const syncCurrentWindowBounds = () => {
-        syncBounds(appWindow, currentWindowIdRef.current).catch(noop);
+        clearTimeout(boundsSyncTimer);
+        boundsSyncTimer = setTimeout(() => {
+          syncBounds(appWindow, currentWindowIdRef.current).catch(noop);
+        }, BOUNDS_SYNC_DELAY_MS);
       };
 
       unlistenCallbacks.push(
@@ -62,6 +74,7 @@ export default function useWorkspaceLifecycle({
 
     return () => {
       isDisposed = true;
+      clearTimeout(boundsSyncTimer);
       unlistenCallbacks.forEach(unlisten => unlisten?.());
     };
   }, [currentWindowIdRef, dispatch]);

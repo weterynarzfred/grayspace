@@ -96,6 +96,7 @@ export default function executeCommand(
     workspaceActions = undefined,
     openCommandPalette = undefined,
     openRecentFolders = undefined,
+    toggleShowHiddenFiles = undefined,
   } = {},
 ) {
   if (!commandId) return false;
@@ -107,6 +108,12 @@ export default function executeCommand(
 
   if (commandId === COMMAND_IDS.FILESYSTEM_OPEN_RECENT_FOLDERS) {
     openRecentFolders?.();
+    return true;
+  }
+
+  // App-wide preference, so the panes are not involved.
+  if (commandId === COMMAND_IDS.FILESYSTEM_TOGGLE_HIDDEN) {
+    toggleShowHiddenFiles?.();
     return true;
   }
 

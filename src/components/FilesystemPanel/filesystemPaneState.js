@@ -1,4 +1,5 @@
 import { getSelectedPathsFromState } from "../../utils/pathSelection";
+import { normalizeSearchOptions } from "./filesystemSearchOptions";
 
 export const FILESYSTEM_THUMBNAIL_SIZE_STEPS = [22, 32, 48, 64, 96, 128, 192, 256];
 export const DEFAULT_FILESYSTEM_THUMBNAIL_SIZE = FILESYSTEM_THUMBNAIL_SIZE_STEPS[0];
@@ -43,6 +44,7 @@ export function normalizeFilesystemPaneState(filesystemState = {}) {
     expandedPaths,
     scrollTop: Number.isFinite(state.scrollTop) ? Math.max(0, Math.round(state.scrollTop)) : 0,
     ...normalizeFilesystemViewStyle(state),
+    searchOptions: normalizeSearchOptions(state.searchOptions),
   };
 }
 

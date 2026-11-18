@@ -4,8 +4,8 @@ mod runtime_effects;
 mod types;
 
 pub use commands::{
-  handle_runtime_window_destroyed, handle_second_instance_launch, resolve_launch_target,
-  workspace_bootstrap, LaunchState, workspace_close_tab,
+  app_preferences_get, app_preferences_set, handle_runtime_window_destroyed, handle_second_instance_launch, resolve_launch_target,
+  open_startup_window, workspace_bootstrap, LaunchState, workspace_close_tab,
   workspace_close_tab_pane, workspace_close_window, workspace_detach_tab_to_new_window,
   workspace_folder_view_styles_get, workspace_folder_view_styles_set,
   workspace_get_snapshot, workspace_move_tab, workspace_new_tab, workspace_new_window,

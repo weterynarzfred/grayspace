@@ -1,13 +1,12 @@
 use super::super::model::{PaneState, WorkspaceModel, WorkspaceState, WorkspaceTab};
-use super::super::runtime_effects::{emit_workspace_updated, publish_snapshot};
+use super::super::runtime_effects::publish_snapshot;
 use super::super::types::{
-  FilesystemPaneState, LayoutAxis, NewWindowOptions, TabActivePanePayload, TabClosePanePayload,
+  FilesystemPaneState, LayoutAxis, TabActivePanePayload, TabClosePanePayload,
   TabCwdPayload, TabLayoutNode, TabLayoutSplitRatioPayload, TabOpenFolderPayload,
   TabOpenWorkspaceFolderPayload, TabPaneFilesystemStatePayload, TabPanelTypePayload,
-  TabSelectedFilesPayload, TabSplitPanePayload, TabWorkspaceRootPayload, WindowBounds,
+  TabSelectedFilesPayload, TabSplitPanePayload, TabWorkspaceRootPayload,
   WorkspaceBootstrapPayload, WorkspacePaneSplitPayload, WorkspaceSnapshot,
-  WorkspaceWindowCreationPayload, DEFAULT_LEFT_PANEL_TYPE, DEFAULT_RIGHT_PANEL_TYPE,
-  DEFAULT_SPLIT_RATIO,
+  DEFAULT_LEFT_PANEL_TYPE, DEFAULT_RIGHT_PANEL_TYPE, DEFAULT_SPLIT_RATIO,
 };
 use super::basic_support::{
   close_layout_leaf, collect_layout_pane_ids, count_layout_leaves, find_first_layout_pane_id,
@@ -15,7 +14,7 @@ use super::basic_support::{
   update_layout_split_ratio, update_pane_filesystem_state, update_pane_panel_type,
   update_tab_selected_files, update_tab_workspace_root,
 };
-use super::launch::{open_launch_target_in_window, take_pending_launch_target};
+use super::launch::open_new_window;
 use super::recent_folders::{normalize_recent_folder_path, record_recent_folder_open};
 use super::workspace_config::{
   apply_workspace_panels_config, find_workspace_root_for_path,
@@ -233,27 +232,19 @@ pub fn workspace_bootstrap(
   state: State<WorkspaceState>,
   window_label: String,
 ) -> Result<WorkspaceBootstrapPayload, String> {
-  let (window_id, snapshot, changed, launch_target) = {
+  let (window_id, snapshot, changed) = {
     let mut model = state
       .inner
       .lock()
       .map_err(|_| "Workspace state is unavailable.".to_string())?;
     let revision_before = model.revision;
     let window_id = model.ensure_window_exists_for_label(&window_label);
-    let is_new_window = model.revision != revision_before;
-    let launch_target = is_new_window.then(|| take_pending_launch_target(&app_handle)).flatten();
-    if let Some(target) = &launch_target {
-      open_launch_target_in_window(&mut model, &window_id, target, true);
-    }
     let snapshot = model.snapshot();
-    (window_id, snapshot, is_new_window, launch_target)
+    (window_id, snapshot, model.revision != revision_before)
   };
 
   if changed {
     publish_snapshot(&app_handle, &snapshot, false);
-  }
-  if let Some(target) = launch_target {
-    let _ = record_recent_folder_open(&app_handle, target.folder());
   }
 
   Ok(WorkspaceBootstrapPayload {
@@ -272,39 +263,10 @@ pub fn workspace_get_snapshot(state: State<WorkspaceState>) -> Result<WorkspaceS
   Ok(model.snapshot())
 }
 
-#[tauri::command]
-pub fn workspace_new_window(
-  app_handle: AppHandle,
-  state: State<WorkspaceState>,
-  options: Option<NewWindowOptions>,
-) -> Result<WorkspaceWindowCreationPayload, String> {
-  let (window_id, label, bounds, snapshot) = {
-    let mut model = state
-      .inner
-      .lock()
-      .map_err(|_| "Workspace state is unavailable.".to_string())?;
-
-    let window_id = model.next_window_id();
-    let label = format!("ws-{}", window_id.trim_start_matches("window-"));
-    let bounds = WindowBounds {
-      x: options.as_ref().and_then(|opt| opt.x).unwrap_or(120),
-      y: options.as_ref().and_then(|opt| opt.y).unwrap_or(120),
-      ..WindowBounds::default()
-    };
-    model.create_window_with_new_tab(window_id.clone(), label.clone(), bounds.clone());
-    model.bump_revision();
-    let snapshot = model.snapshot();
-    (window_id, label, bounds, snapshot)
-  };
-
-  publish_snapshot(&app_handle, &snapshot, false);
-
-  Ok(WorkspaceWindowCreationPayload {
-    window_id,
-    window_label: label,
-    bounds,
-    snapshot,
-  })
+// Async because building a window inside a synchronous command deadlocks on Windows.
+#[tauri::command(async)]
+pub fn workspace_new_window(app_handle: AppHandle) -> Result<(), String> {
+  open_new_window(&app_handle).ok_or_else(|| "Could not open a new window.".to_string())
 }
 
 #[tauri::command]
@@ -911,43 +873,6 @@ pub fn workspace_replace_tab_folder(
   publish_snapshot(&app_handle, &snapshot, false);
   let _ = record_recent_folder_open(&app_handle, &normalized_path);
   Ok(snapshot)
-}
-
-#[tauri::command]
-pub fn workspace_set_window_bounds(
-  app_handle: AppHandle,
-  state: State<WorkspaceState>,
-  window_id: String,
-  bounds: WindowBounds,
-) -> Result<(), String> {
-  let snapshot = {
-    let mut model = state
-      .inner
-      .lock()
-      .map_err(|_| "Workspace state is unavailable.".to_string())?;
-
-    let window = model
-      .windows
-      .get_mut(&window_id)
-      .ok_or_else(|| "Window not found.".to_string())?;
-    if window.bounds.x != bounds.x
-      || window.bounds.y != bounds.y
-      || window.bounds.width != bounds.width
-      || window.bounds.height != bounds.height
-    {
-      window.bounds = bounds;
-      model.bump_revision();
-      Some(model.snapshot())
-    } else {
-      None
-    }
-  };
-
-  if let Some(snapshot) = snapshot {
-    emit_workspace_updated(&app_handle, snapshot);
-  }
-
-  Ok(())
 }
 
 #[cfg(test)]

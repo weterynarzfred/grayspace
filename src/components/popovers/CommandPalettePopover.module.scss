@@ -58,6 +58,11 @@
   color: $text-primary;
 }
 
+.commandMark {
+  margin-left: 0.4em;
+  color: $accent-active;
+}
+
 .commandShortcut {
   color: $text-secondary;
   font-family: $font-mono;

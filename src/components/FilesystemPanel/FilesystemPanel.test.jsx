@@ -815,7 +815,7 @@ describe("FilesystemPanel", () => {
     expect(draftButton).toHaveAttribute("aria-selected", "true");
   });
 
-  it("cycles thumbnail sizes and requests matching thumbnail size hints", async () => {
+  it("cycles thumbnail sizes and requests the matching cached thumbnail size", async () => {
     renderFilesystemPanel();
 
     const driveButton = await screen.findByRole("button", { name: /C:\\/i });
@@ -833,62 +833,20 @@ describe("FilesystemPanel", () => {
     }
 
     await waitFor(() => {
-      expect(getLatestThumbnailSizeHint()).toBe(22);
-    });
-
-    fireEvent.click(sizeButton);
-    expect(sizeButton).toHaveTextContent("32px");
-    await waitFor(() => {
-      expect(getLatestThumbnailSizeHint()).toBe(32);
-    });
-
-    fireEvent.click(sizeButton);
-    expect(sizeButton).toHaveTextContent("48px");
-    await waitFor(() => {
-      expect(getLatestThumbnailSizeHint()).toBe(48);
-    });
-
-    fireEvent.click(sizeButton);
-    expect(sizeButton).toHaveTextContent("64px");
-    await waitFor(() => {
       expect(getLatestThumbnailSizeHint()).toBe(64);
     });
 
-    fireEvent.click(sizeButton);
-    expect(sizeButton).toHaveTextContent("96px");
-    await waitFor(() => {
-      expect(getLatestThumbnailSizeHint()).toBe(96);
-    });
-
-    fireEvent.click(sizeButton);
-    expect(sizeButton).toHaveTextContent("128px");
-    await waitFor(() => {
-      expect(getLatestThumbnailSizeHint()).toBe(128);
-    });
-
-    fireEvent.click(sizeButton);
-    expect(sizeButton).toHaveTextContent("192px");
-    await waitFor(() => {
-      expect(getLatestThumbnailSizeHint()).toBe(192);
-    });
-
-    fireEvent.click(sizeButton);
-    expect(sizeButton).toHaveTextContent("256px");
-    await waitFor(() => {
-      expect(getLatestThumbnailSizeHint()).toBe(256);
-    });
-
-    fireEvent.click(sizeButton);
-    expect(sizeButton).toHaveTextContent("22px");
-    await waitFor(() => {
-      expect(getLatestThumbnailSizeHint()).toBe(22);
-    });
-
-    fireEvent.click(sizeButton);
-    expect(sizeButton).toHaveTextContent("32px");
-    await waitFor(() => {
-      expect(getLatestThumbnailSizeHint()).toBe(32);
-    });
+    // Rust caches 64 px thumbnails up to 64 px and 256 px ones above that.
+    for (const [sizeLabel, cachedSizePx] of [
+      ["32px", 64], ["48px", 64], ["64px", 64], ["96px", 256],
+      ["128px", 256], ["192px", 256], ["256px", 256], ["22px", 64],
+    ]) {
+      fireEvent.click(sizeButton);
+      expect(sizeButton).toHaveTextContent(sizeLabel);
+      await waitFor(() => {
+        expect(getLatestThumbnailSizeHint()).toBe(cachedSizePx);
+      });
+    }
   });
 
   it("persists thumbnail size in filesystem pane state", async () => {
@@ -992,6 +950,98 @@ describe("FilesystemPanel", () => {
       });
     });
     expect(screen.getByRole("button", { name: /Temp/i })).toBeInTheDocument();
+  });
+
+  it("opens breadcrumb folders in a new tab on middle click without the workspace-exit confirmation", async () => {
+    renderFilesystemPanel({
+      tabId: "tab-1",
+      tabWorkspaceRoot: "C:\\Users",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\Users\\Projects",
+        selectedPaths: [],
+      },
+    });
+
+    const breadcrumbNav = await screen.findByRole("navigation", { name: "Current path" });
+    const driveCrumb = within(breadcrumbNav).getByRole("button", { name: "C:" });
+    fireEvent.mouseDown(driveCrumb, { button: 1 });
+    fireEvent.mouseUp(driveCrumb, { button: 1 });
+
+    // The fixture's C:\ holds a .grayspace folder, so it opens as a workspace.
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("workspace_open_workspace_folder_from_tab", {
+        payload: {
+          tabId: "tab-1",
+          workspaceRoot: "C:\\",
+        },
+      });
+    });
+    expect(openConfirmMock).not.toHaveBeenCalled();
+    expect(within(breadcrumbNav).getByRole("button", { name: "Projects" })).toBeInTheDocument();
+  });
+
+  it("opens a non-workspace breadcrumb folder in a new tab on middle click", async () => {
+    renderFilesystemPanel({
+      tabId: "tab-1",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\Temp",
+        selectedPaths: [],
+      },
+    });
+
+    const breadcrumbNav = await screen.findByRole("navigation", { name: "Current path" });
+    const tempCrumb = within(breadcrumbNav).getByRole("button", { name: "Temp" });
+    fireEvent.mouseDown(tempCrumb, { button: 1 });
+    fireEvent.mouseUp(tempCrumb, { button: 1 });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("workspace_open_folder_from_tab", {
+        payload: {
+          tabId: "tab-1",
+          path: "C:\\Temp",
+        },
+      });
+    });
+  });
+
+  it("opens drives in a new tab on middle click", async () => {
+    renderFilesystemPanel({ tabId: "tab-1" });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.mouseDown(driveButton, { button: 1 });
+    fireEvent.mouseUp(driveButton, { button: 1 });
+
+    // The fixture's C:\ holds a .grayspace folder, so it opens as a workspace.
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("workspace_open_workspace_folder_from_tab", {
+        payload: {
+          tabId: "tab-1",
+          workspaceRoot: "C:\\",
+        },
+      });
+    });
+    expect(screen.queryByRole("navigation", { name: "Current path" })).not.toBeInTheDocument();
+    expect(invoke).not.toHaveBeenCalledWith("list_directory_page", expect.objectContaining({ path: "C:\\" }));
+  });
+
+  it("keeps the drive list when a middle-clicked drive fails to open", async () => {
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_drives") return [{ name: "C:", path: "C:\\" }, { name: "E:", path: "E:\\" }];
+      if (command === "workspace_open_folder_from_tab") throw "Folder does not exist.";
+      return baseInvoke(command, payload);
+    });
+    renderFilesystemPanel({ tabId: "tab-1" });
+
+    const removedDrive = await screen.findByRole("button", { name: /E:\\/i });
+    fireEvent.mouseDown(removedDrive, { button: 1 });
+    fireEvent.mouseUp(removedDrive, { button: 1 });
+
+    expect(await screen.findByText("Folder does not exist.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /C:\\/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /E:\\/i })).toBeInTheDocument();
   });
 
   it("opens middle-clicked files as pinned preview entries", async () => {
@@ -3382,6 +3432,67 @@ describe("FilesystemPanel", () => {
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 
+  it("sizes grid thumbnails to fill their cells, but keeps small icons at their size", async () => {
+    let gridWidthPx = 600;
+    // Only the grid itself reports this width; the panel around it is wider by its paddings.
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function getClientWidth() {
+      return this.style.getPropertyValue("--grid-cols") ? gridWidthPx : gridWidthPx + 64;
+    });
+    function getLatestThumbnailSizeHint() {
+      const latestCall = invoke.mock.calls.findLast(([command]) => command === "thumbnail_resolve_batch");
+      return latestCall?.[1]?.request?.items?.[0]?.sizeHintPx;
+    }
+    const filesystemState = {
+      currentDrive: "C:\\",
+      currentPath: "C:\\Users",
+      scrollTop: 0,
+      viewType: "grid",
+      thumbnailSizePx: 128,
+    };
+    const { unmount } = renderFilesystemPanel({ filesystemState });
+    await screen.findByRole("button", { name: /todo\.txt/i });
+
+    // 600 px minus 8 px padding each side holds 4 cells of at least 138 px (128 + padding and
+    // border) with 8 px gaps; they share the rest and are 140 px wide.
+    const grid = document.querySelector("[style*='--grid-cols']");
+    expect(grid.style.getPropertyValue("--grid-cols")).toBe("4");
+    expect(grid.style.getPropertyValue("--grid-preview-size")).toBe("130px");
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(256);
+    });
+    unmount();
+
+    // 7 cells of exactly 64 + 10 px: the previews are 64 px, yet still use the larger cached size,
+    // as they do at any other width, so a resize doesn't swap cached sizes back and forth.
+    gridWidthPx = 7 * 74 + 6 * 8 + 16;
+    invoke.mockClear();
+    const { unmount: unmountExactFit } = renderFilesystemPanel({
+      filesystemState: { ...filesystemState, thumbnailSizePx: 64 },
+    });
+    await screen.findByRole("button", { name: /todo\.txt/i });
+    expect(document.querySelector("[style*='--grid-cols']").style.getPropertyValue("--grid-preview-size")).toBe("64px");
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(256);
+    });
+    unmountExactFit();
+
+    // From 192 px up, previews can pass 256 px, so the 512 px cache is used.
+    gridWidthPx = 600;
+    invoke.mockClear();
+    const { unmount: unmountLarge } = renderFilesystemPanel({
+      filesystemState: { ...filesystemState, thumbnailSizePx: 192 },
+    });
+    await screen.findByRole("button", { name: /todo\.txt/i });
+    await waitFor(() => {
+      expect(getLatestThumbnailSizeHint()).toBe(512);
+    });
+    unmountLarge();
+
+    renderFilesystemPanel({ filesystemState: { ...filesystemState, thumbnailSizePx: 48 } });
+    await screen.findByRole("button", { name: /todo\.txt/i });
+    expect(document.querySelector("[style*='--grid-cols']").style.getPropertyValue("--grid-preview-size")).toBe("48px");
+  });
+
   it("lets grid cells be dragged and folders in the grid take drops", async () => {
     renderFilesystemPanel({
       tabId: "tab-grid",
@@ -3674,6 +3785,395 @@ describe("FilesystemPanel", () => {
       expect(invoke).toHaveBeenCalledWith("filesystem_search_start", expect.objectContaining({
         query: "todo",
       }));
+    });
+  });
+
+  it("notes skipped folders when a search finds nothing and shows a refused regex in the status line", async () => {
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "filesystem_search_start" && payload.options.useRegex) throw "Invalid regex: unclosed group";
+      return baseInvoke(command, payload);
+    });
+    renderFilesystemPanel({
+      paneId: "pane-search-status",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    await screen.findByRole("button", { name: /notes\.txt/i });
+
+    dispatchFilesystemCommand("filesystem.searchCurrentSubtree", "pane-search-status");
+    const searchInput = await screen.findByRole("searchbox", {
+      name: "Search current folder and subfolders",
+    });
+    fireEvent.change(searchInput, { target: { value: "zzz" } });
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("filesystem_search_start", expect.objectContaining({
+        query: "zzz",
+        options: expect.objectContaining({ useRegex: false, skipFolderNames: expect.arrayContaining(["node_modules"]) }),
+      }));
+    });
+    const [, { searchId }] = invoke.mock.calls.findLast(([command]) => command === "filesystem_search_start");
+    await filesystemSearchCallback({ payload: { searchId, entries: [], done: true, truncated: false } });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      'No results for "zzz" in this folder or its subfolders (skipped folders not searched).',
+    );
+
+    fireEvent.change(searchInput, { target: { value: "a(" } });
+    fireEvent.click(screen.getByRole("button", { name: "Use regular expression" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("Invalid regex: unclosed group");
+    });
+  });
+
+  it("restores search options from the pane state and saves changes to them", async () => {
+    const onFilesystemStateChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-search-options",
+      paneId: "pane-search-options",
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\",
+        scrollTop: 0,
+        searchOptions: { useRegex: true, skipFolders: false, skipFolderNames: ["dist"], skipCacheDirTagged: true },
+      },
+      onFilesystemStateChange,
+    });
+    await screen.findByRole("button", { name: /notes\.txt/i });
+
+    dispatchFilesystemCommand("filesystem.searchCurrentSubtree", "pane-search-options");
+    const searchInput = await screen.findByRole("searchbox", {
+      name: "Search current folder and subfolders",
+    });
+    const regexToggle = screen.getByRole("button", { name: "Use regular expression" });
+    expect(regexToggle).toHaveAttribute("aria-pressed", "true");
+    fireEvent.change(searchInput, { target: { value: "^notes" } });
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("filesystem_search_start", expect.objectContaining({
+        query: "^notes",
+        options: { useRegex: true, skipFolderNames: [], skipCacheDirTagged: true, skipHidden: false },
+      }));
+    });
+
+    fireEvent.click(regexToggle);
+
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        searchOptions: { useRegex: false, skipFolders: false, skipFolderNames: ["dist"], skipCacheDirTagged: true },
+      }));
+    });
+    await waitFor(() => {
+      const [, lastStart] = invoke.mock.calls.findLast(([command]) => command === "filesystem_search_start");
+      expect(lastStart).toEqual(expect.objectContaining({
+        query: "^notes",
+        options: { useRegex: false, skipFolderNames: [], skipCacheDirTagged: true, skipHidden: false },
+      }));
+    });
+  });
+
+  it("saves default search options as null, so untouched panes keep no copy of the defaults", async () => {
+    const onFilesystemStateChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-default-search-options",
+      paneId: "pane-default-search-options",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+      onFilesystemStateChange,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /notes\.txt/i }));
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        selectedPaths: ["C:\\notes.txt"],
+        searchOptions: null,
+      }));
+    });
+
+    dispatchFilesystemCommand("filesystem.searchCurrentSubtree", "pane-default-search-options");
+    const regexToggle = await screen.findByRole("button", { name: "Use regular expression" });
+    fireEvent.click(regexToggle);
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        searchOptions: expect.objectContaining({ useRegex: true }),
+      }));
+    });
+
+    fireEvent.click(regexToggle);
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({ searchOptions: null }));
+    });
+  });
+
+  it("leaves Enter and arrow keys on header controls and in the search options to those controls", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-header-keys",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    const tempButton = await screen.findByRole("button", { name: /Temp/i });
+    fireEvent.click(tempButton);
+    expect(tempButton).toHaveAttribute("aria-selected", "true");
+
+    const sizeToggle = screen.getByRole("button", { name: /Toggle icon and thumbnail size/ });
+    fireEvent.keyDown(sizeToggle, { key: "Enter" });
+    fireEvent.keyDown(sizeToggle, { key: "ArrowDown" });
+
+    dispatchFilesystemCommand("filesystem.searchCurrentSubtree", "pane-header-keys");
+    await screen.findByRole("searchbox", { name: "Search current folder and subfolders" });
+    fireEvent.click(screen.getByRole("button", { name: "Search options" }));
+    const optionsPanel = screen.getByRole("group", { name: "Search options" });
+    fireEvent.keyDown(optionsPanel, { key: "Enter" });
+    fireEvent.keyDown(optionsPanel, { key: "ArrowDown" });
+    await flushPromises();
+
+    expect(invoke).not.toHaveBeenCalledWith("list_directory_page", expect.objectContaining({ path: "C:\\Temp" }));
+    expect(tempButton).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("does not let Enter on one pane's header open the selection of the pane under the pointer", async () => {
+    render(
+      <PanelsDndLayer>
+        <div data-pane-active="false" data-testid="pane-a">
+          <FilesystemPanel tabId="tab-header-keys" paneId="pane-a" />
+        </div>
+        <div data-pane-active="true" data-testid="pane-b">
+          <FilesystemPanel tabId="tab-header-keys" paneId="pane-b" />
+        </div>
+      </PanelsDndLayer>,
+    );
+    const paneA = within(screen.getByTestId("pane-a"));
+    const paneB = within(screen.getByTestId("pane-b"));
+    fireEvent.doubleClick(await paneB.findByRole("button", { name: /C:\\/i }));
+    fireEvent.click(await paneB.findByRole("button", { name: /Users/i }));
+
+    const callsBefore = invoke.mock.calls.length;
+
+    fireEvent.keyDown(paneA.getByRole("button", { name: /Toggle icon and thumbnail size/ }), { key: "Enter" });
+    await flushPromises();
+
+    const openCalls = invoke.mock.calls.slice(callsBefore)
+      .map(([command]) => command)
+      .filter((command) => command.startsWith("workspace_open") || command === "list_directory_page");
+    expect(openCalls).toEqual([]);
+  });
+
+  it("lets go of focus when a header button is clicked, so keys go to the pane under the pointer", async () => {
+    const filesystemState = { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 };
+    render(
+      <PanelsDndLayer>
+        <div data-pane-active="false" data-testid="pane-a">
+          <FilesystemPanel tabId="tab-header-focus" paneId="pane-a" filesystemState={filesystemState} />
+        </div>
+        <div data-pane-active="true" data-testid="pane-b">
+          <FilesystemPanel tabId="tab-header-focus" paneId="pane-b" filesystemState={filesystemState} />
+        </div>
+      </PanelsDndLayer>,
+    );
+    const paneA = within(screen.getByTestId("pane-a"));
+    const paneB = within(screen.getByTestId("pane-b"));
+    (await paneA.findByRole("button", { name: /Users/i })).focus();
+    const sizeToggleInB = paneB.getByRole("button", { name: /Toggle icon and thumbnail size/ });
+
+    fireEvent.mouseDown(sizeToggleInB);
+    expect(document.activeElement).toBe(document.body);
+
+    dispatchFilesystemCommand("filesystem.focusBreadcrumbInput", "pane-b");
+    expect(await paneB.findByRole("textbox", { name: "Current folder path" })).toHaveFocus();
+    fireEvent.mouseDown(sizeToggleInB);
+    expect(paneB.queryByRole("textbox", { name: "Current folder path" })).not.toBeInTheDocument();
+  });
+
+  async function showSearchResults(paneId, query, entries) {
+    dispatchFilesystemCommand("filesystem.searchCurrentSubtree", paneId);
+    fireEvent.change(
+      await screen.findByRole("searchbox", { name: "Search current folder and subfolders" }),
+      { target: { value: query } },
+    );
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("filesystem_search_start", expect.objectContaining({ query }));
+    });
+    const [, { searchId }] = invoke.mock.calls.findLast(([command]) => command === "filesystem_search_start");
+    await filesystemSearchCallback({ payload: { searchId, entries, done: true, truncated: false } });
+  }
+
+  it("clears the selection when the search options change during a search", async () => {
+    const onFilesystemStateChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-search-options-selection",
+      paneId: "pane-search-options-selection",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+      onFilesystemStateChange,
+    });
+    await screen.findByRole("button", { name: /notes\.txt/i });
+    await showSearchResults("pane-search-options-selection", "notes", [
+      { name: "notes.txt", path: "C:\\notes.txt", is_dir: false },
+    ]);
+    fireEvent.click(await screen.findByRole("button", { name: /notes\.txt/i }));
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        selectedPaths: ["C:\\notes.txt"],
+      }));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Use regular expression" }));
+
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({ selectedPaths: [] }));
+    });
+  });
+
+  function mockHiddenEntries() {
+    const hiddenFixture = {
+      "C:\\": [
+        { name: "Users", path: "C:\\Users", is_dir: true, is_hidden: false },
+        { name: "$Recycle.Bin", path: "C:\\$Recycle.Bin", is_dir: true, is_hidden: true },
+        { name: "notes.txt", path: "C:\\notes.txt", is_dir: false, is_hidden: false },
+        { name: "pagefile.sys", path: "C:\\pagefile.sys", is_dir: false, is_hidden: true },
+      ],
+      "C:\\Users": [
+        { name: "Projects", path: "C:\\Users\\Projects", is_dir: true, is_hidden: false },
+        { name: "AppData", path: "C:\\Users\\AppData", is_dir: true, is_hidden: true },
+      ],
+    };
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      const folderEntries = hiddenFixture[payload?.path];
+      if (command === "list_directory_page" && folderEntries) {
+        const entries = folderEntries.filter((entry) => payload.showHidden !== false || !entry.is_hidden);
+        return { entries, hasMore: false, totalCount: entries.length };
+      }
+      if (command === "list_directory" && folderEntries) return folderEntries;
+      return baseInvoke(command, payload);
+    });
+  }
+
+  // Returns a setter that rerenders the panel with another hidden-files preference.
+  function renderHiddenEntriesPanel(showHiddenFiles) {
+    const props = {
+      paneId: "pane-hidden",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, expandedPaths: ["C:\\Users"] },
+    };
+    const view = renderFilesystemPanel({ ...props, showHiddenFiles });
+    return (nextShowHiddenFiles) => view.rerender(<PanelsDndLayer>
+      <FilesystemPanel {...props} showHiddenFiles={nextShowHiddenFiles} />
+    </PanelsDndLayer>);
+  }
+
+  it("dims hidden entries when shown and drops them from the listing and expanded folders when hidden", async () => {
+    mockHiddenEntries();
+    const setShowHiddenFiles = renderHiddenEntriesPanel(true);
+
+    const pagefileButton = await screen.findByRole("button", { name: /pagefile\.sys/i });
+    expect(pagefileButton.className).toMatch(/hiddenEntry/);
+    expect(await screen.findByRole("button", { name: /AppData/i })).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("list_directory_page", expect.objectContaining({
+      path: "C:\\",
+      showHidden: true,
+    }));
+
+    setShowHiddenFiles(false);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /pagefile\.sys/i })).not.toBeInTheDocument();
+    });
+    expect(screen.queryByRole("button", { name: /Recycle\.Bin/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /AppData/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Projects/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+    expect(invoke).toHaveBeenCalledWith("list_directory_page", expect.objectContaining({
+      path: "C:\\",
+      showHidden: false,
+      refresh: false,
+    }));
+
+    setShowHiddenFiles(true);
+
+    expect(await screen.findByRole("button", { name: /pagefile\.sys/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /AppData/i })).toBeInTheDocument();
+  });
+
+  it("drops a selected hidden entry from the selection once hidden files are hidden", async () => {
+    mockHiddenEntries();
+    const setShowHiddenFiles = renderHiddenEntriesPanel(true);
+    const pagefileButton = await screen.findByRole("button", { name: /pagefile\.sys/i });
+    fireEvent.click(pagefileButton);
+    expect(pagefileButton).toHaveAttribute("aria-selected", "true");
+
+    setShowHiddenFiles(false);
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /pagefile\.sys/i })).not.toBeInTheDocument();
+    });
+    dispatchFilesystemCommand("filesystem.deleteSelected", "pane-hidden");
+    await flushPromises();
+
+    expect(openConfirmMock).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalledWith("delete_paths", expect.anything());
+  });
+
+  it("leaves hidden folders out of path suggestions when hidden files are hidden", async () => {
+    mockHiddenEntries();
+    const setShowHiddenFiles = renderHiddenEntriesPanel(true);
+    await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(screen.getByRole("navigation", { name: "Current path" }));
+    const pathInput = await screen.findByRole("textbox", { name: "Current folder path" });
+    act(() => pathInput.focus());
+
+    // The draft starts as the current path, so a different spelling is needed to trigger a change.
+    fireEvent.change(pathInput, { target: { value: "C:/" } });
+    expect(await screen.findByRole("button", { name: /C:\\\$Recycle\.Bin/i })).toBeInTheDocument();
+
+    setShowHiddenFiles(false);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /C:\\\$Recycle\.Bin/i })).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: /C:\\Users/i })).toBeInTheDocument();
+  });
+
+  it("searches without hidden entries once hidden files are hidden", async () => {
+    mockHiddenEntries();
+    renderHiddenEntriesPanel(false);
+    await screen.findByRole("button", { name: /notes\.txt/i });
+
+    dispatchFilesystemCommand("filesystem.searchCurrentSubtree", "pane-hidden");
+    fireEvent.change(
+      await screen.findByRole("searchbox", { name: "Search current folder and subfolders" }),
+      { target: { value: "notes" } },
+    );
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("filesystem_search_start", expect.objectContaining({
+        query: "notes",
+        options: expect.objectContaining({ skipHidden: true }),
+      }));
+    });
+  });
+
+  it("clears a search selection holding a hidden entry once hidden files are hidden", async () => {
+    mockHiddenEntries();
+    const onFilesystemStateChange = vi.fn();
+    const props = {
+      tabId: "tab-hidden-search",
+      paneId: "pane-hidden-search",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+      onFilesystemStateChange,
+    };
+    const view = renderFilesystemPanel({ ...props, showHiddenFiles: true });
+    await screen.findByRole("button", { name: /notes\.txt/i });
+    await showSearchResults("pane-hidden-search", "s", [
+      { name: "notes.txt", path: "C:\\notes.txt", is_dir: false, is_hidden: false },
+      { name: "pagefile.sys", path: "C:\\pagefile.sys", is_dir: false, is_hidden: true },
+    ]);
+    fireEvent.click(await screen.findByRole("button", { name: /notes\.txt/i }));
+    fireEvent.click(screen.getByRole("button", { name: /pagefile\.sys/i }), { shiftKey: true });
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        selectedPaths: ["C:\\notes.txt", "C:\\pagefile.sys"],
+      }));
+    });
+
+    view.rerender(<PanelsDndLayer>
+      <FilesystemPanel {...props} showHiddenFiles={false} />
+    </PanelsDndLayer>);
+
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({ selectedPaths: [] }));
     });
   });
 

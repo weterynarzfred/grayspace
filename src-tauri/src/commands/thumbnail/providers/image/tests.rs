@@ -90,6 +90,35 @@ fn generate_writes_bucket_sized_webp_thumbnail() {
 }
 
 #[test]
+fn generate_fits_large_images_into_the_512_bucket() {
+  let root = unique_test_root("thumbnail-image-provider-512");
+  fs::create_dir_all(&root).expect("test root should be created");
+
+  let source_path = root.join("large.png");
+  let output_path = root.join("large.webp");
+  write_png(&source_path, 1200, 900);
+
+  let outcome = ImageThumbnailProvider
+    .generate(
+      ThumbnailJobInput {
+        source_path: &source_path,
+        bucket: ThumbnailBucket::Px512,
+      },
+      ThumbnailJobOutput {
+        temp_output_path: &output_path,
+      },
+    )
+    .expect("generate should succeed");
+
+  assert!(matches!(outcome, ThumbnailGenerateOutcome::Ready));
+  let (width, height) =
+    image::image_dimensions(&output_path).expect("output dimensions should be readable");
+  assert_eq!((width, height), (512, 384));
+
+  fs::remove_dir_all(&root).expect("test root should be removed");
+}
+
+#[test]
 fn generate_keeps_small_images_at_original_size() {
   let root = unique_test_root("thumbnail-image-provider-small");
   fs::create_dir_all(&root).expect("test root should be created");

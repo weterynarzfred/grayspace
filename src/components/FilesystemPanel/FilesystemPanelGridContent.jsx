@@ -149,6 +149,9 @@ export default function FilesystemPanelGridContent({
   thumbnailSrcByPath = {},
   workspaceFolderPathSet = new Set(),
   columnCount = 1,
+  minCellWidthPx = 72,
+  previewSizePx = 22,
+  containerRef = undefined,
   anchorRef = undefined,
   topSpacerHeight = 0,
   bottomSpacerHeight = 0,
@@ -164,8 +167,13 @@ export default function FilesystemPanelGridContent({
 }) {
   return (
     <div
+      ref={containerRef}
       className={styles.gridContainer}
-      style={{ "--grid-cols": columnCount }}
+      style={{
+        "--grid-cols": columnCount,
+        "--grid-min-cell-width": `${minCellWidthPx}px`,
+        "--grid-preview-size": `${previewSizePx}px`,
+      }}
     >
       <div ref={anchorRef} className={styles.gridAnchor} aria-hidden />
       {isWindowingEnabled && topSpacerHeight > 0 && (

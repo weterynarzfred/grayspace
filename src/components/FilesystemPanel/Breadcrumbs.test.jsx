@@ -28,6 +28,47 @@ describe("Breadcrumbs", () => {
     expect(handleSelect).toHaveBeenNthCalledWith(2, driveRoot);
   });
 
+  it("calls onMiddleClick with the crumb path on middle mouse up", () => {
+    const handleSelect = vi.fn();
+    const handleMiddleClick = vi.fn();
+
+    render(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={handleSelect}
+        onMiddleClick={handleMiddleClick}
+      />,
+    );
+
+    const usersButton = screen.getByRole("button", { name: "Users" });
+    expect(fireEvent.mouseDown(usersButton, { button: 1 })).toBe(false);
+    fireEvent.mouseUp(usersButton, { button: 1 });
+
+    expect(handleMiddleClick).toHaveBeenCalledWith("C:\\Users", expect.objectContaining({ button: 1 }));
+    expect(handleSelect).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Current folder path" })).not.toBeInTheDocument();
+  });
+
+  it("ignores middle click on the Drives crumb", () => {
+    const handleMiddleClick = vi.fn();
+
+    render(
+      <Breadcrumbs
+        currentPath={"C:\\Users"}
+        currentDrive={"C:\\"}
+        onSelect={vi.fn()}
+        onMiddleClick={handleMiddleClick}
+      />,
+    );
+
+    const drivesButton = screen.getByRole("button", { name: "Drives" });
+    fireEvent.mouseDown(drivesButton, { button: 1 });
+    fireEvent.mouseUp(drivesButton, { button: 1 });
+
+    expect(handleMiddleClick).not.toHaveBeenCalled();
+  });
+
   it("builds breadcrumbs from path and drive", () => {
     expect(buildBreadcrumbs("C:\\Users\\alice\\docs", "C:\\")).toEqual([
       { label: "Drives", path: "" },

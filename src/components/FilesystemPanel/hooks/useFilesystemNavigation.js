@@ -16,6 +16,8 @@ export default function useFilesystemNavigation(
     openChoice = undefined,
     sortKey = "name",
     sortDescending = false,
+    searchOptions = undefined,
+    showHidden = true,
   } = options;
   const initialStateRef = useRef(
     normalizeInitialFilesystemState(initialFilesystemState),
@@ -54,6 +56,7 @@ export default function useFilesystemNavigation(
     setSearchQuery,
     isSearchActive,
     searchStatus,
+    searchError,
     setError,
     navigateToPath,
     selectDrive,
@@ -69,6 +72,8 @@ export default function useFilesystemNavigation(
     keepSelectionOnlyInPathSet,
     sortKey,
     sortDescending,
+    searchOptions,
+    showHidden,
   });
 
   const [isMovingEntry, setIsMovingEntry] = useState(false);
@@ -146,6 +151,7 @@ export default function useFilesystemNavigation(
     setSearchQuery,
     isSearchActive,
     searchStatus,
+    searchError,
     isMovingEntry,
     isDeletingEntries,
     isImportingExternal,

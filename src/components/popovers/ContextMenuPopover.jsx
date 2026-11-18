@@ -19,6 +19,7 @@ function ContextMenuPopover({
   position = { x: 8, y: 8 },
   target = null,
   commands = [],
+  context = {},
   onCommand = undefined,
   onClose = undefined,
 }) {
@@ -141,17 +142,24 @@ function ContextMenuPopover({
         style={{ left: `${submenuPosition.x}px`, top: `${submenuPosition.y}px` }}
         onMouseLeave={() => setSelectedSubmenuIndex(-1)}
       >
-        {activeSubmenu.map((subCmd, subIndex) => <li key={subCmd.id}>
-          <button
-            type="button"
-            className={`${styles.commandRow} ${selectedSubmenuIndex === subIndex ? styles.commandRowSelected : ""}`.trim()}
-            onMouseEnter={() => setSelectedSubmenuIndex(subIndex)}
-            onClick={() => onCommand?.(subCmd.id)}
-          >
-            <span className={styles.commandName}>{subCmd.title}</span>
-            <span className={styles.commandShortcut}>{subCmd.shortcut || ""}</span>
-          </button>
-        </li>)}
+        {activeSubmenu.map((subCmd, subIndex) => {
+          const mark = subCmd.getMark?.(context);
+          return <li key={subCmd.id}>
+            <button
+              type="button"
+              className={`${styles.commandRow} ${selectedSubmenuIndex === subIndex ? styles.commandRowSelected : ""}`.trim()}
+              aria-pressed={subCmd.getMark ? Boolean(mark) : undefined}
+              onMouseEnter={() => setSelectedSubmenuIndex(subIndex)}
+              onClick={() => onCommand?.(subCmd.id)}
+            >
+              <span className={styles.commandName}>
+                {subCmd.title}
+                {mark && <span className={styles.commandMark} aria-hidden>{mark}</span>}
+              </span>
+              <span className={styles.commandShortcut}>{subCmd.shortcut || ""}</span>
+            </button>
+          </li>;
+        })}
       </ul>,
       document.body,
     )

@@ -203,6 +203,7 @@ function WorkspacePanelLayout({
   cwdHint = "",
   recentFoldersEntries = [],
   recentFoldersLoading = false,
+  showHiddenFiles = true,
   onOpenFolderInCurrentTab = undefined,
   onCurrentPathChange = undefined,
   onFilesystemStateChange = undefined,
@@ -464,6 +465,7 @@ function WorkspacePanelLayout({
           cwdHint={cwdHint}
           recentFoldersEntries={recentFoldersEntries}
           recentFoldersLoading={recentFoldersLoading}
+          showHiddenFiles={showHiddenFiles}
           onOpenFolderInCurrentTab={isPrimaryFilesystemPane
             ? onOpenFolderInCurrentTab
             : undefined}
@@ -498,6 +500,7 @@ function WorkspacePanelLayout({
     primaryFilesystemPaneId,
     recentFoldersEntries,
     recentFoldersLoading,
+    showHiddenFiles,
     splitPreview,
     tab?.selectedFiles,
     tabId,

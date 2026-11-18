@@ -8,10 +8,14 @@ import FilesystemPanelGridContent from "./FilesystemPanelGridContent";
 import styles from "./FilesystemPanel.module.scss";
 import { getParentDirectoryPath, normalizePathForComparison } from "../../utils/pathWatch";
 
-function describeSearch({ query, status, resultCount }) {
+function describeSearch({ query, status, error, resultCount, skipsFolders }) {
+  if (status === "error") return error;
   if (status === "running") return `Searching subfolders for "${query}"... ${resultCount} found`;
   if (status === "truncated") return `Too many matches for "${query}", showing the first ${resultCount}.`;
-  if (resultCount === 0) return `No results for "${query}" in this folder or its subfolders.`;
+  if (resultCount === 0) {
+    const skippedNote = skipsFolders ? " (skipped folders not searched)" : "";
+    return `No results for "${query}" in this folder or its subfolders${skippedNote}.`;
+  }
   return `${resultCount} ${resultCount === 1 ? "result" : "results"} for "${query}" in this folder and its subfolders.`;
 }
 
@@ -54,11 +58,13 @@ export default function FilesystemPanelListContent({
     selectedPathSet = new Set(),
     onSelect: onDriveSelect = undefined,
     onOpen: onDriveOpen = undefined,
+    onMiddleClick: onDriveMiddleClick = undefined,
   } = drives;
   const {
     currentPath = "",
     currentDrive = "",
     onSelect: onBreadcrumbSelect = undefined,
+    onMiddleClick: onBreadcrumbMiddleClick = undefined,
     onPathSubmit: onBreadcrumbPathSubmit = undefined,
     loadSubfoldersForPath: loadSubfoldersForPath = undefined,
     focusPathInputRequestKey: focusPathInputRequestKey = 0,
@@ -103,6 +109,9 @@ export default function FilesystemPanelListContent({
     thumbnailSrcByPath: gridThumbnailSrcByPath = {},
     workspaceFolderPathSet: gridWorkspaceFolderPathSet = new Set(),
     columnCount: gridColumnCount = 1,
+    minCellWidthPx: gridMinCellWidthPx = 72,
+    previewSizePx: gridPreviewSizePx = 22,
+    containerRef: gridContainerRef = undefined,
     anchorRef: gridAnchorRef = undefined,
     topSpacerHeight: gridTopSpacerHeight = 0,
     bottomSpacerHeight: gridBottomSpacerHeight = 0,
@@ -124,7 +133,7 @@ export default function FilesystemPanelListContent({
     data-testid="filesystem-panel-list"
   >
 
-    {!isBrowsing && !isLoadingDrives && !error && (
+    {!isBrowsing && !isLoadingDrives && (
       <ul className={styles.entryList}>
         {driveItems.map(drive => <EntryItem
           key={drive.path}
@@ -140,6 +149,7 @@ export default function FilesystemPanelListContent({
           contextPaneId={paneId}
           onClick={() => onDriveSelect?.(drive.path)}
           onDoubleClick={() => onDriveOpen?.(drive.path)}
+          onAuxClick={(event) => onDriveMiddleClick?.(drive.path, event)}
         />)}
       </ul>
     )}
@@ -150,6 +160,7 @@ export default function FilesystemPanelListContent({
         currentPath={currentPath}
         currentDrive={currentDrive}
         onSelect={onBreadcrumbSelect}
+        onMiddleClick={onBreadcrumbMiddleClick}
         onPathSubmit={onBreadcrumbPathSubmit}
         loadSubfoldersForPath={loadSubfoldersForPath}
         focusPathInputRequestKey={focusPathInputRequestKey}
@@ -170,6 +181,9 @@ export default function FilesystemPanelListContent({
           thumbnailSrcByPath={gridThumbnailSrcByPath}
           workspaceFolderPathSet={gridWorkspaceFolderPathSet}
           columnCount={gridColumnCount}
+          minCellWidthPx={gridMinCellWidthPx}
+          previewSizePx={gridPreviewSizePx}
+          containerRef={gridContainerRef}
           anchorRef={gridAnchorRef}
           topSpacerHeight={gridTopSpacerHeight}
           bottomSpacerHeight={gridBottomSpacerHeight}
@@ -190,7 +204,10 @@ export default function FilesystemPanelListContent({
         />
       )}
       {unmatchedFilter && <p className={styles.muted}>No items match "{unmatchedFilter}".</p>}
-      {search && <p className={styles.searchStatus} role="status">{describeSearch(search)}</p>}
+      {search && <p
+        className={`${styles.searchStatus} ${search.status === "error" ? styles.searchError : ""}`}
+        role="status"
+      >{describeSearch(search)}</p>}
       {!isLoadingEntries && !error && !isGridView && <div
         className={`${styles.entryRows} ${isDetailsView ? styles.detailsRows : ""}`}
       >

@@ -9,11 +9,14 @@ function flattenEntries({
   directoryEntriesByPath,
   loadingPaths,
   rootPath,
+  showHidden,
 }) {
   const rows = [];
 
   function walk(entries, depth, parentPath) {
     entries.forEach((entry) => {
+      // Root entries come already filtered by the backend; children are listed in full.
+      if (!showHidden && entry?.is_hidden) return;
       const isDirectory = Boolean(entry?.is_dir);
       const entryPath = typeof entry?.path === "string" ? entry.path : "";
       const isExpanded = isDirectory && expandedByPath[entryPath] === true;
@@ -147,6 +150,7 @@ export default function useFilesystemTree({
   onExpandedPathsChange = undefined,
   sortKey = "name",
   sortDescending = false,
+  showHidden = true,
 }) {
   const [expandedByPath, setExpandedByPath] = useState(() => (
     buildExpandedByPath(initialExpandedPaths, currentPath)
@@ -278,7 +282,8 @@ export default function useFilesystemTree({
     directoryEntriesByPath,
     loadingPaths: loadingByPath,
     rootPath: currentPath,
-  }), [currentPath, directoryEntriesByPath, expandedByPath, loadingByPath, rootEntries]);
+    showHidden,
+  }), [currentPath, directoryEntriesByPath, expandedByPath, loadingByPath, rootEntries, showHidden]);
 
   return {
     treeRows,
