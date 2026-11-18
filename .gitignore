@@ -7,3 +7,5 @@ src-tauri/coverage/
 coverage/
 
 *.local
+# Bundled ffmpeg (see README), too big for git.
+src-tauri/binaries/

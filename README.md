@@ -10,7 +10,7 @@ Usable scaffolding, but missing core file-manager features.
 
 * multi-window, tabs, arbitrary panels
 * workspace detection + layout persistence
-* filesystem panel (basic ops, folder tree / details / grid / foldable grid views, sorting, thumbnails for images, watcher)
+* filesystem panel (basic ops, folder tree / details / grid / foldable grid views, sorting, thumbnails for images, videos and anything Windows can thumbnail, watcher)
 * terminal (Git Bash, multi instances)
 * preview (media + text editing via CodeMirror, tabbed)
 * file properties (read-only)
@@ -30,6 +30,7 @@ Requirements:
 * Node.js 20+
 * Rust toolchain (`rustup`, `cargo`)
 * Git for Windows (terminal panel currently has hardcoded `C:\Program Files\Git\bin\bash.exe`)
+* `ffmpeg.exe` (any recent build, e.g. from gyan.dev) copied to `src-tauri/binaries/ffmpeg-x86_64-pc-windows-msvc.exe`; it's bundled for video thumbnails and kept out of git, and the Rust build fails without it
 
 Install and run:
 
@@ -144,12 +145,12 @@ npm run tauri_dev
 * [x] breadcrumbs
 * [x] icons
 * [x] basic thumbnails
-  * [ ] video thumbnails (`ffmpeg-next` + bundled `ffmpeg` ?)
-  * [ ] audio thumbnails (cover extraction via `lofty` ?)
-  * [ ] pdf thumbnails (`pdfium-render` ?)
-  * [ ] epub thumbnails
-  * [ ] font thumbnails
-  * [ ] maybe try integrating providers through the Windows shell?
+  * [x] video thumbnails from the bundled ffmpeg (frame at about 25% of the length, black or blank frames skipped, 15 s limit per video)
+  * [x] everything else Windows can thumbnail, same as Explorer (fonts, Office files, ...; PDF / EPUB only with a thumbnailer installed, e.g. PowerToys)
+  * own thumbnails where Windows has none:
+    * [ ] audio covers (`lofty` ?)
+    * [ ] pdf (`pdfium-render` ?)
+    * [ ] epub
 * [x] rename (F2)
   * [ ] bulk rename
 * [x] copy / move / delete run in the background (progress and Cancel in the panel header)

@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -44,6 +44,8 @@ struct ThumbnailQueueRuntime {
   queued_keys: HashSet<String>,
   in_flight_keys: HashSet<String>,
   active_workers: usize,
+  // Files without a thumbnail, by key, so they aren't sent to a provider again this session.
+  unsupported_reasons: HashMap<String, String>,
 }
 
 #[derive(Clone, Default)]
@@ -329,11 +331,19 @@ fn process_thumbnail_job(job: &ThumbnailJob) -> ThumbnailResolveItemResult {
   }
 }
 
-fn finish_job(state: &ThumbnailState, key: &str) {
+fn finish_job(state: &ThumbnailState, result: &ThumbnailResolveItemResult) {
   if let Ok(mut runtime) = state.runtime.lock() {
-    runtime.in_flight_keys.remove(key);
+    runtime.in_flight_keys.remove(&result.key);
     runtime.active_workers = runtime.active_workers.saturating_sub(1);
+    if matches!(result.status, ThumbnailStatus::Unsupported) {
+      let reason = result.error.clone().unwrap_or_default();
+      runtime.unsupported_reasons.insert(result.key.clone(), reason);
+    }
   }
+}
+
+fn known_unsupported_reason(state: &ThumbnailState, key: &str) -> Option<String> {
+  state.runtime.lock().ok()?.unsupported_reasons.get(key).cloned()
 }
 
 fn pump_workers(app: AppHandle, state: ThumbnailState) {
@@ -360,7 +370,7 @@ fn pump_workers(app: AppHandle, state: ThumbnailState) {
     std::thread::spawn(move || {
       let result = process_thumbnail_job(&job);
       let _ = worker_app.emit(THUMBNAIL_UPDATE_EVENT, payload_from_result(&result));
-      finish_job(&worker_state, &job.key);
+      finish_job(&worker_state, &result);
       pump_workers(worker_app, worker_state);
     });
   }
@@ -426,6 +436,9 @@ fn resolve_item(
   let output_path = thumbnail_output_path(cache_root, bucket, &key);
   if output_path.is_file() {
     return create_ready_result(source_path, key, bucket, output_path);
+  }
+  if let Some(reason) = known_unsupported_reason(state, &key) {
+    return create_unsupported_result(source_path, key, bucket, reason);
   }
 
   let priority = ThumbnailPriority::from_option(item.priority);

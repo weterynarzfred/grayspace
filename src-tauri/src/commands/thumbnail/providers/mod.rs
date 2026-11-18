@@ -4,6 +4,9 @@ use std::sync::Arc;
 use crate::commands::thumbnail::types::ThumbnailBucket;
 
 mod image;
+#[cfg(windows)]
+mod shell;
+mod video;
 
 pub struct ThumbnailJobInput<'a> {
   pub source_path: &'a Path,
@@ -30,6 +33,13 @@ pub trait ThumbnailProvider: Send + Sync {
   ) -> Result<ThumbnailGenerateOutcome, String>;
 }
 
+pub(super) fn webp_quality(bucket: ThumbnailBucket) -> f32 {
+  match bucket {
+    ThumbnailBucket::Px64 => 48.0,
+    ThumbnailBucket::Px256 => 68.0,
+  }
+}
+
 #[derive(Clone)]
 pub struct ProviderRegistry {
   providers: Arc<Vec<Arc<dyn ThumbnailProvider>>>,
@@ -37,9 +47,16 @@ pub struct ProviderRegistry {
 
 impl Default for ProviderRegistry {
   fn default() -> Self {
-    let image_provider: Arc<dyn ThumbnailProvider> = Arc::new(image::ImageThumbnailProvider);
+    #[allow(unused_mut)]
+    let mut providers: Vec<Arc<dyn ThumbnailProvider>> = vec![
+      Arc::new(image::ImageThumbnailProvider),
+      Arc::new(video::VideoThumbnailProvider::bundled()),
+    ];
+    // Last: it takes any file, so it only gets the ones the others don't.
+    #[cfg(windows)]
+    providers.push(Arc::new(shell::ShellThumbnailProvider));
     Self {
-      providers: Arc::new(vec![image_provider]),
+      providers: Arc::new(providers),
     }
   }
 }

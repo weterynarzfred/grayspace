@@ -1,6 +1,9 @@
 use std::path::Path;
 
-use super::{compute_fallback_key, thumbnail_output_path, ThumbnailBucket};
+use super::{
+  compute_fallback_key, create_unsupported_result, finish_job, known_unsupported_reason,
+  thumbnail_output_path, ThumbnailBucket, ThumbnailState,
+};
 
 #[test]
 fn thumbnail_bucket_from_size_hint_uses_expected_buckets() {
@@ -52,4 +55,20 @@ fn thumbnail_output_path_groups_by_bucket_and_hash_prefix() {
     .windows(3)
     .any(|window| window == ["256", "ab", "cd"]));
   assert!(output.ends_with(format!("{key}.webp")));
+}
+
+#[test]
+fn unsupported_results_are_remembered_by_key() {
+  let state = ThumbnailState::default();
+  let result = create_unsupported_result(
+    r"C:\notes.txt".to_string(),
+    "key-1".to_string(),
+    ThumbnailBucket::Px64,
+    "No thumbnail.",
+  );
+
+  finish_job(&state, &result);
+
+  assert_eq!(known_unsupported_reason(&state, "key-1").as_deref(), Some("No thumbnail."));
+  assert_eq!(known_unsupported_reason(&state, "key-2"), None);
 }

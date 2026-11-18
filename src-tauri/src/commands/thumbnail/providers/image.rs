@@ -3,7 +3,8 @@ use std::path::Path;
 use fast_image_resize as fir;
 
 use crate::commands::thumbnail::providers::{
-  ThumbnailGenerateOutcome, ThumbnailJobInput, ThumbnailJobOutput, ThumbnailProvider,
+  webp_quality, ThumbnailGenerateOutcome, ThumbnailJobInput, ThumbnailJobOutput,
+  ThumbnailProvider,
 };
 use crate::commands::thumbnail::types::ThumbnailBucket;
 
@@ -15,13 +16,6 @@ const MAX_SOURCE_PIXELS: u64 = 160_000_000;
 pub struct ImageThumbnailProvider;
 
 impl ImageThumbnailProvider {
-  fn quality_for_bucket(bucket: ThumbnailBucket) -> f32 {
-    match bucket {
-      ThumbnailBucket::Px64 => 48.0,
-      ThumbnailBucket::Px256 => 68.0,
-    }
-  }
-
   fn resize_options_for_bucket(bucket: ThumbnailBucket) -> fir::ResizeOptions {
     match bucket {
       ThumbnailBucket::Px64 => fir::ResizeOptions::new().resize_alg(fir::ResizeAlg::Nearest),
@@ -113,7 +107,7 @@ impl ThumbnailProvider for ImageThumbnailProvider {
       .map_err(|error| error.to_string())?;
 
     let encoded = webp::Encoder::from_rgba(target_image.buffer(), target_width, target_height)
-      .encode(Self::quality_for_bucket(input.bucket));
+      .encode(webp_quality(input.bucket));
 
     std::fs::write(output.temp_output_path, &*encoded).map_err(|error| error.to_string())?;
     Ok(ThumbnailGenerateOutcome::Ready)
