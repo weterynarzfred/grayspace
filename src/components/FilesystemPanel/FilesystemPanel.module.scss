@@ -13,6 +13,14 @@
   padding: 1rem;
 }
 
+// The list windows measure where their rows start by walking offsetParent up to the scroll body.
+// Unpositioned, the walk would pass it and also count the pane header and anything above the pane.
+// Tests can't check this rule (jsdom has no layout, and test CSS modules resolve any class name);
+// the panel test only checks that the class is applied.
+.panelScrollBody {
+  position: relative;
+}
+
 // Grid cells grow with the pane's width, so the row height does too. A scrollbar that took width
 // when it appeared could make the rows fit again and disappear, over and over.
 .gridPanelBody {

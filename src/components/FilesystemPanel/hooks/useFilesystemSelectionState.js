@@ -10,18 +10,23 @@ export default function useFilesystemSelectionState({
 }) {
   const [selectedPaths, setSelectedPaths] = useState(initialSelectedPaths);
   const [selectionAnchorPath, setSelectionAnchorPath] = useState(initialSelectionAnchorPath);
+  // Where the arrow keys move from: the item last clicked or moved to. After Shift+Up that is the
+  // top of the range, while the selection, kept in entry order, ends at the anchor.
+  const [selectionFocusPath, setSelectionFocusPath] = useState(initialSelectionAnchorPath);
 
   const clearSelection = useCallback(() => {
     setSelectedPaths([]);
     setSelectionAnchorPath("");
+    setSelectionFocusPath("");
   }, []);
 
-  const keepSelectionOnlyInPathSet = useCallback((allowedPathSet) => {
-    setSelectedPaths((previousSelection) => (
-      previousSelection.filter((path) => allowedPathSet.has(path))
-    ));
+  const keepSelectionWhere = useCallback((isKept) => {
+    setSelectedPaths((previousSelection) => previousSelection.filter((path) => isKept(path)));
     setSelectionAnchorPath((previousAnchorPath) => (
-      allowedPathSet.has(previousAnchorPath) ? previousAnchorPath : ""
+      isKept(previousAnchorPath) ? previousAnchorPath : ""
+    ));
+    setSelectionFocusPath((previousFocusPath) => (
+      isKept(previousFocusPath) ? previousFocusPath : ""
     ));
   }, []);
 
@@ -31,6 +36,9 @@ export default function useFilesystemSelectionState({
     ));
     setSelectionAnchorPath((previousAnchorPath) => (
       excludedPathSet.has(previousAnchorPath) ? "" : previousAnchorPath
+    ));
+    setSelectionFocusPath((previousFocusPath) => (
+      excludedPathSet.has(previousFocusPath) ? "" : previousFocusPath
     ));
   }, []);
 
@@ -43,6 +51,7 @@ export default function useFilesystemSelectionState({
 
     setSelectedPaths([nextPath]);
     setSelectionAnchorPath(nextPath);
+    setSelectionFocusPath(nextPath);
     return [nextPath];
   }, [clearSelection]);
 
@@ -51,6 +60,7 @@ export default function useFilesystemSelectionState({
     if (typeof entryPath !== "string" || !entryPath) return selectedEntryPaths;
     if (!Array.isArray(entryPaths) || !entryPaths.includes(entryPath)) return selectedEntryPaths;
 
+    setSelectionFocusPath(entryPath);
     if (range) {
       const anchorPath = entryPaths.includes(selectionAnchorPath)
         ? selectionAnchorPath
@@ -82,8 +92,9 @@ export default function useFilesystemSelectionState({
 
   return {
     selectedPaths,
+    selectionFocusPath,
     clearSelection,
-    keepSelectionOnlyInPathSet,
+    keepSelectionWhere,
     removeSelectionPaths,
     setSelectedPath,
     selectEntry,

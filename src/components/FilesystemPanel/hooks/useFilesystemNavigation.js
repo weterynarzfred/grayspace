@@ -25,8 +25,9 @@ export default function useFilesystemNavigation(
 
   const {
     selectedPaths,
+    selectionFocusPath,
     clearSelection,
-    keepSelectionOnlyInPathSet,
+    keepSelectionWhere,
     removeSelectionPaths,
     setSelectedPath,
     selectEntry: selectEntryState,
@@ -69,7 +70,7 @@ export default function useFilesystemNavigation(
     initialCurrentDrive: initialStateRef.current.currentDrive,
     initialCurrentPath: initialStateRef.current.currentPath,
     clearSelection,
-    keepSelectionOnlyInPathSet,
+    keepSelectionWhere,
     sortKey,
     sortDescending,
     searchOptions,
@@ -136,6 +137,7 @@ export default function useFilesystemNavigation(
     currentDrive,
     currentPath,
     selectedPaths,
+    selectionFocusPath,
     entries,
     isLoadingDrives,
     isLoadingEntries,

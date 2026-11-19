@@ -115,6 +115,7 @@ function FilesystemPanel({
     currentDrive,
     currentPath,
     selectedPaths,
+    selectionFocusPath,
     entries,
     drives,
     isLoadingDrives,
@@ -182,6 +183,7 @@ function FilesystemPanel({
   const {
     treeRows,
     toggleDirectoryExpanded,
+    expandDirectory,
     remapRenamedPath,
   } = useFilesystemTree({
     currentPath,
@@ -263,11 +265,17 @@ function FilesystemPanel({
   });
   const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
   const workspaceFolderPathSet = useFilesystemWorkspaceFolders({
-    entries: visibleEntries,
+    entries: effectiveVisibleEntries,
     paths: breadcrumbs
       .map((crumb) => crumb.path)
       .filter((path) => typeof path === "string" && path),
   });
+  // Grid view shows only the top level, while folders opened in the other views stay open (one set
+  // per pane). What they hold must not join ranges, arrow keys, drags or Delete here.
+  const viewRows = useMemo(
+    () => (isGridView ? treeRows.filter((row) => row.depth === 0) : treeRows),
+    [isGridView, treeRows],
+  );
   const {
     treeData,
     selectedEntryPaths,
@@ -306,8 +314,9 @@ function FilesystemPanel({
     panelRef,
     currentPath,
     selectedPaths,
+    selectionFocusPath,
     drivePaths: drives.map((drive) => drive.path),
-    treeRows,
+    treeRows: viewRows,
     isBrowsing,
     isEntryOperationInProgress,
     isExternalDragEnabled,
@@ -325,6 +334,7 @@ function FilesystemPanel({
     onTabSelectedFilesChange,
     onDeleteShortcutCommand: () => executeFilesystemShortcutCommand(COMMAND_IDS.FILESYSTEM_DELETE_SELECTED),
     onToggleDirectoryExpanded: toggleDirectoryExpanded,
+    onExpandDirectory: expandDirectory,
     onOpenDrivePath: selectDrive,
     workspaceFolderPathSet,
     openConfirm,
@@ -362,11 +372,13 @@ function FilesystemPanel({
       },
     });
   }, [paneId]);
+  // App sends the pane's saved selection, which keeps items in opened folders while they aren't
+  // shown (hidden files off, filtered out, folder closed, grid view). Commands act on shown rows.
   const resolveCommandSelectedEntryPaths = useCallback((commandContext = {}) => {
-    const contextSelectedPaths = uniqueNonEmptyPaths(commandContext?.selectedPaths);
-    if (contextSelectedPaths.length > 0) return contextSelectedPaths;
-    return selectedEntryPaths;
-  }, [selectedEntryPaths]);
+    const shownContextPaths = uniqueNonEmptyPaths(commandContext?.selectedPaths)
+      .filter((path) => treeData.entryPathSet.has(path));
+    return shownContextPaths.length > 0 ? shownContextPaths : selectedEntryPaths;
+  }, [selectedEntryPaths, treeData.entryPathSet]);
   const showShellMenu = useFilesystemShellMenu({
     currentPath,
     resolveSelectedPaths: resolveCommandSelectedEntryPaths,
@@ -697,7 +709,7 @@ function FilesystemPanel({
     </PanelHeader>
     <div
       ref={panelScrollRef}
-      className={`${shellStyles.panelBody} ${isGridView ? styles.gridPanelBody : ""}`}
+      className={`${shellStyles.panelBody} ${styles.panelScrollBody} ${isGridView ? styles.gridPanelBody : ""}`}
       data-testid="filesystem-panel-scroll-container"
       data-panel-scroll="true"
       onClick={handlePanelBackgroundClick}

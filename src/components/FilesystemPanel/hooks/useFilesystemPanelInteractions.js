@@ -5,7 +5,7 @@ import useExternalFilesystemDrag from "./useExternalFilesystemDrag";
 import useExternalPathDrop from "../../hooks/useExternalPathDrop";
 import { uniqueNonEmptyPaths } from "../../../utils/pathSelection";
 import isEditableKeyboardTarget from "../../../utils/isEditableKeyboardTarget";
-import { getParentDirectoryPath } from "../../../utils/pathWatch";
+import { getParentDirectoryPath, isSamePath } from "../../../utils/pathWatch";
 import { getNavigationErrorMessage } from "./filesystemNavigationUtils";
 import {
   buildTreeData,
@@ -59,6 +59,7 @@ export default function useFilesystemPanelInteractions({
   panelRef,
   currentPath = "",
   selectedPaths = [],
+  selectionFocusPath = "",
   drivePaths = [],
   treeRows = [],
   isBrowsing = false,
@@ -78,6 +79,7 @@ export default function useFilesystemPanelInteractions({
   onTabSelectedFilesChange,
   onDeleteShortcutCommand = undefined,
   onToggleDirectoryExpanded = undefined,
+  onExpandDirectory = undefined,
   onOpenDrivePath = undefined,
   workspaceFolderPathSet = new Set(),
   openConfirm,
@@ -437,16 +439,14 @@ export default function useFilesystemPanelInteractions({
     const selectedFolderPath = overrideFolderPath || fallbackTarget.selectedFolderPath;
     if (!parentDir) return false;
 
-    const selectedFolderRow = selectedFolderPath ? rowByPath[selectedFolderPath] : null;
-    if (selectedFolderPath && selectedFolderRow && !selectedFolderRow.isExpanded) {
-      onToggleDirectoryExpanded?.(selectedFolderPath);
-    }
-
     try {
       const createdEntry = await createAction(parentDir);
       const createdPath = typeof createdEntry?.path === "string" ? createdEntry.path : "";
       if (!createdPath) return false;
 
+      // Opened only now, so the folder's listing (a first load or a re-list) has the new item and
+      // the rename below can find it.
+      if (selectedFolderPath) onExpandDirectory?.(selectedFolderPath);
       const nextSelectedPaths = setSelectedPath(createdPath);
       emitTabSelectedFiles(nextSelectedPaths);
       beginRenameForPath(createdPath);
@@ -464,10 +464,9 @@ export default function useFilesystemPanelInteractions({
     emitTabSelectedFiles,
     isBrowsing,
     isEntryOperationInProgress,
-    onToggleDirectoryExpanded,
+    onExpandDirectory,
     pushNotification,
     resolveCreateTarget,
-    rowByPath,
     setSelectedPath,
   ]);
 
@@ -481,6 +480,12 @@ export default function useFilesystemPanelInteractions({
 
   useEffect(() => {
     setExternalDropDestinationPath("");
+    // A rename still waiting for its item is kept only when the pane enters that item's folder,
+    // so it can't open whenever the item shows up later (one created in a folder cell never
+    // shows in grid view).
+    setPendingRenamePath((pendingPath) => (
+      isSamePath(getParentDirectoryPath(pendingPath), currentPath) ? pendingPath : ""
+    ));
   }, [currentPath]);
 
   useEffect(() => {
@@ -538,25 +543,26 @@ export default function useFilesystemPanelInteractions({
     const navigationPaths = keyboardNavigationPaths;
     if (!Array.isArray(navigationPaths) || navigationPaths.length === 0) return;
 
-    let currentReferencePath = "";
-    for (let index = selectedPaths.length - 1; index >= 0; index -= 1) {
-      const selectedPath = selectedPaths[index];
-      if (navigationPaths.includes(selectedPath)) {
-        currentReferencePath = selectedPath;
-        break;
-      }
-    }
+    // The focus, not the last selected path: ranges are kept in entry order, so after Shift+Up that
+    // path is the anchor, and every further Shift+Up would select the same range again.
+    const currentReferencePath = navigationPaths.includes(selectionFocusPath)
+      ? selectionFocusPath
+      : selectedPaths.findLast((path) => navigationPaths.includes(path)) ?? "";
 
     const currentIndex = navigationPaths.indexOf(currentReferencePath);
+    const currentIsTreeEntry = treeData.entryPathSet.has(currentReferencePath);
+    const steppedIndex = currentIndex + direction;
+    // A Shift range stops at the first and the last entry; plain arrows loop around.
+    const isSteppingPastEnd = steppedIndex < 0 || steppedIndex >= navigationPaths.length;
+    if (extendSelection && currentIsTreeEntry && isSteppingPastEnd) return;
     let nextIndex;
     if (currentIndex < 0) {
       nextIndex = direction > 0 ? 0 : navigationPaths.length - 1;
     } else {
-      nextIndex = (currentIndex + direction + navigationPaths.length) % navigationPaths.length;
+      nextIndex = (steppedIndex + navigationPaths.length) % navigationPaths.length;
     }
     const nextPath = navigationPaths[nextIndex];
     const nextIsTreeEntry = treeData.entryPathSet.has(nextPath);
-    const currentIsTreeEntry = treeData.entryPathSet.has(currentReferencePath);
 
     let nextSelectedPaths = [];
     if (extendSelection && currentIsTreeEntry && nextIsTreeEntry) {
@@ -580,6 +586,7 @@ export default function useFilesystemPanelInteractions({
     scrollPathIntoView,
     selectEntry,
     selectedPaths,
+    selectionFocusPath,
     setSelectedPath,
     treeData.entryPathSet,
     treeData.entryPaths,

@@ -200,38 +200,46 @@ export default function useFilesystemTree({
     }
   }, [directoryEntriesByPath, loadingByPath, sortDescending, sortKey]);
 
-  // Cached subfolders are re-fetched in place, so expanded folders don't collapse to "Loading...".
+  // Re-fetches a cached folder in place, so its rows stay on screen instead of "Loading...". A
+  // folder dropped from the cache meanwhile (root change, rename) stays dropped. The sort comes
+  // from the ref: a caller may hold a closure from before a sort change (see expandDirectory).
+  const relistDirectory = useCallback(async (directoryPath) => {
+    const listedEntries = await invoke("list_directory", { path: directoryPath, ...listedSortRef.current })
+      .catch(() => []);
+    setDirectoryEntriesByPath((prev) => (
+      prev[directoryPath] ? { ...prev, [directoryPath]: listedEntries } : prev
+    ));
+  }, []);
+
   useEffect(() => {
     const listedSort = listedSortRef.current;
     if (listedSort.sortKey === sortKey && listedSort.sortDescending === sortDescending) return;
     listedSortRef.current = { sortKey, sortDescending };
-    Object.keys(directoryEntriesByPathRef.current).forEach(async (directoryPath) => {
-      const sortedEntries = await invoke("list_directory", { path: directoryPath, sortKey, sortDescending })
-        .catch(() => []);
-      setDirectoryEntriesByPath((prev) => (
-        prev[directoryPath] ? { ...prev, [directoryPath]: sortedEntries } : prev
-      ));
-    });
-  }, [sortDescending, sortKey]);
+    Object.keys(directoryEntriesByPathRef.current).forEach(relistDirectory);
+  }, [relistDirectory, sortDescending, sortKey]);
 
   const toggleDirectoryExpanded = useCallback((directoryPath) => {
     if (!directoryPath) return;
 
+    const isOpening = expandedByPath[directoryPath] !== true;
     setExpandedByPath((prev) => {
-      const isExpanded = prev[directoryPath] === true;
-      if (isExpanded) {
-        const next = { ...prev };
-        delete next[directoryPath];
-        return next;
-      }
-
-      ensureDirectoryEntriesLoaded(directoryPath);
-      return {
-        ...prev,
-        [directoryPath]: true,
-      };
+      if (prev[directoryPath] !== true) return { ...prev, [directoryPath]: true };
+      const next = { ...prev };
+      delete next[directoryPath];
+      return next;
     });
-  }, [ensureDirectoryEntriesLoaded]);
+    // A closed folder isn't watched, so its cached listing may be out of date. Uncached folders
+    // load through the effect below.
+    if (isOpening && directoryEntriesByPath[directoryPath]) relistDirectory(directoryPath);
+  }, [directoryEntriesByPath, expandedByPath, relistDirectory]);
+  // Opens the folder something was just created in, also when the user opened it during the
+  // create, but not once it is outside the current folder. The caller's closure predates the
+  // create, hence the refs. A cached listing does too, so it is fetched again.
+  const expandDirectory = useCallback((directoryPath) => {
+    if (!isPathInsideRoot(directoryPath, lastRootPathRef.current)) return;
+    setExpandedByPath((prev) => (prev[directoryPath] ? prev : { ...prev, [directoryPath]: true }));
+    if (directoryEntriesByPathRef.current[directoryPath]) relistDirectory(directoryPath);
+  }, [relistDirectory]);
   const remapRenamedPath = useCallback((sourcePath, destinationPath) => {
     if (!sourcePath || !destinationPath) return;
     if (isSamePath(sourcePath, destinationPath)) return;
@@ -289,6 +297,7 @@ export default function useFilesystemTree({
     treeRows,
     expandedDirectoryPaths,
     toggleDirectoryExpanded,
+    expandDirectory,
     remapRenamedPath,
   };
 }

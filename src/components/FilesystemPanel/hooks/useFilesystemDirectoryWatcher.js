@@ -74,12 +74,6 @@ export default function useFilesystemDirectoryWatcher({
     };
 
     const initializeWatcher = async () => {
-      for (const watchedPath of watchedPaths) {
-        const watchId = createFilesystemWatchId();
-        watchIdToPath.set(watchId, watchedPath);
-        await invoke("filesystem_watch_start", { watchId, path: watchedPath });
-      }
-
       unlistenWatch = await listen(FILESYSTEM_WATCH_EVENT, event => {
         const watchId = event.payload?.watchId;
         const watchedPath = watchIdToPath.get(watchId);
@@ -90,6 +84,20 @@ export default function useFilesystemDirectoryWatcher({
           : "";
         scheduleRefresh(watchId, watchedPath, changedPath);
       });
+
+      // A path that can't be watched (e.g. a persisted open folder that was deleted since) must
+      // not keep the other paths from being watched.
+      for (const watchedPath of watchedPaths) {
+        if (isDisposed) break;
+        const watchId = createFilesystemWatchId();
+        watchIdToPath.set(watchId, watchedPath);
+        try {
+          await invoke("filesystem_watch_start", { watchId, path: watchedPath });
+        } catch (watchError) {
+          watchIdToPath.delete(watchId);
+          if (!isDisposed) onWatcherError?.(watchError, watchedPath);
+        }
+      }
 
       if (isDisposed) {
         unlistenWatch?.();

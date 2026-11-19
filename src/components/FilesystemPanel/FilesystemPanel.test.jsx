@@ -746,6 +746,87 @@ describe("FilesystemPanel", () => {
     });
   });
 
+  // Entries pushed into the returned array show up in later listings of C:\Users, like files
+  // another program creates there.
+  function mockLaterUsersEntries() {
+    const laterEntries = [];
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => (
+      command === "list_directory" && payload?.path === "C:\\Users"
+        ? [...await baseInvoke(command, payload), ...laterEntries]
+        : baseInvoke(command, payload)
+    ));
+    return laterEntries;
+  }
+
+  it("keeps refreshing opened folders when one persisted open folder can no longer be watched", async () => {
+    const laterUsersEntries = mockLaterUsersEntries();
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "filesystem_watch_start" && payload?.path === "C:\\Gone")
+        throw new Error("The system cannot find the path specified.");
+      return baseInvoke(command, payload);
+    });
+    renderFilesystemPanel({
+      filesystemState: {
+        currentDrive: "C:\\",
+        currentPath: "C:\\",
+        scrollTop: 0,
+        expandedPaths: ["C:\\Gone", "C:\\Users"],
+      },
+    });
+    await screen.findByRole("button", { name: /todo\.txt/i });
+
+    let usersWatchId;
+    await waitFor(() => {
+      usersWatchId = invoke.mock.calls.find(([command, args]) => (
+        command === "filesystem_watch_start" && args?.path === "C:\\Users"
+      ))?.[1]?.watchId;
+      expect(usersWatchId).toEqual(expect.any(String));
+    });
+    laterUsersEntries.push({ name: "later.txt", path: "C:\\Users\\later.txt", is_dir: false });
+
+    vi.useFakeTimers();
+    try {
+      await filesystemWatchCallback?.({
+        payload: {
+          watchId: usersWatchId,
+          changedPath: "C:\\Users\\later.txt",
+        },
+      });
+      await advanceTimersBy(160);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(await screen.findByRole("button", { name: /later\.txt/i })).toBeInTheDocument();
+  });
+
+  it("lists a folder again when it is reopened, since it was not watched while closed", async () => {
+    const laterUsersEntries = mockLaterUsersEntries();
+    renderFilesystemPanel();
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const usersExpander = usersButton.querySelector("[data-entry-expander]");
+    fireEvent.click(usersExpander);
+    await screen.findByRole("button", { name: /todo\.txt/i });
+    fireEvent.click(usersExpander);
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
+    });
+
+    laterUsersEntries.push({ name: "later.txt", path: "C:\\Users\\later.txt", is_dir: false });
+    fireEvent.click(usersExpander);
+
+    expect(await screen.findByRole("button", { name: /later\.txt/i })).toBeInTheDocument();
+    const usersListings = invoke.mock.calls.filter(([command, args]) => (
+      command === "list_directory" && args?.path === "C:\\Users"
+    ));
+    expect(usersListings).toHaveLength(2);
+  });
+
   it("reports tab-level selection only for explicit entry clicks", async () => {
     const onTabSelectedFilesChange = vi.fn();
     renderFilesystemPanel({
@@ -2000,6 +2081,14 @@ describe("FilesystemPanel", () => {
     expect(screen.getAllByRole("button", { name: /file-\d{4}\.txt/i }).length).toBeLessThan(450);
   });
 
+  it("gives the scroll body its positioning class, so the list windows measure their rows from it", async () => {
+    renderFilesystemPanel();
+    await screen.findByRole("button", { name: /C:\\/i });
+
+    // Test CSS modules resolve any class name: this checks the class is applied, not its rule.
+    expect(screen.getByTestId("filesystem-panel-scroll-container").className).toMatch(/panelScrollBody/);
+  });
+
   it("imports external files dropped over the filesystem panel", async () => {
     renderFilesystemPanel();
 
@@ -2254,6 +2343,106 @@ describe("FilesystemPanel", () => {
       expect(tempButton).toHaveAttribute("aria-selected", "true");
       expect(notesButton).toHaveAttribute("aria-selected", "false");
     });
+  });
+
+  it.each(["folder-tree", "details", "grid"])("extends a range one more step with each Shift+ArrowUp in %s view", async (viewType) => {
+    renderFilesystemPanel({
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, viewType },
+    });
+
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    const tempButton = screen.getByRole("button", { name: /Temp/i });
+    const notesButton = screen.getByRole("button", { name: /notes\.txt/i });
+    const draftButton = screen.getByRole("button", { name: /draft\.md/i });
+
+    fireEvent.click(draftButton);
+    fireEvent.keyDown(draftButton, { key: "ArrowUp", shiftKey: true });
+    fireEvent.keyDown(draftButton, { key: "ArrowUp", shiftKey: true });
+
+    await waitFor(() => {
+      expect(tempButton).toHaveAttribute("aria-selected", "true");
+    });
+    expect(notesButton).toHaveAttribute("aria-selected", "true");
+    expect(draftButton).toHaveAttribute("aria-selected", "true");
+    expect(usersButton).toHaveAttribute("aria-selected", "false");
+
+    // draft.md stays the anchor, so Shift+ArrowDown takes the top step back.
+    fireEvent.keyDown(draftButton, { key: "ArrowDown", shiftKey: true });
+    await waitFor(() => {
+      expect(tempButton).toHaveAttribute("aria-selected", "false");
+    });
+    expect(notesButton).toHaveAttribute("aria-selected", "true");
+    expect(draftButton).toHaveAttribute("aria-selected", "true");
+  });
+
+  // Paths of the entries shown as selected, in list order.
+  function getShownSelection() {
+    return Array.from(document.querySelectorAll("[data-context-id][aria-selected='true']"))
+      .map((element) => element.dataset.contextId);
+  }
+
+  it("stops a Shift+arrow range at the first and the last entry instead of looping", async () => {
+    renderFilesystemPanel({
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    const tempButton = await screen.findByRole("button", { name: /Temp/i });
+    const draftButton = screen.getByRole("button", { name: /draft\.md/i });
+
+    fireEvent.click(tempButton);
+    fireEvent.keyDown(tempButton, { key: "ArrowUp", shiftKey: true });
+    fireEvent.keyDown(tempButton, { key: "ArrowUp", shiftKey: true });
+    expect(getShownSelection()).toEqual(["C:\\Users", "C:\\Temp"]);
+
+    fireEvent.click(draftButton);
+    fireEvent.keyDown(draftButton, { key: "ArrowDown", shiftKey: true });
+    fireEvent.keyDown(draftButton, { key: "ArrowDown", shiftKey: true });
+    expect(getShownSelection()).toEqual(["C:\\draft.md", "C:\\.grayspace"]);
+  });
+
+  it("moves on with plain arrows from the top of a range built upwards", async () => {
+    renderFilesystemPanel({
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    const draftButton = await screen.findByRole("button", { name: /draft\.md/i });
+
+    fireEvent.click(draftButton);
+    fireEvent.keyDown(draftButton, { key: "ArrowUp", shiftKey: true });
+    fireEvent.keyDown(draftButton, { key: "ArrowUp", shiftKey: true });
+    fireEvent.keyDown(draftButton, { key: "ArrowDown" });
+
+    expect(getShownSelection()).toEqual(["C:\\notes.txt"]);
+  });
+
+  it("moves on with plain arrows from the item last Ctrl+clicked, even one that was deselected", async () => {
+    renderFilesystemPanel({
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+
+    fireEvent.click(screen.getByRole("button", { name: /notes\.txt/i }));
+    fireEvent.click(usersButton, { ctrlKey: true });
+    fireEvent.click(usersButton, { ctrlKey: true });
+    fireEvent.keyDown(usersButton, { key: "ArrowDown" });
+
+    expect(getShownSelection()).toEqual(["C:\\Temp"]);
+  });
+
+  it("moves on with plain arrows from the last shown selected item once the folder holding the focus is closed", async () => {
+    renderFilesystemPanel({
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, expandedPaths: ["C:\\Users"] },
+    });
+    const todoButton = await screen.findByRole("button", { name: /todo\.txt/i });
+    const draftButton = screen.getByRole("button", { name: /draft\.md/i });
+
+    fireEvent.click(draftButton);
+    fireEvent.click(todoButton, { ctrlKey: true });
+    fireEvent.click(screen.getByRole("button", { name: /Users/i }).querySelector("[data-entry-expander]"));
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
+    });
+    fireEvent.keyDown(draftButton, { key: "ArrowDown" });
+
+    expect(getShownSelection()).toEqual(["C:\\.grayspace"]);
   });
 
   it("selects first entry and last entry with arrows when nothing is selected", async () => {
@@ -2922,6 +3111,169 @@ describe("FilesystemPanel", () => {
     });
   });
 
+  it("opens a closed folder only once the folder created in it exists, so the rename box shows", async () => {
+    const createFolderGate = Promise.withResolvers();
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "create_folder") await createFolderGate.promise;
+      return baseInvoke(command, payload);
+    });
+    renderFilesystemPanel({
+      paneId: "pane-create-in-closed-folder",
+    });
+
+    const driveButton = await screen.findByRole("button", { name: /C:\\/i });
+    fireEvent.doubleClick(driveButton);
+    await screen.findByRole("button", { name: /Users/i });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
+          commandId: "filesystem.createFolder",
+          context: {
+            source: "context-menu",
+            targetPaneId: "pane-create-in-closed-folder",
+            targetType: "folder",
+            targetScope: "tree-entry",
+            targetPath: "C:\\Users",
+          },
+        },
+      }));
+    });
+    await flushPromises();
+    expect(invoke).not.toHaveBeenCalledWith("list_directory", expect.objectContaining({ path: "C:\\Users" }));
+
+    await act(async () => {
+      createFolderGate.resolve();
+    });
+
+    expect(await screen.findByRole("textbox")).toHaveValue("New folder");
+    expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+  });
+
+  it("keeps a folder opened by hand during a create in it open, and lists it again for the rename box", async () => {
+    const createFolderGate = Promise.withResolvers();
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "create_folder") await createFolderGate.promise;
+      return baseInvoke(command, payload);
+    });
+    renderFilesystemPanel({
+      paneId: "pane-open-during-create",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
+          commandId: "filesystem.createFolder",
+          context: {
+            source: "context-menu",
+            targetPaneId: "pane-open-during-create",
+            targetType: "folder",
+            targetScope: "tree-entry",
+            targetPath: "C:\\Users",
+          },
+        },
+      }));
+    });
+    await flushPromises();
+    // Listed before the new folder exists.
+    fireEvent.click(usersButton.querySelector("[data-entry-expander]"));
+    await screen.findByRole("button", { name: /todo\.txt/i });
+
+    await act(async () => {
+      createFolderGate.resolve();
+    });
+
+    expect(await screen.findByRole("textbox")).toHaveValue("New folder");
+    expect(screen.getByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+  });
+
+  it("leaves a folder closed if the pane moved elsewhere while something was created in it", async () => {
+    const createFolderGate = Promise.withResolvers();
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "create_folder") await createFolderGate.promise;
+      return baseInvoke(command, payload);
+    });
+    // No tabId: C:\ holds .grayspace, and with a tab Temp would open in a new tab instead.
+    renderFilesystemPanel({
+      paneId: "pane-leave-during-create",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    await screen.findByRole("button", { name: /Users/i });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
+          commandId: "filesystem.createFolder",
+          context: {
+            source: "context-menu",
+            targetPaneId: "pane-leave-during-create",
+            targetType: "folder",
+            targetScope: "tree-entry",
+            targetPath: "C:\\Users",
+          },
+        },
+      }));
+    });
+    await flushPromises();
+    fireEvent.doubleClick(screen.getByRole("button", { name: /Temp/i }));
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /Users/i })).not.toBeInTheDocument();
+    });
+    await act(async () => {
+      createFolderGate.resolve();
+    });
+    await flushPromises();
+
+    expect(invoke).not.toHaveBeenCalledWith("list_directory", expect.objectContaining({ path: "C:\\Users" }));
+  });
+
+  it("lists a folder in the current sort after a create in it, even if the sort changed meanwhile", async () => {
+    const createFolderGate = Promise.withResolvers();
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "create_folder") await createFolderGate.promise;
+      return baseInvoke(command, payload);
+    });
+    renderFilesystemPanel({
+      paneId: "pane-sort-during-create",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, expandedPaths: ["C:\\Users"] },
+    });
+    // Listed once, then closed: cached, so the create re-lists it.
+    const usersButton = await screen.findByRole("button", { name: /Users/i });
+    await screen.findByRole("button", { name: /todo\.txt/i });
+    fireEvent.click(usersButton.querySelector("[data-entry-expander]"));
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
+          commandId: "filesystem.createFolder",
+          context: {
+            source: "context-menu",
+            targetPaneId: "pane-sort-during-create",
+            targetType: "folder",
+            targetScope: "tree-entry",
+            targetPath: "C:\\Users",
+          },
+        },
+      }));
+    });
+    await flushPromises();
+    dispatchFilesystemCommand("filesystem.sort.reverse", "pane-sort-during-create");
+    await flushPromises();
+    await act(async () => {
+      createFolderGate.resolve();
+    });
+    await screen.findByRole("textbox");
+
+    const usersListings = invoke.mock.calls.filter(([command, args]) => command === "list_directory" && args.path === "C:\\Users");
+    expect(usersListings.at(-1)[1]).toEqual(expect.objectContaining({ sortDescending: true }));
+  });
+
   it("opens a selected folder in a new tab from app command events", async () => {
     renderFilesystemPanel({
       paneId: "pane-event-open-folder",
@@ -3134,6 +3486,35 @@ describe("FilesystemPanel", () => {
       }));
     });
     await flushPromises();
+  });
+
+  it("copies only the shown items once the folder holding a selected item is closed", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-copy-closed-folder",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, expandedPaths: ["C:\\Users"] },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /todo\.txt/i }));
+    fireEvent.click(screen.getByRole("button", { name: /draft\.md/i }), { ctrlKey: true });
+    fireEvent.click(screen.getByRole("button", { name: /Users/i }).querySelector("[data-entry-expander]"));
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
+    });
+
+    // App sends Ctrl+C with the pane's saved selection, which closing a folder leaves as it is.
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
+          commandId: "filesystem.copy",
+          context: {
+            source: "shortcut",
+            targetPaneId: "pane-copy-closed-folder",
+            selectedPaths: ["C:\\Users\\todo.txt", "C:\\draft.md"],
+          },
+        },
+      }));
+    });
+
+    expect(invoke).toHaveBeenCalledWith("filesystem_clipboard_set", { paths: ["C:\\draft.md"], mode: "copy" });
   });
 
   it("cuts selected entries, pastes into folder context target, and clears cut clipboard", async () => {
@@ -3554,6 +3935,124 @@ describe("FilesystemPanel", () => {
     });
   });
 
+  it("selects and deletes only the cells grid view shows, not what open folders hold", async () => {
+    const onFilesystemStateChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-grid-range",
+      paneId: "pane-grid-range",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, expandedPaths: ["C:\\Users"] },
+      onFilesystemStateChange,
+    });
+    await screen.findByRole("button", { name: /todo\.txt/i });
+    dispatchFilesystemCommand("filesystem.view.grid", "pane-grid-range");
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /todo\.txt/i })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Users" }));
+    fireEvent.click(screen.getByRole("button", { name: "draft.md" }), { shiftKey: true });
+    const shownRange = ["C:\\Users", "C:\\Temp", "C:\\notes.txt", "C:\\draft.md"];
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        selectedPaths: shownRange,
+      }));
+    });
+
+    dispatchFilesystemCommand("filesystem.deleteSelected", "pane-grid-range");
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("delete_paths", { paths: shownRange });
+    });
+    expect(openConfirmMock).toHaveBeenCalledWith(expect.objectContaining({
+      message: "Delete 4 selected items permanently?",
+    }));
+  });
+
+  it("drops the rename of an item created in a grid folder cell once the pane leaves the folder", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-grid-create",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, viewType: "grid" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Users" }));
+    dispatchFilesystemCommand("filesystem.createFolder", "pane-grid-create");
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("create_folder", { parentDir: "C:\\Users", name: "New folder" });
+    });
+    await flushPromises();
+    // C:\Users\New folder is no cell here, so its rename waits.
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Temp" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Users" })).not.toBeInTheDocument();
+    });
+    dispatchFilesystemCommand("filesystem.navigateBack", "pane-grid-create");
+    fireEvent.doubleClick(await screen.findByRole("button", { name: "Users" }));
+    await screen.findByRole("button", { name: "todo.txt" });
+    await flushPromises();
+
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("still renames an item created in a grid folder cell when the pane goes straight into that folder", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-grid-create-enter",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, viewType: "grid" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "Users" }));
+    dispatchFilesystemCommand("filesystem.createFolder", "pane-grid-create-enter");
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("create_folder", { parentDir: "C:\\Users", name: "New folder" });
+    });
+    await flushPromises();
+
+    fireEvent.doubleClick(screen.getByRole("button", { name: "Users" }));
+
+    expect(await screen.findByRole("textbox")).toHaveValue("New folder");
+  });
+
+  it("marks workspace folders among the cells grid view shows, not the rows the folder tree would", async () => {
+    const usersEntries = Array.from({ length: 12 }, (_, index) => ({
+      name: `user-${index}`,
+      path: `C:\\Users\\user-${index}`,
+      is_dir: true,
+    }));
+    const rootEntries = [
+      { name: "Users", path: "C:\\Users", is_dir: true },
+      { name: "Workspace", path: "C:\\Workspace", is_dir: true },
+      ...Array.from({ length: 200 }, (_, index) => ({
+        name: `file-${index}.txt`,
+        path: `C:\\file-${index}.txt`,
+        is_dir: false,
+      })),
+    ];
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "list_directory_page" && payload?.path === "C:\\") {
+        const entries = rootEntries.slice(payload.offset, payload.offset + payload.limit);
+        const hasMore = payload.offset + entries.length < rootEntries.length;
+        return { entries, hasMore, totalCount: rootEntries.length };
+      }
+      if (command === "list_directory" && payload?.path === "C:\\Users") return usersEntries;
+      if (command === "filesystem_resolve_workspace_folders")
+        return Object.fromEntries(payload.paths.map((path) => [path, path === "C:\\Workspace"]));
+      return baseInvoke(command, payload);
+    });
+    renderFilesystemPanel({
+      paneId: "pane-grid-workspace",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, expandedPaths: ["C:\\Users"] },
+    });
+    // The rows of the opened Users push Workspace out of the long list's rendered window.
+    await screen.findByRole("button", { name: /user-0/i });
+    expect(screen.queryByRole("button", { name: /Workspace/i })).not.toBeInTheDocument();
+
+    dispatchFilesystemCommand("filesystem.view.grid", "pane-grid-workspace");
+
+    const workspaceCell = await screen.findByRole("button", { name: "Workspace" });
+    await waitFor(() => {
+      expect(workspaceCell.className).toMatch(/cellConfig/);
+    });
+  });
+
   it("shows sortable detail columns and re-lists the folder when a column header is clicked", async () => {
     const onFilesystemStateChange = vi.fn();
     renderFilesystemPanel({
@@ -3639,6 +4138,43 @@ describe("FilesystemPanel", () => {
       }));
     });
   }
+
+  it("keeps a selection inside an opened folder when the current folder is listed again", async () => {
+    const onFilesystemStateChange = vi.fn();
+    renderFilesystemPanel({
+      tabId: "tab-nested-selection",
+      paneId: "pane-nested-selection",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, expandedPaths: ["C:\\Users"] },
+      onFilesystemStateChange,
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /todo\.txt/i }));
+    fireEvent.click(screen.getByRole("button", { name: /draft\.md/i }), { ctrlKey: true });
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        selectedPaths: ["C:\\Users\\todo.txt", "C:\\draft.md"],
+      }));
+    });
+
+    // Another program deletes draft.md, then reversing the sort lists C:\ again.
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      const result = await baseInvoke(command, payload);
+      if (command !== "list_directory_page" || payload?.path !== "C:\\") return result;
+      const entries = result.entries.filter((entry) => entry.name !== "draft.md");
+      return { ...result, entries, totalCount: entries.length };
+    });
+    dispatchFilesystemCommand("filesystem.sort.reverse", "pane-nested-selection");
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /draft\.md/i })).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        selectedPaths: ["C:\\Users\\todo.txt"],
+      }));
+    });
+    expect(screen.getByRole("button", { name: /todo\.txt/i })).toHaveAttribute("aria-selected", "true");
+  });
 
   it("filters the current folder by name and restores it on Escape", async () => {
     renderFilesystemPanel({
@@ -4104,6 +4640,34 @@ describe("FilesystemPanel", () => {
 
     expect(openConfirmMock).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalledWith("delete_paths", expect.anything());
+  });
+
+  it("cuts only the shown items once a selected item in an opened folder is hidden", async () => {
+    mockHiddenEntries();
+    const setShowHiddenFiles = renderHiddenEntriesPanel(true);
+    fireEvent.click(await screen.findByRole("button", { name: /AppData/i }));
+    fireEvent.click(screen.getByRole("button", { name: /notes\.txt/i }), { ctrlKey: true });
+
+    setShowHiddenFiles(false);
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /AppData/i })).not.toBeInTheDocument();
+    });
+    // App sends Ctrl+X with the pane's saved selection, which still holds AppData: listing C:\ again
+    // only drops what C:\ itself no longer lists.
+    act(() => {
+      window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+        detail: {
+          commandId: "filesystem.cut",
+          context: {
+            source: "shortcut",
+            targetPaneId: "pane-hidden",
+            selectedPaths: ["C:\\Users\\AppData", "C:\\notes.txt"],
+          },
+        },
+      }));
+    });
+
+    expect(invoke).toHaveBeenCalledWith("filesystem_clipboard_set", { paths: ["C:\\notes.txt"], mode: "cut" });
   });
 
   it("leaves hidden folders out of path suggestions when hidden files are hidden", async () => {

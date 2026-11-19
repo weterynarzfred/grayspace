@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getParentDirectoryPath, isSamePath } from "../../../utils/pathWatch";
 import useFilesystemDirectoryWatcher from "./useFilesystemDirectoryWatcher";
 import useFilesystemSearch from "./useFilesystemSearch";
 import {
@@ -61,7 +62,7 @@ export default function useFilesystemBrowsingState({
   initialCurrentDrive = "",
   initialCurrentPath = "",
   clearSelection,
-  keepSelectionOnlyInPathSet,
+  keepSelectionWhere,
   sortKey = "name",
   sortDescending = false,
   searchOptions = undefined,
@@ -112,11 +113,15 @@ export default function useFilesystemBrowsingState({
   listingOptionsRef.current = { sortKey, sortDescending, filter, showHidden };
   isSearchActiveRef.current = isSearchActive;
 
-  const applyLoadedEntries = useCallback((nextEntries) => {
+  // The listing only speaks for the listed folder's own entries: a selection inside an opened
+  // subfolder stays.
+  const applyLoadedEntries = useCallback((nextEntries, listedPath) => {
     setEntries(nextEntries);
-    const visibleEntryPathSet = new Set(nextEntries.map((entry) => entry.path));
-    keepSelectionOnlyInPathSet(visibleEntryPathSet);
-  }, [keepSelectionOnlyInPathSet]);
+    const listedEntryPathSet = new Set(nextEntries.map((entry) => entry.path));
+    keepSelectionWhere((path) => (
+      listedEntryPathSet.has(path) || !isSamePath(getParentDirectoryPath(path), listedPath)
+    ));
+  }, [keepSelectionWhere]);
 
   const updateHistoryAvailability = useCallback(() => {
     const currentIndex = historyIndexRef.current;
@@ -236,7 +241,7 @@ export default function useFilesystemBrowsingState({
         refresh: reread,
       });
       if (currentPathRef.current !== normalizedPath || listedOptionsRef.current !== listingOptions) return;
-      applyLoadedEntries(refreshedPage.entries);
+      applyLoadedEntries(refreshedPage.entries, normalizedPath);
       setHasMoreEntries(refreshedPage.hasMore);
       setTotalEntriesCount(refreshedPage.totalCount);
     } catch (refreshError) {
@@ -303,7 +308,7 @@ export default function useFilesystemBrowsingState({
           refresh: true,
         });
         if (!cancelled) {
-          applyLoadedEntries(firstPage.entries);
+          applyLoadedEntries(firstPage.entries, currentPath);
           setHasMoreEntries(firstPage.hasMore);
           setTotalEntriesCount(firstPage.totalCount);
         }
