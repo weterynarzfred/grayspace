@@ -19,6 +19,18 @@ function getOffsetTopWithinContainer(container, element) {
   return offsetTop;
 }
 
+// The row containing y: the last row whose top is at or above it.
+function findRowIndexAt(rowOffsetsPx, y) {
+  let low = 0;
+  let high = rowOffsetsPx.length - 2;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (rowOffsetsPx[middle] <= y) low = middle;
+    else high = middle - 1;
+  }
+  return low;
+}
+
 function getFullWindowState(itemCount) {
   return {
     startIndex: 0,
@@ -28,9 +40,12 @@ function getFullWindowState(itemCount) {
   };
 }
 
+// Rows of different heights pass rowOffsetsPx: every row's top, then the total height
+// (itemCount + 1 values). Without it, every row is rowHeightPx tall.
 export default function useVirtualizedEntryWindow({
   itemCount = 0,
   rowHeightPx = 29,
+  rowOffsetsPx = undefined,
   overscanRows = DEFAULT_OVERSCAN_ROWS,
   maxVisibleRows = DEFAULT_MAX_VISIBLE_ROWS,
   isEnabled = false,
@@ -74,11 +89,14 @@ export default function useVirtualizedEntryWindow({
       ? getOffsetTopWithinContainer(scrollContainer, listStartAnchor)
       : 0;
     const relativeScrollTop = Math.max(0, scrollTop - startOffset);
-    const firstVisibleIndex = Math.floor(relativeScrollTop / rowHeightPx);
-    const visibleItemCount = Math.min(
-      Math.ceil(viewportHeight / rowHeightPx),
-      Math.max(1, maxVisibleRows),
-    );
+    const getRowTop = (index) => (rowOffsetsPx ? rowOffsetsPx[index] : index * rowHeightPx);
+    const firstVisibleIndex = rowOffsetsPx
+      ? findRowIndexAt(rowOffsetsPx, relativeScrollTop)
+      : Math.floor(relativeScrollTop / rowHeightPx);
+    const fittingRowCount = rowOffsetsPx
+      ? findRowIndexAt(rowOffsetsPx, relativeScrollTop + viewportHeight) - firstVisibleIndex + 1
+      : Math.ceil(viewportHeight / rowHeightPx);
+    const visibleItemCount = Math.min(fittingRowCount, Math.max(1, maxVisibleRows));
     const startIndex = clamp(firstVisibleIndex - overscanRows, 0, itemCount);
     const endIndex = clamp(
       firstVisibleIndex + visibleItemCount + overscanRows,
@@ -89,8 +107,8 @@ export default function useVirtualizedEntryWindow({
     setStateIfChanged({
       startIndex,
       endIndex,
-      topSpacerHeight: startIndex * rowHeightPx,
-      bottomSpacerHeight: (itemCount - endIndex) * rowHeightPx,
+      topSpacerHeight: getRowTop(startIndex),
+      bottomSpacerHeight: getRowTop(itemCount) - getRowTop(endIndex),
     });
   }, [
     isEnabled,
@@ -98,19 +116,24 @@ export default function useVirtualizedEntryWindow({
     maxVisibleRows,
     overscanRows,
     rowHeightPx,
+    rowOffsetsPx,
     scrollContainerRef,
     listStartAnchorRef,
     setStateIfChanged,
   ]);
 
+  // The frame runs the latest recompute: rows that changed after it was scheduled (a resize
+  // re-wraps the lines) must not get a window worked out from the old ones.
+  const recomputeRef = useRef(recomputeWindow);
+  recomputeRef.current = recomputeWindow;
   const scheduleRecompute = useCallback(() => {
     if (frameRef.current !== null) return;
 
     frameRef.current = window.requestAnimationFrame(() => {
       frameRef.current = null;
-      recomputeWindow();
+      recomputeRef.current();
     });
-  }, [recomputeWindow]);
+  }, []);
 
   useEffect(() => {
     recomputeWindow();

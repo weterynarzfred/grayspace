@@ -1,12 +1,12 @@
 import {
   DndContext,
   PointerSensor,
-  pointerWithin,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { EXTERNAL_FILESYSTEM_DRAG_START_EVENT } from "./dndExternalEvents";
+import pointerWithinVisible from "./pointerWithinVisible";
 
 const PanelsDndHandlersContext = createContext(null);
 
@@ -112,7 +112,7 @@ function PanelsDndLayer({ children }) {
   return <PanelsDndHandlersContext.Provider value={contextValue}>
     <DndContext
       sensors={sensors}
-      collisionDetection={pointerWithin}
+      collisionDetection={pointerWithinVisible}
       autoScroll={false}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}

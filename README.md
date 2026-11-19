@@ -62,9 +62,9 @@ npm run tauri_dev
 * `Ctrl+Shift+U` switch active pane to external UI
 * `Ctrl+R` open recently opened folders
 * filesystem panel:
-  * `Arrow Up/Down` move selection (loops)
-  * `Shift+Arrow Up/Down` range selection
-  * `Arrow Right/Left` expand/collapse selected folder
+  * `Arrow Up/Down` move selection (loops), from the item last clicked or moved to
+  * `Shift+Arrow Up/Down` range selection (stops at the first / last item)
+  * `Arrow Right/Left` expand/collapse the folder last clicked or moved to
   * `Enter` open selected item(s)
   * `Ctrl+Enter` open selected folder in new tab
   * `Alt+ArrowLeft` go back in folder history
@@ -84,9 +84,14 @@ npm run tauri_dev
     * optional: skip folders containing a `CACHEDIR.TAG` file (e.g. Rust `target/`), off by default
     * `.*` toggles regex: matched case-insensitively against the path relative to the current folder, `/` between folders (e.g. `src/components/.*\.jsx$`)
     * "Reset to defaults" in the options; the options are saved per pane in workspaces (`.grayspace/panels.json`), elsewhere kept for the session
-  * `Ctrl+Wheel` change thumbnail size; in grid view thumbnails fill their cell, so the size is the smallest they get (from 64 px up)
+  * `Ctrl+Wheel` change thumbnail size; in both grid views thumbnails fill their cell, so the size is the smallest they get (from 64 px up; in the foldable grid's opened folders about 10% smaller); foldable grid folder rows stay at most 32 px tall
   * `Ctrl+H` show / hide hidden files (also in the command palette and the context menu's "View"); one setting for all panes and windows, kept across restarts; shown (dimmed) by default; when hidden, search skips hidden items and does not look inside hidden folders
   * view type (folder tree / details / grid / foldable grid) from command palette or context menu ("View"); remembered per workspace, or per folder outside workspaces
+  * foldable grid: the folder tree with files as tiles; folders are compact rows (expander, indent guides) at every depth, files are tiles that fill the (indented) width of their level; top-level tiles are laid out like grid view's, and an opened folder keeps its parent's columns with tiles up to 10% narrower, dropping one column at a time when that is not enough
+    * opening a folder (expander click, or `Arrow Right` on its row) shows its subfolders as rows and its files as tiles right under its row, one level in; opened folders are shared with the folder tree and details views
+    * `Arrow Up/Down` go to the tile in the same column on the line above / below (a folder row counts as the first column; loops)
+    * `Arrow Right/Left` open / close the folder row you're on; otherwise they step to the next / previous item in reading order and stop at the first / last one; with `Shift` they only extend the range
+    * drops on a tile, or in the empty space between an opened folder's tiles, go into that folder (also drops from Explorer); in the top level's empty space they go into the current folder; clicks and right-clicks in empty space act on the current folder
   * sort by name / date modified / size / type from details column headers, command palette or context menu ("Sort By"); same key again reverses the order; remembered with the view type
   * the palette and context menu mark the current view type and hidden-files setting with `✓`, and the current sort key with its direction (`▴` / `▾`)
   * mouse: middle-click folder, breadcrumb or drive, or `Ctrl+DoubleClick` folder, opens it in a new tab
@@ -179,9 +184,11 @@ npm run tauri_dev
 * [ ] drag between tabs
 * [ ] history
 * [x] thumbnail sizing (incl. `Ctrl+Wheel`)
-  * [x] grid previews fill their cell; cached at 64 / 256 / 512 px, and grid sizes from 192 px up use 512 px so the bigger previews stay sharp
+  * [x] previews in both grid views fill their cell; cached at 64 / 256 / 512 px, and sizes from 192 px up use 512 px so the bigger previews stay sharp
 * [x] grid / foldable grid views
   * [x] persist view type and thumbnail size per workspace, and per folder outside workspaces
+  * [ ] column-aware arrow keys in grid view (the foldable grid has them)
+  * [ ] New / Paste from the menu of an opened folder's empty space in the foldable grid go into that folder (now the current folder, while drops there go into the opened one)
 * [x] details view (date modified, type, size columns)
   * [ ] resizable / configurable columns
 * [x] sorting (name / date modified / size / type, natural order, folders first)

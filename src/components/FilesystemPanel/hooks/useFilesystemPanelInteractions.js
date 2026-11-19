@@ -21,26 +21,29 @@ function hasCommandModifiers(event) {
   return event.metaKey || event.ctrlKey || event.altKey;
 }
 
+// The path `direction` steps from `fromPath`, or the first or the last one when `fromPath` isn't
+// in `paths`. Past either end it loops around, or gives "" when it doesn't wrap.
+function getLinearNeighbourPath(paths, fromPath, direction, wraps) {
+  const index = paths.indexOf(fromPath);
+  if (index < 0) return direction > 0 ? paths[0] : paths.at(-1);
+  if (wraps) return paths[(index + direction + paths.length) % paths.length];
+  return paths[index + direction] ?? "";
+}
+
 function handlePanelNavigationCommand(event, {
+  handleArrowKey,
   handleDeleteKeyPress,
-  handleExpandOrCollapseSelectedEntry,
-  handleMoveSelectionBy,
   handleOpenSelectedEntry,
 }) {
   switch (event.key) {
     case "ArrowDown":
-      event.preventDefault();
-      handleMoveSelectionBy(1, event.shiftKey);
-      return;
     case "ArrowUp":
       event.preventDefault();
-      handleMoveSelectionBy(-1, event.shiftKey);
+      handleArrowKey(event.key, event.shiftKey);
       return;
     case "ArrowRight":
-      if (handleExpandOrCollapseSelectedEntry(true)) event.preventDefault();
-      return;
     case "ArrowLeft":
-      if (handleExpandOrCollapseSelectedEntry(false)) event.preventDefault();
+      if (handleArrowKey(event.key, event.shiftKey)) event.preventDefault();
       return;
     case "Enter":
       if (handleOpenSelectedEntry()) event.preventDefault();
@@ -60,6 +63,9 @@ export default function useFilesystemPanelInteractions({
   currentPath = "",
   selectedPaths = [],
   selectionFocusPath = "",
+  // Given only by a view that lays entries out in tiles (the foldable grid): (path, direction,
+  // wraps) => the entry above or below `path`, or "".
+  getVerticalNeighbourPath = undefined,
   drivePaths = [],
   treeRows = [],
   isBrowsing = false,
@@ -539,68 +545,70 @@ export default function useFilesystemPanelInteractions({
     selectedEntryPaths,
     treeData.entryByPath,
   ]);
-  const handleMoveSelectionBy = useCallback((direction, extendSelection = false) => {
-    const navigationPaths = keyboardNavigationPaths;
-    if (!Array.isArray(navigationPaths) || navigationPaths.length === 0) return;
-
-    // The focus, not the last selected path: ranges are kept in entry order, so after Shift+Up that
-    // path is the anchor, and every further Shift+Up would select the same range again.
-    const currentReferencePath = navigationPaths.includes(selectionFocusPath)
-      ? selectionFocusPath
-      : selectedPaths.findLast((path) => navigationPaths.includes(path)) ?? "";
-
-    const currentIndex = navigationPaths.indexOf(currentReferencePath);
-    const currentIsTreeEntry = treeData.entryPathSet.has(currentReferencePath);
-    const steppedIndex = currentIndex + direction;
-    // A Shift range stops at the first and the last entry; plain arrows loop around.
-    const isSteppingPastEnd = steppedIndex < 0 || steppedIndex >= navigationPaths.length;
-    if (extendSelection && currentIsTreeEntry && isSteppingPastEnd) return;
-    let nextIndex;
-    if (currentIndex < 0) {
-      nextIndex = direction > 0 ? 0 : navigationPaths.length - 1;
-    } else {
-      nextIndex = (steppedIndex + navigationPaths.length) % navigationPaths.length;
-    }
-    const nextPath = navigationPaths[nextIndex];
-    const nextIsTreeEntry = treeData.entryPathSet.has(nextPath);
-
-    let nextSelectedPaths = [];
-    if (extendSelection && currentIsTreeEntry && nextIsTreeEntry) {
-      nextSelectedPaths = selectEntry(nextPath, {
-        range: true,
-        entryPaths: treeData.entryPaths,
-      });
-    } else if (nextIsTreeEntry) {
-      nextSelectedPaths = selectEntry(nextPath, {
-        entryPaths: treeData.entryPaths,
-      });
-    } else {
-      nextSelectedPaths = setSelectedPath(nextPath);
-    }
-
+  const moveSelectionTo = useCallback((nextPath, isExtendingRange) => {
+    // Drives aren't entries: they are selected by path.
+    const nextSelectedPaths = treeData.entryPathSet.has(nextPath)
+      ? selectEntry(nextPath, { range: isExtendingRange, entryPaths: treeData.entryPaths })
+      : setSelectedPath(nextPath);
     emitTabSelectedFiles(nextSelectedPaths);
     scrollPathIntoView(nextPath);
   }, [
     emitTabSelectedFiles,
-    keyboardNavigationPaths,
     scrollPathIntoView,
     selectEntry,
-    selectedPaths,
-    selectionFocusPath,
     setSelectedPath,
     treeData.entryPathSet,
     treeData.entryPaths,
   ]);
 
-  const handleExpandOrCollapseSelectedEntry = useCallback((expand) => {
-    const selectedPath = selectedPaths.at(-1) ?? "";
-    const selectedRow = rowByPath[selectedPath];
-    if (!selectedRow?.entry?.is_dir) return false;
-    if (expand && selectedRow.isExpanded) return false;
-    if (!expand && !selectedRow.isExpanded) return false;
-    onToggleDirectoryExpanded?.(selectedPath);
+  // Up/Down step through the entry order, or by column in a tile layout. Left/Right open or close
+  // the folder row the keyboard is on; in a tile layout they otherwise step through the reading
+  // order. False when the key did nothing, so the event is left alone.
+  const handleArrowKey = useCallback((key, extendSelection) => {
+    const paths = keyboardNavigationPaths;
+    if (paths.length === 0) return false;
+
+    // The focus, not the last selected path: ranges are kept in entry order, so after Shift+Up that
+    // path is the anchor, and every further Shift+Up would select the same range again.
+    const referencePath = paths.includes(selectionFocusPath)
+      ? selectionFocusPath
+      : selectedPaths.findLast((path) => paths.includes(path)) ?? "";
+    const isExtendingRange = extendSelection && treeData.entryPathSet.has(referencePath);
+    const isTileLayout = Boolean(getVerticalNeighbourPath);
+    const direction = key === "ArrowDown" || key === "ArrowRight" ? 1 : -1;
+
+    if (key === "ArrowDown" || key === "ArrowUp") {
+      // A Shift range stops at the first and the last entry; plain arrows loop around.
+      const nextPath = isTileLayout && referencePath
+        ? getVerticalNeighbourPath(referencePath, direction, !isExtendingRange)
+        : getLinearNeighbourPath(paths, referencePath, direction, !isExtendingRange);
+      if (nextPath) moveSelectionTo(nextPath, isExtendingRange);
+      return true;
+    }
+
+    const row = rowByPath[referencePath];
+    const canOpenOrClose = row?.entry.is_dir && (direction > 0 ? !row.isExpanded : row.isExpanded);
+    // Shift+Left/Right in a tile layout only extend the range.
+    if (canOpenOrClose && !(isTileLayout && extendSelection)) {
+      onToggleDirectoryExpanded?.(referencePath);
+      return true;
+    }
+    if (!isTileLayout) return false;
+
+    const nextPath = getLinearNeighbourPath(paths, referencePath, direction, false);
+    if (!nextPath) return false;
+    moveSelectionTo(nextPath, isExtendingRange);
     return true;
-  }, [onToggleDirectoryExpanded, rowByPath, selectedPaths]);
+  }, [
+    getVerticalNeighbourPath,
+    keyboardNavigationPaths,
+    moveSelectionTo,
+    onToggleDirectoryExpanded,
+    rowByPath,
+    selectedPaths,
+    selectionFocusPath,
+    treeData.entryPathSet,
+  ]);
 
   // Several files all open; otherwise the last path opens (a folder is navigated into).
   const openEntryPaths = useCallback((paths) => {
@@ -681,15 +689,13 @@ export default function useFilesystemPanelInteractions({
     if (event.target.closest?.("[data-pane-header], [data-search-options]")) return;
 
     handlePanelNavigationCommand(event, {
+      handleArrowKey,
       handleDeleteKeyPress,
-      handleExpandOrCollapseSelectedEntry,
-      handleMoveSelectionBy,
       handleOpenSelectedEntry,
     });
   }, [
+    handleArrowKey,
     handleDeleteKeyPress,
-    handleExpandOrCollapseSelectedEntry,
-    handleMoveSelectionBy,
     handleOpenSelectedEntry,
     isEntryOperationInProgress,
   ]);

@@ -1,3 +1,5 @@
+import { getParentDirectoryPath, isSamePath } from "../../utils/pathWatch";
+
 export function normalizePathForComparison(path) {
   if (typeof path !== "string" || !path.trim()) return "";
   return path
@@ -13,6 +15,13 @@ export function isPathInsideRoot(path, rootPath) {
   if (!normalizedRootPath) return false;
   return normalizedPath === normalizedRootPath
     || normalizedPath.startsWith(`${normalizedRootPath}/`);
+}
+
+// Folder of a search result relative to the searched folder, e.g. "photos\\2024"; "" when directly inside.
+export function getResultLocation(entryPath, rootPath) {
+  const parentPath = getParentDirectoryPath(entryPath);
+  if (isSamePath(parentPath, rootPath)) return "";
+  return parentPath.slice(rootPath.replace(/[\\/]+$/, "").length).replace(/^[\\/]+/, "");
 }
 
 export function resolveExternalDropDestinationFromPoint(clientPosition, fallbackPath) {

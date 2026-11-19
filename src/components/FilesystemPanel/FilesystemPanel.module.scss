@@ -21,8 +21,8 @@
   position: relative;
 }
 
-// Grid cells grow with the pane's width, so the row height does too. A scrollbar that took width
-// when it appeared could make the rows fit again and disappear, over and over.
+// The cells of both grid views grow with the pane's width, so the row height does too. A scrollbar
+// that took width when it appeared could make the rows fit again and disappear, over and over.
 .gridPanelBody {
   scrollbar-gutter: stable;
 }

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { cursorPosition } from "@tauri-apps/api/window";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
@@ -7,6 +7,8 @@ import FilesystemPanel from "./FilesystemPanel";
 import { clearFilesystemClipboardState } from "./filesystemClipboardStore";
 import PanelsDndLayer from "../PanelsDndLayer";
 import { APP_COMMAND_EVENT } from "../../commands/commandEvents";
+import { COMMAND_IDS, isCommandShortcutMatch } from "../../commands/commandRegistry";
+import executeCommand from "../../commands/executeCommand";
 import { flushPromises, runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
 import { advanceTimersBy } from "../../test/utils/timers";
 
@@ -4489,6 +4491,323 @@ describe("FilesystemPanel", () => {
     expect(openCalls).toEqual([]);
   });
 
+  it("leaves keys the focused list does nothing with to that list, not to the pane under the pointer", async () => {
+    const filesystemState = { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 };
+    render(
+      <PanelsDndLayer>
+        <div data-pane-active="false" data-testid="pane-a">
+          <FilesystemPanel tabId="tab-list-keys" paneId="pane-a" filesystemState={filesystemState} />
+        </div>
+        <div data-pane-active="true" data-testid="pane-b">
+          <FilesystemPanel tabId="tab-list-keys" paneId="pane-b" filesystemState={filesystemState} />
+        </div>
+      </PanelsDndLayer>,
+    );
+    const paneA = within(screen.getByTestId("pane-a"));
+    const paneB = within(screen.getByTestId("pane-b"));
+    const usersInB = await paneB.findByRole("button", { name: /Users/i });
+    fireEvent.click(usersInB);
+    const notesInA = await paneA.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesInA);
+    notesInA.focus();
+    const callsBefore = invoke.mock.calls.length;
+
+    // Right on a file, then Delete and Enter with nothing selected, do nothing in A.
+    fireEvent.keyDown(notesInA, { key: "ArrowRight" });
+    fireEvent.click(notesInA, { ctrlKey: true });
+    fireEvent.keyDown(notesInA, { key: "Delete" });
+    fireEvent.keyDown(notesInA, { key: "Enter" });
+    await flushPromises();
+
+    expect(openConfirmMock).not.toHaveBeenCalled();
+    const listingAndOpenCalls = invoke.mock.calls.slice(callsBefore)
+      .map(([command]) => command)
+      .filter((command) => command.startsWith("list_directory") || command.startsWith("workspace_open"));
+    expect(listingAndOpenCalls).toEqual([]);
+    expect(usersInB).toHaveAttribute("aria-selected", "true");
+
+    // With nothing focused, keys go to the pane under the pointer.
+    notesInA.blur();
+    fireEvent.keyDown(document.body, { key: "ArrowDown" });
+    expect(paneB.getByRole("button", { name: /Temp/i })).toHaveAttribute("aria-selected", "true");
+  });
+
+  // Pane A at C:\ and pane B, under the pointer, at C:\Users.
+  function renderPanesWithPointerOverB(tabId) {
+    render(
+      <PanelsDndLayer>
+        <div data-pane-active="false" data-testid="pane-a">
+          <FilesystemPanel
+            tabId={tabId}
+            paneId="pane-a"
+            filesystemState={{ currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 }}
+          />
+        </div>
+        <div data-pane-active="true" data-testid="pane-b">
+          <FilesystemPanel
+            tabId={tabId}
+            paneId="pane-b"
+            filesystemState={{ currentDrive: "C:\\", currentPath: "C:\\Users", scrollTop: 0 }}
+          />
+        </div>
+      </PanelsDndLayer>,
+    );
+    return { paneA: within(screen.getByTestId("pane-a")), paneB: within(screen.getByTestId("pane-b")) };
+  }
+
+  async function commitRename(pane, newName) {
+    const renameInput = await pane.findByRole("textbox");
+    fireEvent.change(renameInput, { target: { value: newName } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+    await waitFor(() => {
+      expect(pane.queryByRole("textbox")).not.toBeInTheDocument();
+    });
+  }
+
+  // The renames undo and redo ran (they may not adjust the name) from the call at `fromCallIndex`.
+  function getUndoAndRedoRenames(fromCallIndex) {
+    return invoke.mock.calls.slice(fromCallIndex)
+      .filter(([command, payload]) => command === "rename_path" && payload.allowAdjustment === false)
+      .map(([, payload]) => `${payload.path} -> ${payload.newName}`);
+  }
+
+  it("renames, undoes and redoes in the pane under the pointer, also while another pane's list has focus", async () => {
+    const { paneA, paneB } = renderPanesWithPointerOverB("tab-shortcut-keys");
+    // Each pane gets a rename to undo: B from F2 on its list, A from the menu.
+    const todoInB = await paneB.findByRole("button", { name: /todo\.txt/i });
+    fireEvent.click(todoInB);
+    todoInB.focus();
+    fireEvent.keyDown(todoInB, { key: "F2" });
+    await commitRename(paneB, "todo2.txt");
+    fireEvent.click(await paneA.findByRole("button", { name: /notes\.txt/i }));
+    dispatchFilesystemCommand("filesystem.renameSelected", "pane-a");
+    await commitRename(paneA, "renamed.txt");
+    // A's list has focus, on a file selected there, which F2 would rename.
+    const renamedInA = await paneA.findByRole("button", { name: /renamed\.txt/i });
+    fireEvent.click(renamedInA);
+    renamedInA.focus();
+    const callsBefore = invoke.mock.calls.length;
+
+    fireEvent.keyDown(renamedInA, { key: "z", ctrlKey: true });
+    expect(await paneB.findByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    fireEvent.keyDown(renamedInA, { key: "y", ctrlKey: true });
+    expect(await paneB.findByRole("button", { name: /todo2\.txt/i })).toBeInTheDocument();
+    fireEvent.click(paneB.getByRole("button", { name: /Projects/i }));
+    renamedInA.focus();
+    fireEvent.keyDown(renamedInA, { key: "F2" });
+
+    expect(await paneB.findByRole("textbox")).toHaveValue("Projects");
+    expect(paneA.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(getUndoAndRedoRenames(callsBefore)).toEqual([
+      "C:\\Users\\todo2.txt -> todo.txt",
+      "C:\\Users\\todo.txt -> todo2.txt",
+    ]);
+
+    // With nothing focused, the keys go there as well.
+    fireEvent.keyDown(paneB.getByRole("textbox"), { key: "Escape" });
+    act(() => document.activeElement.blur());
+    fireEvent.keyDown(document.body, { key: "z", ctrlKey: true });
+    expect(await paneB.findByRole("button", { name: /todo\.txt/i })).toBeInTheDocument();
+    expect(getUndoAndRedoRenames(callsBefore).at(-1)).toBe("C:\\Users\\todo2.txt -> todo.txt");
+    expect(paneA.getByRole("button", { name: /renamed\.txt/i })).toBeInTheDocument();
+  });
+
+  // As App's shortcut listener does: F2, Ctrl+Z and Ctrl+Y (or Ctrl+Shift+Z) go to the active pane,
+  // the one under the pointer.
+  function sendShortcutToPaneB(event) {
+    const commandId = [COMMAND_IDS.FILESYSTEM_RENAME_SELECTED, COMMAND_IDS.FILESYSTEM_UNDO, COMMAND_IDS.FILESYSTEM_REDO]
+      .find((id) => isCommandShortcutMatch(id, event));
+    if (event.defaultPrevented || !commandId) return;
+    event.preventDefault();
+    executeCommand(commandId, { context: { source: "shortcut", activePaneId: "pane-b" } });
+  }
+
+  it.each(["before", "after"])("acts on F2, Ctrl+Z and Ctrl+Y once, in the pane under the pointer, with the app's shortcut listener %s the panes' own", async (appListenerTurn) => {
+    // The window runs its listeners in the order they were added. The panes add theirs again
+    // whenever what they act on changes, so to run after them the app's is added again before
+    // each key.
+    const pressKey = (element, keyOptions) => {
+      if (appListenerTurn === "after") {
+        window.removeEventListener("keydown", sendShortcutToPaneB);
+        window.addEventListener("keydown", sendShortcutToPaneB);
+      }
+      fireEvent.keyDown(element, keyOptions);
+    };
+    const renameCommandPaneIds = [];
+    const recordRenameCommand = ({ detail: { commandId, context } }) => {
+      if (commandId !== COMMAND_IDS.FILESYSTEM_RENAME_SELECTED) return;
+      renameCommandPaneIds.push(context.targetPaneId || context.activePaneId);
+    };
+    if (appListenerTurn === "before") window.addEventListener("keydown", sendShortcutToPaneB);
+    window.addEventListener(APP_COMMAND_EVENT, recordRenameCommand);
+    try {
+      const { paneA, paneB } = renderPanesWithPointerOverB("tab-app-shortcuts");
+      // Two renames in B: a key acting twice would undo or redo both.
+      for (const [name, newName] of [[/todo\.txt/i, "todo2.txt"], [/Projects/i, "Projects2"]]) {
+        const button = await paneB.findByRole("button", { name });
+        fireEvent.click(button);
+        button.focus();
+        pressKey(button, { key: "F2" });
+        await commitRename(paneB, newName);
+      }
+      const notesInA = await paneA.findByRole("button", { name: /notes\.txt/i });
+      fireEvent.click(notesInA);
+      notesInA.focus();
+      const callsBefore = invoke.mock.calls.length;
+
+      const expectedRenames = [];
+      for (const [keyOptions, rename] of [
+        [{ key: "z", ctrlKey: true }, "C:\\Users\\Projects2 -> Projects"],
+        [{ key: "z", ctrlKey: true }, "C:\\Users\\todo2.txt -> todo.txt"],
+        [{ key: "y", ctrlKey: true }, "C:\\Users\\todo.txt -> todo2.txt"],
+        [{ key: "z", ctrlKey: true, shiftKey: true }, "C:\\Users\\Projects -> Projects2"],
+      ]) {
+        pressKey(notesInA, keyOptions);
+        expectedRenames.push(rename);
+        await waitFor(() => {
+          expect(paneB.queryByText("Moving item...")).not.toBeInTheDocument();
+        });
+        expect(getUndoAndRedoRenames(callsBefore)).toEqual(expectedRenames);
+      }
+
+      renameCommandPaneIds.length = 0;
+      fireEvent.click(paneB.getByRole("button", { name: /todo2\.txt/i }));
+      notesInA.focus();
+      pressKey(notesInA, { key: "F2" });
+      expect(await paneB.findByRole("textbox")).toHaveValue("todo2.txt");
+      expect(paneA.queryByRole("textbox")).not.toBeInTheDocument();
+      expect(renameCommandPaneIds).toEqual(["pane-b"]);
+    } finally {
+      window.removeEventListener("keydown", sendShortcutToPaneB);
+      window.removeEventListener(APP_COMMAND_EVENT, recordRenameCommand);
+    }
+  });
+
+  it("leaves F2, Ctrl+Z and Ctrl+Y in a rename box, the filter box and the path editor to that field", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-field-keys",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    // A rename first, so the pane has something Ctrl+Z would undo.
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "F2" });
+    const notesRenameInput = await screen.findByRole("textbox");
+    fireEvent.change(notesRenameInput, { target: { value: "renamed.txt" } });
+    fireEvent.keyDown(notesRenameInput, { key: "Enter" });
+    await screen.findByRole("button", { name: /renamed\.txt/i });
+    const callsBefore = invoke.mock.calls.length;
+    const pressShortcutKeys = (field) => {
+      [{ key: "z", ctrlKey: true }, { key: "y", ctrlKey: true }, { key: "F2" }].forEach((keyOptions) => {
+        const event = createEvent.keyDown(field, keyOptions);
+        fireEvent(field, event);
+        expect(event.defaultPrevented).toBe(false);
+      });
+    };
+
+    const draftButton = screen.getByRole("button", { name: /draft\.md/i });
+    fireEvent.click(draftButton);
+    draftButton.focus();
+    fireEvent.keyDown(draftButton, { key: "F2" });
+    const renameInput = await screen.findByRole("textbox");
+    pressShortcutKeys(renameInput);
+    await flushPromises();
+    expect(screen.getByRole("textbox")).toBe(renameInput);
+    fireEvent.keyDown(renameInput, { key: "Escape" });
+
+    dispatchFilesystemCommand("filesystem.filterCurrentFolder", "pane-field-keys");
+    pressShortcutKeys(await screen.findByRole("searchbox", { name: "Filter current folder" }));
+    await flushPromises();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+
+    dispatchFilesystemCommand("filesystem.focusBreadcrumbInput", "pane-field-keys");
+    const pathInput = await screen.findByRole("textbox", { name: "Current folder path" });
+    pressShortcutKeys(pathInput);
+    await flushPromises();
+    expect(screen.getByRole("textbox")).toBe(pathInput);
+
+    const undoAndRedoCalls = invoke.mock.calls.slice(callsBefore)
+      .filter(([command, payload]) => command === "rename_path" && payload.allowAdjustment === false);
+    expect(undoAndRedoCalls).toEqual([]);
+  });
+
+  it("starts one rename for a held F2", async () => {
+    renderFilesystemPanel({
+      paneId: "pane-held-f2",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "F2" });
+    const renameInput = await screen.findByRole("textbox");
+
+    // F2 is still down when a click on draft.md ends the rename (its box loses focus), and the
+    // key goes on repeating there.
+    fireEvent.blur(renameInput);
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    });
+    const draftButton = screen.getByRole("button", { name: /draft\.md/i });
+    fireEvent.click(draftButton);
+    draftButton.focus();
+    fireEvent.keyDown(draftButton, { key: "F2", repeat: true });
+    await flushPromises();
+
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("leaves F2 and Ctrl+Z alone while a move in the pane runs", async () => {
+    const moveGate = Promise.withResolvers();
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "move_path") await moveGate.promise;
+      return baseInvoke(command, payload);
+    });
+    renderFilesystemPanel({
+      paneId: "pane-busy-keys",
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+    });
+    // A rename first, so Ctrl+Z has something to undo.
+    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+    fireEvent.click(notesButton);
+    notesButton.focus();
+    fireEvent.keyDown(notesButton, { key: "F2" });
+    await commitRename(screen, "renamed.txt");
+    await waitFor(() => {
+      expect(screen.queryByText("Moving item...")).not.toBeInTheDocument();
+    });
+
+    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\draft.md" } });
+    await dndCallbacks.onDragEnd?.({ active: { id: "entry:C:\\draft.md" }, over: { id: "entry:C:\\Users" } });
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({ source: "C:\\draft.md" }));
+    });
+    const callsBefore = invoke.mock.calls.length;
+    const renamedButton = screen.getByRole("button", { name: /renamed\.txt/i });
+    fireEvent.click(renamedButton);
+    renamedButton.focus();
+    fireEvent.keyDown(renamedButton, { key: "F2" });
+    fireEvent.keyDown(renamedButton, { key: "z", ctrlKey: true });
+    await flushPromises();
+
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(getUndoAndRedoRenames(callsBefore)).toEqual([]);
+
+    // Once the move is done, F2 renames again.
+    await act(async () => {
+      moveGate.resolve();
+    });
+    await waitFor(() => {
+      expect(screen.queryByText(/^Moving/)).not.toBeInTheDocument();
+    });
+    const renamedButtonAfterMove = screen.getByRole("button", { name: /renamed\.txt/i });
+    renamedButtonAfterMove.focus();
+    fireEvent.keyDown(renamedButtonAfterMove, { key: "F2" });
+    expect(await screen.findByRole("textbox")).toHaveValue("renamed.txt");
+  });
+
   it("lets go of focus when a header button is clicked, so keys go to the pane under the pointer", async () => {
     const filesystemState = { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 };
     render(
@@ -4777,5 +5096,1055 @@ describe("FilesystemPanel", () => {
       extended: false,
     });
     expect(await screen.findByRole("textbox")).toHaveValue("notes.txt");
+  });
+
+  describe("foldable grid", () => {
+    // Only the foldable grid reports this width; the panel around it is wider by its paddings.
+    let foldableGridWidthPx;
+
+    beforeEach(() => {
+      foldableGridWidthPx = 600;
+      vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function getClientWidth() {
+        return this.dataset.testid === "filesystem-foldable-grid" ? foldableGridWidthPx : foldableGridWidthPx + 64;
+      });
+    });
+
+    function renderFoldableGrid(filesystemState = {}, props = {}) {
+      return renderFilesystemPanel({
+        tabId: "tab-foldable",
+        paneId: "pane-foldable",
+        ...props,
+        filesystemState: {
+          currentDrive: "C:\\",
+          currentPath: "C:\\",
+          scrollTop: 0,
+          viewType: "foldable-grid",
+          ...filesystemState,
+        },
+      });
+    }
+
+    // The entries the foldable grid shows, in reading order.
+    function getShownPaths() {
+      return Array.from(screen.getByTestId("filesystem-foldable-grid").querySelectorAll("[data-context-id]"))
+        .map((element) => element.dataset.contextId);
+    }
+
+    // The block a tile is drawn in: all the lines of its folder's files between two folder rows.
+    function getTileRun(tile) {
+      return tile.closest("[style*='--line-cols']");
+    }
+
+    // The sizes a tile gets from its run, as its styles read them.
+    function getTileSizes(tile) {
+      const style = getComputedStyle(tile);
+      const readPx = (name) => Number.parseFloat(style.getPropertyValue(name));
+      return {
+        columnCount: Number(style.getPropertyValue("--line-cols")),
+        cellWidthPx: readPx("--grid-cell-width"),
+        previewSizePx: readPx("--grid-preview-size"),
+        lineHeightPx: readPx("--tile-line-height"),
+      };
+    }
+
+    function isBefore(element, laterElement) {
+      return Boolean(element.compareDocumentPosition(laterElement) & Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+
+    // The returned function resizes the foldable grid and reports it to the ResizeObservers made
+    // after this call, as a browser would.
+    function observeFoldableGridResizes() {
+      const reportResizes = new Set();
+      vi.stubGlobal("ResizeObserver", class {
+        constructor(callback) {
+          this.callback = callback;
+        }
+
+        observe() {
+          reportResizes.add(this.callback);
+        }
+
+        unobserve() { /* the test reports every resize to every observer */ }
+
+        disconnect() {
+          reportResizes.delete(this.callback);
+        }
+      });
+      return (widthPx) => {
+        foldableGridWidthPx = widthPx;
+        act(() => reportResizes.forEach((reportResize) => reportResize([])));
+      };
+    }
+
+    // C:\ holds the folder Media (files m1..m3), then the files a..f. At 600 px and 128 px
+    // thumbnails a root line holds 4 tiles, so the lines are [Media] [a b c d] [e f]. Entries put
+    // into the returned array show up in later listings of C:\.
+    function mockMediaListing() {
+      const rootEntries = [
+        { name: "Media", path: "C:\\Media", is_dir: true },
+        ...["a", "b", "c", "d", "e", "f"].map((name) => ({ name, path: `C:\\${name}`, is_dir: false })),
+      ];
+      const mediaEntries = ["m1", "m2", "m3"].map((name) => ({ name, path: `C:\\Media\\${name}`, is_dir: false }));
+      const baseInvoke = invoke.getMockImplementation();
+      invoke.mockImplementation(async (command, payload) => {
+        if (command === "list_directory_page" && payload?.path === "C:\\") {
+          const entries = rootEntries.slice(payload.offset, payload.offset + payload.limit);
+          const hasMore = payload.offset + entries.length < rootEntries.length;
+          return { entries, hasMore, totalCount: rootEntries.length };
+        }
+        if (command === "list_directory" && payload?.path === "C:\\Media")
+          return mediaEntries.map((entry) => ({ ...entry }));
+        return baseInvoke(command, payload);
+      });
+      return rootEntries;
+    }
+
+    // Another program changed something in C:\: its watcher reports it, and C:\ is listed again.
+    async function reportRootChange(changedPath) {
+      const rootWatchId = invoke.mock.calls.findLast(([command, payload]) => (
+        command === "filesystem_watch_start" && payload?.path === "C:\\"
+      ))?.[1]?.watchId;
+      await filesystemWatchCallback({ payload: { watchId: rootWatchId, changedPath } });
+    }
+
+    function pressInFoldableGrid(key, options = {}) {
+      fireEvent.keyDown(screen.getByTestId("filesystem-foldable-grid"), { key, ...options });
+    }
+
+    it("shows folders as rows and files as tiles once switched to the view", async () => {
+      renderFilesystemPanel({
+        paneId: "pane-foldable-switch",
+        filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+      });
+      await screen.findByRole("button", { name: /notes\.txt/i });
+      expect(screen.queryByTestId("filesystem-foldable-grid")).not.toBeInTheDocument();
+
+      dispatchFilesystemCommand("filesystem.view.foldableGrid", "pane-foldable-switch");
+
+      const foldableGrid = await screen.findByTestId("filesystem-foldable-grid");
+      expect(getShownPaths()).toEqual(["C:\\Users", "C:\\Temp", "C:\\notes.txt", "C:\\draft.md", "C:\\.grayspace"]);
+      const usersRow = within(foldableGrid).getByRole("button", { name: /Users/ });
+      expect(usersRow.querySelector("[data-entry-expander]")).toBeTruthy();
+      expect(within(usersRow).getByText("Folder")).toBeInTheDocument();
+      const notesTile = within(foldableGrid).getByRole("button", { name: "notes.txt" });
+      const draftTile = within(foldableGrid).getByRole("button", { name: "draft.md" });
+      expect(notesTile.className).toMatch(/cell/);
+      expect(notesTile.querySelector("[data-entry-expander]")).toBeNull();
+      expect(within(notesTile).queryByText("File")).not.toBeInTheDocument();
+      expect(getTileRun(notesTile)).toBe(getTileRun(draftTile));
+      expect(screen.getByTestId("filesystem-panel-scroll-container").className).toMatch(/gridPanelBody/);
+    });
+
+    it("opens a folder in place from its expander: its subfolders as rows, then its files as tiles, one level in", async () => {
+      const onCurrentPathChange = vi.fn();
+      // No tab: Users is a workspace folder, which a tab would open in a new tab.
+      renderFoldableGrid({}, { tabId: "", onCurrentPathChange });
+      const usersRow = await screen.findByRole("button", { name: /Users/ });
+
+      fireEvent.click(usersRow.querySelector("[data-entry-expander]"));
+
+      const todoTile = await screen.findByRole("button", { name: "todo.txt" });
+      expect(getShownPaths()).toEqual([
+        "C:\\Users",
+        "C:\\Users\\Projects",
+        "C:\\Users\\todo.txt",
+        "C:\\Users\\.grayspace",
+        "C:\\Temp",
+        "C:\\notes.txt",
+        "C:\\draft.md",
+        "C:\\.grayspace",
+      ]);
+      expect(todoTile.className).toMatch(/cell/);
+      // The rows' indent guide runs on through the tiles.
+      expect(screen.getByRole("button", { name: /Projects/ }).querySelectorAll("[class*='indentGuide']")).toHaveLength(1);
+      expect(getTileRun(todoTile).querySelectorAll("[class*='indentGuide']")).toHaveLength(1);
+      expect(usersRow).toHaveAttribute("aria-selected", "false");
+      expect(onCurrentPathChange).toHaveBeenLastCalledWith("C:\\");
+
+      fireEvent.click(usersRow.querySelector("[data-entry-expander]"));
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: "todo.txt" })).not.toBeInTheDocument();
+      });
+      expect(screen.queryByRole("button", { name: /Projects/ })).not.toBeInTheDocument();
+
+      // A double-click on the expander stays there; one on the row goes into the folder.
+      fireEvent.doubleClick(usersRow.querySelector("[data-entry-expander]"));
+      await flushPromises();
+      expect(onCurrentPathChange).toHaveBeenLastCalledWith("C:\\");
+      expect(usersRow).toHaveAttribute("aria-selected", "false");
+
+      fireEvent.doubleClick(usersRow);
+      await waitFor(() => {
+        expect(onCurrentPathChange).toHaveBeenLastCalledWith("C:\\Users");
+      });
+    });
+
+    it("selects a Shift+click range in reading order, across levels", async () => {
+      const onFilesystemStateChange = vi.fn();
+      renderFoldableGrid({ expandedPaths: ["C:\\Users"] }, { onFilesystemStateChange });
+      fireEvent.click(await screen.findByRole("button", { name: "todo.txt" }));
+
+      fireEvent.click(screen.getByRole("button", { name: "notes.txt" }), { shiftKey: true });
+
+      const range = ["C:\\Users\\todo.txt", "C:\\Users\\.grayspace", "C:\\Temp", "C:\\notes.txt"];
+      await waitFor(() => {
+        expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({ selectedPaths: range }));
+      });
+      expect(getShownSelection()).toEqual(range);
+    });
+
+    // The tiles' cells and gaps fill their level's width, but for under a pixel per cell lost to
+    // rounding, so no column is left empty.
+    function expectTilesToFillLine(tile, lineWidthPx) {
+      const { columnCount, cellWidthPx } = getTileSizes(tile);
+      const filledWidthPx = columnCount * cellWidthPx + (columnCount - 1) * 8;
+      expect(filledWidthPx).toBeLessThanOrEqual(lineWidthPx);
+      expect(filledWidthPx).toBeGreaterThan(lineWidthPx - columnCount);
+    }
+
+    it("gives an opened folder its parent's columns, in tiles a little smaller that fill the folder's width", async () => {
+      // 602 px, so the cells don't divide evenly and must round down to fit.
+      foldableGridWidthPx = 602;
+      renderFoldableGrid({ thumbnailSizePx: 128, expandedPaths: ["C:\\Users"] });
+      const todoTile = await screen.findByRole("button", { name: "todo.txt" });
+      const notesTile = screen.getByRole("button", { name: "notes.txt" });
+
+      // As in grid view, 602 px minus 8 px padding each side holds 4 cells of at least 138 px with
+      // 8 px gaps, widened to 140 px: 130 px previews on 170 px lines.
+      expect(getTileSizes(notesTile)).toEqual({ columnCount: 4, cellWidthPx: 140, previewSizePx: 130, lineHeightPx: 170 });
+      expectTilesToFillLine(notesTile, 586);
+      // One level in, the 24 px indent leaves 562 px: still 4 cells, of 134 px, under 10% narrower
+      // than 138 px.
+      expect(getTileSizes(todoTile)).toEqual({ columnCount: 4, cellWidthPx: 134, previewSizePx: 124, lineHeightPx: 164 });
+      expectTilesToFillLine(todoTile, 562);
+      // Folder rows stay 32 px tall.
+      expect(screen.getByTestId("filesystem-foldable-grid").style.getPropertyValue("--entry-row-height")).toBe("32px");
+    });
+
+    it("drops a column in a level whose tiles would shrink by more than 10% to keep their parent's, and fills its width", async () => {
+      // Users > Projects > Site > Assets, each holding a file: tiles 1 to 4 levels in.
+      const nestedEntries = {
+        "C:\\Users\\Projects": [
+          { name: "plan.md", path: "C:\\Users\\Projects\\plan.md", is_dir: false },
+          { name: "Site", path: "C:\\Users\\Projects\\Site", is_dir: true },
+        ],
+        "C:\\Users\\Projects\\Site": [
+          { name: "index.html", path: "C:\\Users\\Projects\\Site\\index.html", is_dir: false },
+          { name: "Assets", path: "C:\\Users\\Projects\\Site\\Assets", is_dir: true },
+        ],
+        "C:\\Users\\Projects\\Site\\Assets": [
+          { name: "logo.png", path: "C:\\Users\\Projects\\Site\\Assets\\logo.png", is_dir: false },
+        ],
+      };
+      const baseInvoke = invoke.getMockImplementation();
+      invoke.mockImplementation(async (command, payload) => (
+        command === "list_directory" && nestedEntries[payload?.path]
+          ? nestedEntries[payload.path].map((entry) => ({ ...entry }))
+          : baseInvoke(command, payload)
+      ));
+      renderFoldableGrid({ thumbnailSizePx: 128, expandedPaths: ["C:\\Users", ...Object.keys(nestedEntries)] });
+      const logoTile = await screen.findByRole("button", { name: "logo.png" });
+
+      // Each level in is 16 px narrower. The 4 columns stay while their cells are at least 90% of
+      // 138 px: 130 px in 544 px two levels in, 126 px in 528 px three in.
+      const planTile = screen.getByRole("button", { name: "plan.md" });
+      const indexTile = screen.getByRole("button", { name: "index.html" });
+      expect(getTileSizes(planTile)).toMatchObject({ columnCount: 4, cellWidthPx: 130 });
+      expect(getTileSizes(indexTile)).toMatchObject({ columnCount: 4, cellWidthPx: 126 });
+      expectTilesToFillLine(planTile, 544);
+      expectTilesToFillLine(indexTile, 528);
+      // Four levels in, 4 cells would be 122 px. 3 cells of at least 138 px fit in 512 px, widened
+      // to 165 px.
+      expect(getTileSizes(logoTile)).toEqual({ columnCount: 3, cellWidthPx: 165, previewSizePx: 155, lineHeightPx: 195 });
+      expectTilesToFillLine(logoTile, 512);
+    });
+
+    it("shows a loading line under a folder listed for the first time, then what it holds", async () => {
+      const usersListingGate = Promise.withResolvers();
+      const baseInvoke = invoke.getMockImplementation();
+      invoke.mockImplementation(async (command, payload) => {
+        if (command === "list_directory" && payload?.path === "C:\\Users") await usersListingGate.promise;
+        return baseInvoke(command, payload);
+      });
+      renderFoldableGrid();
+      const usersRow = await screen.findByRole("button", { name: /Users/ });
+
+      fireEvent.click(usersRow.querySelector("[data-entry-expander]"));
+
+      const loadingRow = (await screen.findByText("Loading...")).closest("button");
+      expect(loadingRow).not.toHaveAttribute("data-context-id");
+      expect(loadingRow.querySelectorAll("[class*='indentGuide']")).toHaveLength(1);
+      expect(isBefore(usersRow, loadingRow)).toBe(true);
+      expect(isBefore(loadingRow, screen.getByRole("button", { name: /Temp/ }))).toBe(true);
+
+      await act(async () => {
+        usersListingGate.resolve();
+      });
+
+      expect(await screen.findByRole("button", { name: "todo.txt" })).toBeInTheDocument();
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument();
+    });
+
+    it("asks for thumbnails of every tile it renders, nested ones included, at grid view's cached sizes", async () => {
+      function getLatestThumbnailItems() {
+        const latestCall = invoke.mock.calls.findLast(([command]) => command === "thumbnail_resolve_batch");
+        return latestCall?.[1]?.request?.items ?? [];
+      }
+      const filesystemState = { thumbnailSizePx: 128, expandedPaths: ["C:\\Users"] };
+      const { unmount } = renderFoldableGrid(filesystemState);
+      await screen.findByRole("button", { name: "todo.txt" });
+
+      // Files only, in reading order; 128 px previews fill their 140 px cells and use the 256 px cache.
+      await waitFor(() => {
+        expect(getLatestThumbnailItems()).toEqual(["C:\\Users\\todo.txt", "C:\\notes.txt", "C:\\draft.md"]
+          .map((sourcePath) => ({ sourcePath, sizeHintPx: 256, priority: "visible" })));
+      });
+      unmount();
+
+      // From 192 px up, previews can pass 256 px, so the 512 px cache is used.
+      invoke.mockClear();
+      const { unmount: unmountLarge } = renderFoldableGrid({ ...filesystemState, thumbnailSizePx: 192 });
+      await screen.findByRole("button", { name: "todo.txt" });
+      await waitFor(() => {
+        expect(getLatestThumbnailItems()[0]).toEqual(expect.objectContaining({ sizeHintPx: 512 }));
+      });
+      unmountLarge();
+
+      // Small icons keep their size at every level, and the small cache.
+      invoke.mockClear();
+      renderFoldableGrid({ ...filesystemState, thumbnailSizePx: 48 });
+      const smallTodoTile = await screen.findByRole("button", { name: "todo.txt" });
+      expect(getTileSizes(smallTodoTile).previewSizePx).toBe(48);
+      expect(getTileSizes(screen.getByRole("button", { name: "notes.txt" })).previewSizePx).toBe(48);
+      await waitFor(() => {
+        expect(getLatestThumbnailItems()[0]).toEqual(expect.objectContaining({ sizeHintPx: 64 }));
+      });
+    });
+
+    it("styles workspace folders among the rows it renders, nested ones included", async () => {
+      const baseInvoke = invoke.getMockImplementation();
+      invoke.mockImplementation(async (command, payload) => (
+        command === "filesystem_resolve_workspace_folders"
+          ? Object.fromEntries(payload.paths.map((path) => [path, path === "C:\\Users\\Projects"]))
+          : baseInvoke(command, payload)
+      ));
+      renderFoldableGrid({ expandedPaths: ["C:\\Users"] });
+
+      const projectsRow = await screen.findByRole("button", { name: /Projects/ });
+      await waitFor(() => {
+        expect(projectsRow.className).toMatch(/configEntry/);
+      });
+    });
+
+    it("renders only the lines near the viewport in large folders, and pages, thumbnails and workspace folders follow them", async () => {
+      // One column: each file is a 62 px tile line (22 px previews).
+      foldableGridWidthPx = 0;
+      const largeEntries = Array.from({ length: 500 }, (_, index) => {
+        const name = `file-${String(index).padStart(4, "0")}.txt`;
+        return { name, path: `C:\\${name}`, is_dir: false };
+      });
+      largeEntries[330] = { name: "Workspace", path: "C:\\Workspace", is_dir: true };
+      const baseInvoke = invoke.getMockImplementation();
+      invoke.mockImplementation(async (command, payload) => {
+        if (command === "filesystem_resolve_workspace_folders")
+          return Object.fromEntries(payload.paths.map((path) => [path, path === "C:\\Workspace"]));
+        if (command !== "list_directory_page" || payload?.path !== "C:\\") return baseInvoke(command, payload);
+        const pageEntries = largeEntries.slice(payload.offset, payload.offset + payload.limit);
+        const hasMore = payload.offset + pageEntries.length < largeEntries.length;
+        return { entries: pageEntries, hasMore, totalCount: largeEntries.length };
+      });
+      renderFoldableGrid();
+
+      expect(await screen.findByRole("button", { name: "file-0000.txt" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /file-04\d\d\.txt/ })).not.toBeInTheDocument();
+
+      // The folder tree's window, kept for that view, stays at the top.
+      const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+      scrollContainer.scrollTop = 330 * 62;
+      fireEvent.scroll(scrollContainer);
+
+      const workspaceRow = await screen.findByRole("button", { name: /Workspace/ });
+      expect(screen.getAllByRole("button", { name: /file-\d{4}\.txt/ }).length).toBeLessThan(450);
+      expect(invoke).toHaveBeenCalledWith("list_directory_page", expect.objectContaining({ path: "C:\\", offset: 120 }));
+      await waitFor(() => {
+        expect(workspaceRow.className).toMatch(/configEntry/);
+      });
+      await waitFor(() => {
+        const latestCall = invoke.mock.calls.findLast(([command]) => command === "thumbnail_resolve_batch");
+        expect(latestCall[1].request.items).toContainEqual(expect.objectContaining({ sourcePath: "C:\\file-0331.txt" }));
+      });
+    });
+
+    it("shows folder results as rows with their location and file results as one block of tiles, below the status line", async () => {
+      renderFoldableGrid();
+      await screen.findByRole("button", { name: "notes.txt" });
+
+      await showSearchResults("pane-foldable", "o", [
+        { name: "todo.txt", path: "C:\\Users\\todo.txt", is_dir: false },
+        { name: "Projects", path: "C:\\Users\\Projects", is_dir: true },
+        { name: "notes.txt", path: "C:\\notes.txt", is_dir: false },
+      ]);
+
+      const projectsRow = await screen.findByRole("button", { name: /Projects/ });
+      expect(isBefore(screen.getByRole("status"), screen.getByTestId("filesystem-foldable-grid"))).toBe(true);
+      expect(getShownPaths()).toEqual(["C:\\Users\\Projects", "C:\\notes.txt", "C:\\Users\\todo.txt"]);
+      expect(projectsRow.querySelector("[data-entry-expander]")).toBeTruthy();
+      expect(within(projectsRow).getByText("Users")).toBeInTheDocument();
+      const todoTile = screen.getByRole("button", { name: "todo.txt" });
+      expect(todoTile.className).toMatch(/cell/);
+      expect(within(todoTile).queryByText("Users")).not.toBeInTheDocument();
+      expect(getTileRun(todoTile)).toBe(getTileRun(screen.getByRole("button", { name: "notes.txt" })));
+      // A file result takes drops for the folder it is in, not for the searched one.
+      expect(todoTile).toHaveAttribute("data-drop-destination-path", "C:\\Users");
+    });
+
+    it("filters the top level only and says above the grid when nothing matches", async () => {
+      renderFoldableGrid({ expandedPaths: ["C:\\Users"] });
+      await screen.findByRole("button", { name: "todo.txt" });
+
+      dispatchFilesystemCommand("filesystem.filterCurrentFolder", "pane-foldable");
+      const filterInput = await screen.findByRole("searchbox", { name: "Filter current folder" });
+      fireEvent.change(filterInput, { target: { value: "users" } });
+
+      // The opened Users matches, and shows all it holds.
+      await waitFor(() => {
+        expect(getShownPaths()).toEqual([
+          "C:\\Users",
+          "C:\\Users\\Projects",
+          "C:\\Users\\todo.txt",
+          "C:\\Users\\.grayspace",
+        ]);
+      });
+
+      fireEvent.change(filterInput, { target: { value: "zzz" } });
+      const unmatchedNote = await screen.findByText('No items match "zzz".');
+      await waitFor(() => {
+        expect(isBefore(unmatchedNote, screen.getByTestId("filesystem-foldable-grid"))).toBe(true);
+      });
+    });
+
+    it("renames a tile inside an opened folder on F2", async () => {
+      renderFoldableGrid({ expandedPaths: ["C:\\Users"] });
+      const todoTile = await screen.findByRole("button", { name: "todo.txt" });
+
+      fireEvent.click(todoTile);
+      todoTile.focus();
+      fireEvent.keyDown(todoTile, { key: "F2" });
+
+      const renameInput = await screen.findByRole("textbox");
+      expect(renameInput).toHaveValue("todo.txt");
+      expect(renameInput.className).toMatch(/cellRenameInput/);
+      fireEvent.change(renameInput, { target: { value: "done.txt" } });
+      fireEvent.keyDown(renameInput, { key: "Enter" });
+
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("rename_path", {
+          path: "C:\\Users\\todo.txt",
+          newName: "done.txt",
+        });
+      });
+      expect(await screen.findByRole("button", { name: "done.txt" })).toBeInTheDocument();
+    });
+
+    it("keeps a tile, and its focus, when an item is added before it or the columns change", async () => {
+      const rootEntries = mockMediaListing();
+      const resizeFoldableGrid = observeFoldableGridResizes();
+      renderFoldableGrid({ thumbnailSizePx: 128 });
+      const dTile = await screen.findByRole("button", { name: "d" });
+      dTile.focus();
+
+      // a0 pushes d onto the next line: [a a0 b c] [d e f].
+      rootEntries.splice(2, 0, { name: "a0", path: "C:\\a0", is_dir: false });
+      await reportRootChange("C:\\a0");
+      await screen.findByRole("button", { name: "a0" });
+      expect(screen.getByRole("button", { name: "d" })).toBe(dTile);
+      expect(dTile).toHaveFocus();
+
+      // At 2 columns d moves down a line again: [a a0] [b c] [d e] [f].
+      resizeFoldableGrid(400);
+      expect(getTileRun(dTile).style.getPropertyValue("--line-cols")).toBe("2");
+      expect(screen.getByRole("button", { name: "d" })).toBe(dTile);
+      expect(dTile).toHaveFocus();
+    });
+
+    it("keeps what was typed into a tile's rename when an item is added before it or the columns change", async () => {
+      const rootEntries = mockMediaListing();
+      const resizeFoldableGrid = observeFoldableGridResizes();
+      renderFoldableGrid({ thumbnailSizePx: 128 });
+      const dTile = await screen.findByRole("button", { name: "d" });
+      fireEvent.click(dTile);
+      dTile.focus();
+      fireEvent.keyDown(dTile, { key: "F2" });
+      const renameInput = await screen.findByRole("textbox");
+      fireEvent.change(renameInput, { target: { value: "d-renamed" } });
+
+      rootEntries.splice(2, 0, { name: "a0", path: "C:\\a0", is_dir: false });
+      await reportRootChange("C:\\a0");
+      await screen.findByRole("button", { name: "a0" });
+      expect(screen.getByRole("textbox")).toBe(renameInput);
+      expect(renameInput).toHaveValue("d-renamed");
+
+      resizeFoldableGrid(400);
+      expect(getTileRun(renameInput).style.getPropertyValue("--line-cols")).toBe("2");
+      expect(screen.getByRole("textbox")).toBe(renameInput);
+      expect(renameInput).toHaveValue("d-renamed");
+    });
+
+    it("asks for thumbnails again when a folder is listed again, but not for a resize that keeps every column count", async () => {
+      const resizeFoldableGrid = observeFoldableGridResizes();
+      renderFoldableGrid({ thumbnailSizePx: 128, expandedPaths: ["C:\\Users"] });
+      const todoTile = await screen.findByRole("button", { name: "todo.txt" });
+      const countThumbnailBatches = () => (
+        invoke.mock.calls.filter(([command]) => command === "thumbnail_resolve_batch").length
+      );
+      await waitFor(() => {
+        expect(countThumbnailBatches()).toBeGreaterThan(0);
+      });
+      await flushPromises(100);
+      const batchCount = countThumbnailBatches();
+
+      // 604 px widens the cells to 141 px at the root and to 135 px in Users; the lines still hold
+      // 4 tiles at both levels.
+      resizeFoldableGrid(604);
+      await flushPromises(100);
+      expect(getTileSizes(screen.getByRole("button", { name: "notes.txt" })))
+        .toMatchObject({ columnCount: 4, cellWidthPx: 141 });
+      expect(getTileSizes(todoTile)).toMatchObject({ columnCount: 4, cellWidthPx: 135 });
+      expect(countThumbnailBatches()).toBe(batchCount);
+
+      // Users is listed again (todo.txt was edited), so its thumbnail may be out of date.
+      let usersWatchId;
+      await waitFor(() => {
+        usersWatchId = invoke.mock.calls.findLast(([command, payload]) => (
+          command === "filesystem_watch_start" && payload?.path === "C:\\Users"
+        ))?.[1]?.watchId;
+        expect(usersWatchId).toEqual(expect.any(String));
+      });
+      await filesystemWatchCallback({ payload: { watchId: usersWatchId, changedPath: "C:\\Users\\todo.txt" } });
+      await waitFor(() => {
+        expect(countThumbnailBatches()).toBe(batchCount + 1);
+      });
+    });
+
+    it("opens a closed folder something was created in from its menu, and renames the new row there", async () => {
+      renderFoldableGrid();
+      await screen.findByRole("button", { name: /Users/ });
+
+      act(() => {
+        window.dispatchEvent(new CustomEvent(APP_COMMAND_EVENT, {
+          detail: {
+            commandId: "filesystem.createFolder",
+            context: {
+              source: "context-menu",
+              targetPaneId: "pane-foldable",
+              targetType: "folder",
+              targetScope: "tree-entry",
+              targetPath: "C:\\Users",
+            },
+          },
+        }));
+      });
+
+      const renameInput = await screen.findByRole("textbox");
+      expect(renameInput).toHaveValue("New folder");
+      expect(screen.getByTestId("filesystem-foldable-grid")).toContainElement(renameInput);
+      expect(screen.getByRole("button", { name: "todo.txt" })).toBeInTheDocument();
+      // The new folder's row, renamed in place inside the opened Users.
+      expect(renameInput.className).toMatch(/entryRenameInput/);
+      expect(isBefore(screen.getByRole("button", { name: /^Users/ }), renameInput)).toBe(true);
+      expect(isBefore(renameInput, screen.getByRole("button", { name: /^Temp/ }))).toBe(true);
+      // Users is listed only once the folder exists, so the listing holds it.
+      const createIndex = invoke.mock.calls.findIndex(([command]) => command === "create_folder");
+      const usersListingIndex = invoke.mock.calls.findIndex(([command, payload]) => (
+        command === "list_directory" && payload?.path === "C:\\Users"
+      ));
+      expect(createIndex).toBeGreaterThanOrEqual(0);
+      expect(usersListingIndex).toBeGreaterThan(createIndex);
+    });
+
+    it("lets nested tiles be dragged, and drops on them go into their folder, whose row lights up", async () => {
+      renderFoldableGrid({ expandedPaths: ["C:\\Users"] }, { paneId: "pane-foldable-dnd" });
+      const todoTile = await screen.findByRole("button", { name: "todo.txt" });
+      const usersRow = screen.getByRole("button", { name: /^Users/ });
+      expect(todoTile).toHaveAttribute("data-drop-destination-path", "C:\\Users");
+      expect(todoTile).toHaveAttribute("data-context-scope", "tree-entry");
+      expect(useDraggable).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ sourcePath: "C:\\Users\\todo.txt", sourcePaneId: "pane-foldable-dnd" }),
+      }));
+
+      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+      dndCallbacks.onDragOver?.({
+        active: { id: "entry:C:\\notes.txt" },
+        over: { id: "entry:C:\\Users\\todo.txt" },
+      });
+      await waitFor(() => {
+        expect(usersRow.className).toMatch(/dropTarget/);
+      });
+      expect(todoTile.className).not.toMatch(/cellDropTarget/);
+
+      await dndCallbacks.onDragEnd?.({
+        active: { id: "entry:C:\\notes.txt" },
+        over: { id: "entry:C:\\Users\\todo.txt" },
+      });
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
+          source: "C:\\notes.txt",
+          destinationDir: "C:\\Users",
+        }));
+      });
+    });
+
+    it("middle-clicks nested tiles and rows like tree rows", async () => {
+      const onTabSelectedFilesChange = vi.fn();
+      renderFoldableGrid({ expandedPaths: ["C:\\Users"] }, { tabId: "tab-foldable-middle", onTabSelectedFilesChange });
+      const todoTile = await screen.findByRole("button", { name: "todo.txt" });
+
+      fireEvent.mouseDown(todoTile, { button: 1 });
+      fireEvent.mouseUp(todoTile, { button: 1 });
+      expect(onTabSelectedFilesChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        selectedPaths: ["C:\\Users\\todo.txt"],
+        previewOpenMode: "pinned",
+      }));
+
+      const projectsRow = screen.getByRole("button", { name: /Projects/ });
+      fireEvent.mouseDown(projectsRow, { button: 1 });
+      fireEvent.mouseUp(projectsRow, { button: 1 });
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("workspace_open_folder_from_tab", {
+          payload: { tabId: "tab-foldable-middle", path: "C:\\Users\\Projects" },
+        });
+      });
+    });
+
+    it("shares opened folders with the other views, which draw them as before", async () => {
+      const onFilesystemStateChange = vi.fn();
+      renderFoldableGrid({ expandedPaths: ["C:\\Users"] }, { onFilesystemStateChange });
+      expect((await screen.findByRole("button", { name: "todo.txt" })).className).toMatch(/cell/);
+
+      dispatchFilesystemCommand("filesystem.view.folderTree", "pane-foldable");
+      await waitFor(() => {
+        expect(screen.queryByTestId("filesystem-foldable-grid")).not.toBeInTheDocument();
+      });
+      expect(screen.getByRole("button", { name: /todo\.txt/ }).className).not.toMatch(/cell/);
+      expect(onFilesystemStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+        viewType: "folder-tree",
+        expandedPaths: ["C:\\Users"],
+      }));
+
+      dispatchFilesystemCommand("filesystem.view.grid", "pane-foldable");
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: /todo\.txt/ })).not.toBeInTheDocument();
+      });
+      expect(screen.getByRole("button", { name: "Users" }).className).toMatch(/cell/);
+      expect(screen.queryByTestId("filesystem-foldable-grid")).not.toBeInTheDocument();
+    });
+
+    it("moves by column with Up/Down, a folder row counting as column 0, and loops at the ends", async () => {
+      mockMediaListing();
+      renderFoldableGrid({ thumbnailSizePx: 128 });
+      fireEvent.click(await screen.findByRole("button", { name: "b" }));
+      expect(getTileRun(screen.getByRole("button", { name: "b" })).style.getPropertyValue("--line-cols")).toBe("4");
+
+      pressInFoldableGrid("ArrowDown");
+      expect(getShownSelection()).toEqual(["C:\\f"]);
+
+      // Clamped to the shorter line.
+      fireEvent.click(screen.getByRole("button", { name: "c" }));
+      pressInFoldableGrid("ArrowDown");
+      expect(getShownSelection()).toEqual(["C:\\f"]);
+
+      fireEvent.click(screen.getByRole("button", { name: "a" }));
+      pressInFoldableGrid("ArrowUp");
+      expect(getShownSelection()).toEqual(["C:\\Media"]);
+      pressInFoldableGrid("ArrowUp");
+      expect(getShownSelection()).toEqual(["C:\\e"]);
+    });
+
+    it("opens and closes folder rows with Right/Left, and otherwise steps through the reading order up to either end", async () => {
+      mockMediaListing();
+      renderFoldableGrid({ thumbnailSizePx: 128 });
+      const mediaRow = await screen.findByRole("button", { name: /^Media/ });
+
+      fireEvent.click(screen.getByRole("button", { name: "d" }));
+      pressInFoldableGrid("ArrowRight");
+      expect(getShownSelection()).toEqual(["C:\\e"]);
+      pressInFoldableGrid("ArrowLeft");
+      expect(getShownSelection()).toEqual(["C:\\d"]);
+
+      fireEvent.click(screen.getByRole("button", { name: "a" }));
+      pressInFoldableGrid("ArrowLeft");
+      expect(getShownSelection()).toEqual(["C:\\Media"]);
+      pressInFoldableGrid("ArrowLeft");
+      expect(getShownSelection()).toEqual(["C:\\Media"]);
+      fireEvent.click(screen.getByRole("button", { name: "f" }));
+      pressInFoldableGrid("ArrowRight");
+      expect(getShownSelection()).toEqual(["C:\\f"]);
+
+      fireEvent.click(mediaRow);
+      pressInFoldableGrid("ArrowRight");
+      expect(await screen.findByRole("button", { name: "m1" })).toBeInTheDocument();
+      expect(getShownSelection()).toEqual(["C:\\Media"]);
+      pressInFoldableGrid("ArrowRight");
+      expect(getShownSelection()).toEqual(["C:\\Media\\m1"]);
+      pressInFoldableGrid("ArrowLeft");
+      expect(getShownSelection()).toEqual(["C:\\Media"]);
+      pressInFoldableGrid("ArrowLeft");
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: "m1" })).not.toBeInTheDocument();
+      });
+      expect(getShownSelection()).toEqual(["C:\\Media"]);
+    });
+
+    it("extends Shift ranges in reading order up to either end, and Shift+Right/Left never open or close folders", async () => {
+      mockMediaListing();
+      renderFoldableGrid({ thumbnailSizePx: 128 });
+      const rootPaths = ["C:\\Media", "C:\\a", "C:\\b", "C:\\c", "C:\\d", "C:\\e", "C:\\f"];
+      fireEvent.click(await screen.findByRole("button", { name: "b" }));
+
+      pressInFoldableGrid("ArrowDown", { shiftKey: true });
+      expect(getShownSelection()).toEqual(rootPaths.slice(2));
+
+      // Each Shift+Up goes on from the line it reached, not from the anchor.
+      fireEvent.click(screen.getByRole("button", { name: "f" }));
+      pressInFoldableGrid("ArrowUp", { shiftKey: true });
+      expect(getShownSelection()).toEqual(rootPaths.slice(2));
+      pressInFoldableGrid("ArrowUp", { shiftKey: true });
+      expect(getShownSelection()).toEqual(rootPaths);
+      pressInFoldableGrid("ArrowUp", { shiftKey: true });
+      pressInFoldableGrid("ArrowLeft", { shiftKey: true });
+      expect(getShownSelection()).toEqual(rootPaths);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Media/ }));
+      pressInFoldableGrid("ArrowRight", { shiftKey: true });
+      expect(getShownSelection()).toEqual(["C:\\Media", "C:\\a"]);
+      expect(screen.queryByRole("button", { name: "m1" })).not.toBeInTheDocument();
+
+      pressInFoldableGrid("ArrowLeft", { shiftKey: true });
+      pressInFoldableGrid("ArrowRight");
+      await screen.findByRole("button", { name: "m1" });
+      pressInFoldableGrid("ArrowLeft", { shiftKey: true });
+      expect(getShownSelection()).toEqual(["C:\\Media"]);
+      expect(screen.getByRole("button", { name: "m1" })).toBeInTheDocument();
+    });
+
+    it("takes arrow keys from the list and, in the active pane, from the window, once each and not while held", async () => {
+      mockMediaListing();
+      render(
+        <PanelsDndLayer>
+          <div data-pane-active="true">
+            <FilesystemPanel
+              tabId="tab-foldable-keys"
+              paneId="pane-foldable-keys"
+              filesystemState={{
+                currentDrive: "C:\\",
+                currentPath: "C:\\",
+                scrollTop: 0,
+                viewType: "foldable-grid",
+                thumbnailSizePx: 128,
+              }}
+            />
+          </div>
+        </PanelsDndLayer>,
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "b" }));
+
+      // Nothing has focus, as after a click on a header button: the window passes the key on.
+      fireEvent.keyDown(document.body, { key: "ArrowDown" });
+      expect(getShownSelection()).toEqual(["C:\\f"]);
+
+      // Handled by the list, so the window leaves it: one step up, and the folder opened only once.
+      fireEvent.keyDown(screen.getByRole("button", { name: "f" }), { key: "ArrowUp" });
+      expect(getShownSelection()).toEqual(["C:\\b"]);
+      const mediaRow = screen.getByRole("button", { name: /^Media/ });
+      fireEvent.click(mediaRow);
+      fireEvent.keyDown(mediaRow, { key: "ArrowRight" });
+      expect(await screen.findByRole("button", { name: "m1" })).toBeInTheDocument();
+
+      fireEvent.keyDown(mediaRow, { key: "ArrowRight", repeat: true });
+      fireEvent.keyDown(document.body, { key: "ArrowDown", repeat: true });
+      expect(getShownSelection()).toEqual(["C:\\Media"]);
+    });
+
+    it.each(["folder-tree", "details", "grid"])("keeps Up/Down to the entry order and Right/Left to folders in %s view", async (viewType) => {
+      renderFoldableGrid({ viewType, thumbnailSizePx: 128 });
+      const usersButton = await screen.findByRole("button", { name: /^Users/ });
+      const notesButton = screen.getByRole("button", { name: /notes\.txt/ });
+
+      // Grid view lays the five entries out in 4 columns, and Down still goes to the next one.
+      fireEvent.click(usersButton);
+      fireEvent.keyDown(usersButton, { key: "ArrowDown" });
+      expect(getShownSelection()).toEqual(["C:\\Temp"]);
+
+      fireEvent.click(notesButton);
+      fireEvent.keyDown(notesButton, { key: "ArrowRight" });
+      fireEvent.keyDown(notesButton, { key: "ArrowLeft" });
+      expect(getShownSelection()).toEqual(["C:\\notes.txt"]);
+    });
+
+    it("takes drops in the empty space between an opened folder's tiles into that folder, lighting its row and tiles", async () => {
+      // Users lists todo.txt between two folders, then u1..u5: at 128 px, 4 columns in Users, so
+      // two lines of one run.
+      mockLaterUsersEntries().push(...["u1", "u2", "u3", "u4", "u5"].map((name) => ({
+        name,
+        path: `C:\\Users\\${name}`,
+        is_dir: false,
+      })));
+      renderFoldableGrid({ thumbnailSizePx: 128, expandedPaths: ["C:\\Users"] }, { paneId: "pane-foldable-gap" });
+      const todoTile = await screen.findByRole("button", { name: "todo.txt" });
+      const usersRow = screen.getByRole("button", { name: /^Users/ });
+      const usersRun = getTileRun(todoTile);
+      const laterUsersRun = getTileRun(screen.getByRole("button", { name: "u1" }));
+      const rootRun = getTileRun(screen.getByRole("button", { name: "notes.txt" }));
+      expect(getTileRun(screen.getByRole("button", { name: "u5" }))).toBe(laterUsersRun);
+      expect(usersRun).toHaveAttribute("data-drop-destination-path", "C:\\Users");
+      expect(laterUsersRun).toHaveAttribute("data-drop-destination-path", "C:\\Users");
+      expect(rootRun).not.toHaveAttribute("data-drop-destination-path");
+      // A droppable per line of a run, scoped to the pane: another pane can show the same tiles.
+      const lineDroppables = useDroppable.mock.calls
+        .map(([options]) => options)
+        .filter((options) => options.data?.kind === "folder-run");
+      const findLineDroppable = (id) => lineDroppables.findLast((options) => options.id === id);
+      const usersRunDroppable = findLineDroppable("foldable-run:pane-foldable-gap:tiles:1:C:\\Users:0:0");
+      expect(usersRunDroppable).toEqual({
+        id: "foldable-run:pane-foldable-gap:tiles:1:C:\\Users:0:0",
+        disabled: false,
+        data: { kind: "folder-run", path: "C:\\Users", isDirectory: true, paneId: "pane-foldable-gap" },
+      });
+      expect(usersRun.querySelectorAll("[class*='tileRunLine']")).toHaveLength(1);
+      expect(laterUsersRun.querySelectorAll("[class*='tileRunLine']")).toHaveLength(2);
+      ["foldable-run:pane-foldable-gap:tiles:1:C:\\Users:1:0", "foldable-run:pane-foldable-gap:tiles:1:C:\\Users:1:1"]
+        .forEach((id) => {
+          expect(findLineDroppable(id)).toEqual({ id, disabled: false, data: usersRunDroppable.data });
+        });
+      // Root runs leave drops to the pane: the current folder.
+      expect(rootRun.querySelectorAll("[class*='tileRunLine']")).toHaveLength(0);
+      expect(lineDroppables.some((options) => options.data.path === "C:\\")).toBe(false);
+
+      const overUsersRun = { id: usersRunDroppable.id, data: { current: usersRunDroppable.data } };
+      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+      dndCallbacks.onDragOver?.({ active: { id: "entry:C:\\notes.txt" }, over: overUsersRun });
+      await waitFor(() => {
+        expect(usersRun.className).toMatch(/tileRunDropTarget/);
+      });
+      expect(laterUsersRun.className).toMatch(/tileRunDropTarget/);
+      expect(usersRow.className).toMatch(/dropTarget/);
+      expect(rootRun.className).not.toMatch(/tileRunDropTarget/);
+
+      await dndCallbacks.onDragEnd?.({ active: { id: "entry:C:\\notes.txt" }, over: overUsersRun });
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
+          source: "C:\\notes.txt",
+          destinationDir: "C:\\Users",
+        }));
+      });
+    });
+
+    // Users lists `count` files after its three entries, named by `toName(index)`.
+    function addUsersFiles(count, toName) {
+      mockLaterUsersEntries().push(...Array.from({ length: count }, (_, index) => {
+        const name = toName(index);
+        return { name, path: `C:\\Users\\${name}`, is_dir: false };
+      }));
+    }
+
+    // The element each droppable was last rendered into, by id.
+    function recordDroppableNodes() {
+      const nodeById = new Map();
+      useDroppable.mockImplementation(({ id }) => ({
+        isOver: false,
+        setNodeRef: (node) => {
+          if (node) nodeById.set(id, node);
+        },
+      }));
+      return nodeById;
+    }
+
+    it("takes drops on any line of an opened folder's long run, each line a droppable of its own, and none while the move runs", async () => {
+      // At 128 px, u01..u16 are 4 lines of 4 in one run. As one droppable, a run taller than the
+      // pane would lose to the pane's (pointerWithin prefers the rect whose corners are nearest).
+      addUsersFiles(16, (index) => `u${String(index + 1).padStart(2, "0")}`);
+      const moveGate = Promise.withResolvers();
+      const baseInvoke = invoke.getMockImplementation();
+      invoke.mockImplementation(async (command, payload) => {
+        if (command === "move_path") await moveGate.promise;
+        return baseInvoke(command, payload);
+      });
+      const droppableNodeById = recordDroppableNodes();
+      renderFoldableGrid({ thumbnailSizePx: 128, expandedPaths: ["C:\\Users"] }, { paneId: "pane-foldable-long" });
+      const run = getTileRun(await screen.findByRole("button", { name: "u01" }));
+      const usersRow = screen.getByRole("button", { name: /^Users/ });
+
+      const lineIds = [0, 1, 2, 3].map((index) => `foldable-run:pane-foldable-long:tiles:1:C:\\Users:1:${index}`);
+      expect(run.querySelectorAll("[class*='tileRunLine']")).toHaveLength(4);
+      lineIds.forEach((id, index) => {
+        expect(run).toContainElement(droppableNodeById.get(id));
+        expect(droppableNodeById.get(id).style.getPropertyValue("--line-index")).toBe(String(index));
+      });
+      const getLineOptions = (id) => useDroppable.mock.calls.map(([options]) => options).findLast((options) => options.id === id);
+      const thirdLine = getLineOptions(lineIds[2]);
+      expect(thirdLine).toEqual({
+        id: lineIds[2],
+        disabled: false,
+        data: { kind: "folder-run", path: "C:\\Users", isDirectory: true, paneId: "pane-foldable-long" },
+      });
+
+      const overThirdLine = { id: thirdLine.id, data: { current: thirdLine.data } };
+      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\notes.txt" } });
+      dndCallbacks.onDragOver?.({ active: { id: "entry:C:\\notes.txt" }, over: overThirdLine });
+      await waitFor(() => {
+        expect(run.className).toMatch(/tileRunDropTarget/);
+      });
+      expect(usersRow.className).toMatch(/dropTarget/);
+
+      await dndCallbacks.onDragEnd?.({ active: { id: "entry:C:\\notes.txt" }, over: overThirdLine });
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
+          source: "C:\\notes.txt",
+          destinationDir: "C:\\Users",
+        }));
+      });
+
+      // Like the rest of the pane, the lines take no drops until the move is done.
+      await waitFor(() => {
+        expect(lineIds.map((id) => getLineOptions(id).disabled)).toEqual([true, true, true, true]);
+      });
+      await act(async () => {
+        moveGate.resolve();
+      });
+      await waitFor(() => {
+        expect(lineIds.map((id) => getLineOptions(id).disabled)).toEqual([false, false, false, false]);
+      });
+    });
+
+    it("lays an opened folder's line droppables over its lines of tiles, at its own line height", async () => {
+      // At 128 px, u1..u9 are lines of 4, 4 and 1 in Users, whose 134 px tiles fill the 560 px one
+      // level in, on lines shorter than the root's.
+      addUsersFiles(9, (index) => `u${index + 1}`);
+      renderFoldableGrid({ thumbnailSizePx: 128, expandedPaths: ["C:\\Users"] });
+      const run = getTileRun(await screen.findByRole("button", { name: "u1" }));
+      const lineDroppables = Array.from(run.querySelectorAll("[class*='tileRunLine']"));
+      const cellGrid = run.querySelector("[class*='tileCells']");
+
+      // Droppable i is one line tall and i lines down; so is row i of the cells' grid.
+      expect(lineDroppables.map((element) => element.style.getPropertyValue("--line-index"))).toEqual(["0", "1", "2"]);
+      [...lineDroppables, cellGrid].forEach((element) => {
+        expect(getComputedStyle(element).getPropertyValue("--tile-line-height")).toBe("164px");
+      });
+    });
+
+    it("keeps a line's droppable, and its id, while the window slides through the run", async () => {
+      // 240 files in Users, 60 lines of 4 at 128 px: enough for the window.
+      addUsersFiles(240, (index) => `u${String(index).padStart(3, "0")}`);
+      const droppableNodeById = recordDroppableNodes();
+      renderFoldableGrid({ thumbnailSizePx: 128, expandedPaths: ["C:\\Users"] }, { paneId: "pane-foldable-slide" });
+      await screen.findByRole("button", { name: "u000" });
+      const lineId = (indexInRun) => `foldable-run:pane-foldable-slide:tiles:1:C:\\Users:1:${indexInRun}`;
+
+      // Users' lines are 164 px tall, not the root's 170 px: its 134 px tiles fill the 560 px one
+      // level in. Its run starts 260 px down, below 32 px rows and todo.txt's line. Scrolled to its
+      // line 30, the window starts 10 lines earlier: line 20 (u080..u083) is the first rendered,
+      // below a spacer for the lines above it.
+      const scrollContainer = screen.getByTestId("filesystem-panel-scroll-container");
+      scrollContainer.scrollTop = 260 + 30 * 164;
+      fireEvent.scroll(scrollContainer);
+      const run = getTileRun(await screen.findByRole("button", { name: "u080" }));
+      expect(screen.queryByRole("button", { name: "u079" })).not.toBeInTheDocument();
+      expect(run.previousElementSibling.style.height).toBe(`${260 + 20 * 164}px`);
+      const line22 = droppableNodeById.get(lineId(22));
+      expect(run).toContainElement(line22);
+      expect(line22.style.getPropertyValue("--line-index")).toBe("2");
+
+      // One line further down, line 22 is the second rendered: the same droppable, moved up.
+      scrollContainer.scrollTop += 164;
+      fireEvent.scroll(scrollContainer);
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: "u080" })).not.toBeInTheDocument();
+      });
+      expect(droppableNodeById.get(lineId(22))).toBe(line22);
+      expect(line22.style.getPropertyValue("--line-index")).toBe("1");
+    });
+
+    it("drops into the current folder from the top level's empty space", async () => {
+      renderFoldableGrid({ expandedPaths: ["C:\\Users"] });
+      await screen.findByRole("button", { name: "todo.txt" });
+
+      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\Users\\todo.txt" } });
+      await dndCallbacks.onDragEnd?.({
+        active: { id: "entry:C:\\Users\\todo.txt" },
+        over: { id: "panel:C:\\" },
+      });
+
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
+          source: "C:\\Users\\todo.txt",
+          destinationDir: "C:\\",
+        }));
+      });
+    });
+
+    it("imports from Explorer into the opened folder whose empty space the files are dropped on, and into the current folder at the top level", async () => {
+      renderFoldableGrid({ expandedPaths: ["C:\\Users"] });
+      const todoTile = await screen.findByRole("button", { name: "todo.txt" });
+      await waitFor(() => {
+        expect(typeof externalDropCallback).toBe("function");
+      });
+      screen.getByLabelText("Filesystem panel").getBoundingClientRect = () => ({
+        left: 0,
+        top: 0,
+        right: 500,
+        bottom: 500,
+        width: 500,
+        height: 500,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
+      const usersRun = getTileRun(todoTile);
+      const rootRun = getTileRun(screen.getByRole("button", { name: "notes.txt" }));
+      const position = { x: 100, y: 100 };
+      const originalElementFromPoint = document.elementFromPoint;
+      document.elementFromPoint = vi.fn(() => usersRun);
+      try {
+        await externalDropCallback({ payload: { type: "over", paths: [], position } });
+        await waitFor(() => {
+          expect(usersRun.className).toMatch(/tileRunDropTarget/);
+        });
+        expect(screen.getByRole("button", { name: /^Users/ }).className).toMatch(/dropTarget/);
+        await externalDropCallback({ payload: { type: "drop", paths: ["D:\\Downloads\\clip.mp4"], position } });
+        await waitFor(() => {
+          expect(invoke).toHaveBeenCalledWith("import_paths", expect.objectContaining({
+            paths: ["D:\\Downloads\\clip.mp4"],
+            destinationDir: "C:\\Users",
+          }));
+        });
+
+        document.elementFromPoint = vi.fn(() => rootRun);
+        await externalDropCallback({ payload: { type: "drop", paths: ["D:\\Downloads\\photo.jpg"], position } });
+        await waitFor(() => {
+          expect(invoke).toHaveBeenCalledWith("import_paths", expect.objectContaining({
+            paths: ["D:\\Downloads\\photo.jpg"],
+            destinationDir: "C:\\",
+          }));
+        });
+      } finally {
+        document.elementFromPoint = originalElementFromPoint;
+      }
+    });
+
+    it("treats clicks and right-clicks between an opened folder's tiles as the pane's empty space", async () => {
+      renderFoldableGrid({ expandedPaths: ["C:\\Users"] });
+      const todoTile = await screen.findByRole("button", { name: "todo.txt" });
+      const usersRun = getTileRun(todoTile);
+      // No menu boundary of its own: a right-click there opens the current folder's menu.
+      expect(usersRun).not.toHaveAttribute("data-contextmenu-boundary");
+
+      fireEvent.click(todoTile);
+      fireEvent.click(usersRun);
+      expect(getShownSelection()).toEqual([]);
+
+      fireEvent.click(todoTile);
+      fireEvent.contextMenu(usersRun);
+      expect(getShownSelection()).toEqual([]);
+    });
   });
 });

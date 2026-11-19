@@ -4,9 +4,11 @@ import Breadcrumbs from "./Breadcrumbs";
 import DraggableFilesystemEntry from "./DraggableFilesystemEntry";
 import EntryItem from "./EntryItem";
 import FilesystemDetailsHeader from "./FilesystemDetailsHeader";
+import FilesystemPanelFoldableGridContent from "./FilesystemPanelFoldableGridContent";
 import FilesystemPanelGridContent from "./FilesystemPanelGridContent";
+import { getResultLocation } from "./filesystemPanelUtils";
 import styles from "./FilesystemPanel.module.scss";
-import { getParentDirectoryPath, normalizePathForComparison } from "../../utils/pathWatch";
+import { getParentDirectoryPath } from "../../utils/pathWatch";
 
 function describeSearch({ query, status, error, resultCount, skipsFolders }) {
   if (status === "error") return error;
@@ -17,14 +19,6 @@ function describeSearch({ query, status, error, resultCount, skipsFolders }) {
     return `No results for "${query}" in this folder or its subfolders${skippedNote}.`;
   }
   return `${resultCount} ${resultCount === 1 ? "result" : "results"} for "${query}" in this folder and its subfolders.`;
-}
-
-// Folder of a search result relative to the searched folder, e.g. "photos\\2024"; "" when directly inside.
-function getResultLocation(entryPath, rootPath) {
-  const parentPath = getParentDirectoryPath(entryPath);
-  const normalizedRoot = normalizePathForComparison(rootPath);
-  if (normalizePathForComparison(parentPath) === normalizedRoot) return "";
-  return parentPath.slice(rootPath.replace(/[\\/]+$/, "").length).replace(/^[\\/]+/, "");
 }
 
 function getDragOverlayMeta(entries, entry) {
@@ -43,6 +37,7 @@ export default function FilesystemPanelListContent({
   viewType = "folder-tree",
   details = {},
   grid = {},
+  foldable = {},
 }) {
   const {
     isBrowsing = false,
@@ -126,6 +121,7 @@ export default function FilesystemPanelListContent({
   } = grid;
   const dragIntentLabel = dragIntent === "copy" ? "Copy" : "Move";
   const isGridView = viewType === "grid";
+  const isFoldableGridView = viewType === "foldable-grid";
   const isDetailsView = viewType === "details";
 
   return <div
@@ -208,7 +204,40 @@ export default function FilesystemPanelListContent({
         className={`${styles.searchStatus} ${search.status === "error" ? styles.searchError : ""}`}
         role="status"
       >{describeSearch(search)}</p>}
-      {!isLoadingEntries && !error && !isGridView && <div
+      {!isLoadingEntries && !error && isFoldableGridView && (
+        <FilesystemPanelFoldableGridContent
+          paneId={paneId}
+          lines={foldable.lines}
+          containerRef={foldable.containerRef}
+          anchorRef={foldable.anchorRef}
+          isWindowingEnabled={foldable.isWindowingEnabled}
+          topSpacerHeight={foldable.topSpacerHeight}
+          bottomSpacerHeight={foldable.bottomSpacerHeight}
+          tileLayouts={foldable.tileLayouts}
+          minCellWidthPx={foldable.minCellWidthPx}
+          folderLineHeightPx={foldable.folderLineHeightPx}
+          currentPath={currentPath}
+          isSearchActive={Boolean(search)}
+          selectedPathSet={foldable.selectedPathSet}
+          workspaceFolderPathSet={foldable.workspaceFolderPathSet}
+          thumbnailSrcByPath={thumbnailSrcByPath}
+          renamingPath={renamingPath}
+          drag={{
+            selectedEntryPaths,
+            isMovingEntry: isEntryOperationInProgress,
+            activeDragPathSet,
+            activeDropDestinationPath,
+          }}
+          onToggleDirectoryExpanded={onToggleDirectoryExpanded}
+          onEntryClick={onEntryClick}
+          onEntryDoubleClick={onEntryDoubleClick}
+          onEntryMiddleClick={onEntryMiddleClick}
+          onEntryContextMenu={onEntryContextMenu}
+          onEntryRenameSubmit={onEntryRenameSubmit}
+          onEntryRenameCancel={onEntryRenameCancel}
+        />
+      )}
+      {!isLoadingEntries && !error && !isGridView && !isFoldableGridView && <div
         className={`${styles.entryRows} ${isDetailsView ? styles.detailsRows : ""}`}
       >
         {isDetailsView && <FilesystemDetailsHeader

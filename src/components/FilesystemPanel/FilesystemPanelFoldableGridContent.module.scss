@@ -1,0 +1,63 @@
+@use "../../styles/variables" as *;
+
+// Lines stack with no gaps or margins at the heights the window's offsets are built from
+// (useFoldableGridLayout), so the spacers match what they stand for.
+.foldableGrid {
+  // GRID_PADDING_PX, which useGridLayout takes off the measured width.
+  padding: 8px;
+  // Narrower than one cell or than a folder row needs, the pane scrolls sideways.
+  min-width: max(
+    calc(var(--grid-min-cell-width, 72px) + 16px),
+    calc(var(--entry-thumbnail-size, 32px) + 16rem)
+  );
+}
+
+// A list per row: EntryItem is an <li>, and as the only one in its list every row gets the same
+// shade instead of one that flips as the window slides or tile lines come between rows.
+.rowLine {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  height: var(--entry-row-height, 32px);
+}
+
+// The indent guides beside the run's grid, as tall as its lines, and the lines' drop targets over
+// both.
+.tileRun {
+  position: relative;
+  display: flex;
+}
+
+// One line's drop target (see FoldableRunLineDropTarget), across the run's indent strip and tiles,
+// over the grid row of its line (both take the run's line height). Clicks pass through to the
+// tiles, or to the run, which is the pane's empty space.
+.tileRunLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(var(--line-index) * var(--tile-line-height));
+  height: var(--tile-line-height);
+  pointer-events: none;
+}
+
+// The row buttons' side padding: the guides line up with those of the rows above.
+.tileRunNested {
+  padding-left: 0.5rem;
+}
+
+// A tint, not the drop outline the folder's row gets: outlined, the tiles would read as a target
+// of their own instead of part of the folder.
+.tileRunDropTarget {
+  background-color: rgba($accent-active, 0.15);
+}
+
+// The run sets the cell width and line height of its depth, whose lines its cells fill (see
+// useFoldableGridLayout). Each grid row is one line: a cell plus the grid's 8 px gap (GRID_GAP_PX),
+// the cell centred in it.
+.tileCells {
+  display: grid;
+  grid-template-columns: repeat(var(--line-cols, 1), var(--grid-cell-width));
+  grid-auto-rows: var(--tile-line-height);
+  column-gap: 8px;
+  align-items: center;
+}

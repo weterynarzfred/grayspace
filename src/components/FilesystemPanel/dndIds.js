@@ -4,6 +4,7 @@ export const dndPrefix = Object.freeze({
   breadcrumb: "breadcrumb:",
   up: "up:",
   panel: "panel:",
+  foldableRun: "foldable-run:",
 });
 
 export function toDndId(prefix, path) {
@@ -28,6 +29,13 @@ export function getUpDndId(path) {
 
 export function getPanelDndId(path) {
   return toDndId(dndPrefix.panel, path);
+}
+
+// One line of a foldable grid run. Scoped to the pane, unlike entry: and panel: ids, as two panes
+// can show the same folder's tiles. Drops on these are resolved from their data, so
+// parseDestinationTarget needn't know the prefix.
+export function getFoldableRunLineDndId(paneId, runKey, indexInRun) {
+  return `${dndPrefix.foldableRun}${paneId}:${runKey}:${indexInRun}`;
 }
 
 export function parsePathByPrefix(id, prefix) {

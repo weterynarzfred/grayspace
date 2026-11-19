@@ -21,6 +21,7 @@ import useFilesystemShellMenu from "./hooks/useFilesystemShellMenu";
 import useFilesystemClipboardCommands from "./hooks/useFilesystemClipboardCommands";
 import useWorkspaceExitNavigation from "./hooks/useWorkspaceExitNavigation";
 import useGridLayout from "./hooks/useGridLayout";
+import useFoldableGridLayout from "./hooks/useFoldableGridLayout";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
 import isEditableKeyboardTarget from "../../utils/isEditableKeyboardTarget";
 import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
@@ -70,7 +71,9 @@ function FilesystemPanel({
   const panelScrollRef = useRef(null);
   const entryWindowAnchorRef = useRef(null);
   const gridAnchorRef = useRef(null);
-  // State, not a ref: the grid is measured once it mounts, and it only exists in grid view.
+  const foldableGridAnchorRef = useRef(null);
+  // State, not a ref: the grid is measured once it mounts, and it only exists in the grid views
+  // (one of them at a time).
   const [gridElement, setGridElement] = useState(null);
   const onCurrentPathChangeRef = useRef(onCurrentPathChange);
   const initialFilesystemStateRef = useRef(normalizeFilesystemPaneState(filesystemState));
@@ -220,18 +223,24 @@ function FilesystemPanel({
   const visibleEntries = useMemo(() => renderedRows.map((row) => row.entry), [renderedRows]);
 
   const isGridView = viewType === "grid" && isBrowsing;
+  const isFoldableGridView = viewType === "foldable-grid" && isBrowsing;
+  const isTileView = isGridView || isFoldableGridView;
   const gridMinCellWidthPx = Math.max(GRID_MIN_CELL_WIDTH_PX, thumbnailSizePx + GRID_CELL_CHROME_PX);
-  const { columnCount: gridColumns, cellWidthPx: gridCellWidthPx } = useGridLayout(
-    gridElement,
-    gridMinCellWidthPx,
-    GRID_GAP_PX,
-    GRID_PADDING_PX,
-  );
-  // Thumbnails fill their cell, so the chosen size is the smallest they get. Small icons keep
-  // their size: those cells are only wider to fit the name.
+  const {
+    columnCount: gridColumns,
+    cellWidthPx: gridCellWidthPx,
+    availableWidthPx: gridAvailableWidthPx,
+  } = useGridLayout(gridElement, gridMinCellWidthPx, GRID_GAP_PX, GRID_PADDING_PX, isFoldableGridView);
+  // Thumbnails fill their cell, so the chosen size is the smallest they get, except in the
+  // foldable grid's opened folders, where they may be about 10% smaller (useFoldableGridLayout).
+  // Small icons keep their size: those cells are only wider to fit the name. A line of tiles (a
+  // grid row) is the preview, the name under it and the gap.
   const isGridFillingCells = thumbnailSizePx + GRID_CELL_CHROME_PX >= GRID_MIN_CELL_WIDTH_PX;
-  const gridPreviewPx = isGridFillingCells ? gridCellWidthPx - GRID_CELL_CHROME_PX : thumbnailSizePx;
-  const gridRowHeightPx = gridPreviewPx + GRID_LABEL_HEIGHT_PX + GRID_GAP_PX;
+  const getGridTileSize = useCallback((cellWidthPx) => {
+    const previewSizePx = isGridFillingCells ? cellWidthPx - GRID_CELL_CHROME_PX : thumbnailSizePx;
+    return { previewSizePx, lineHeightPx: previewSizePx + GRID_LABEL_HEIGHT_PX + GRID_GAP_PX };
+  }, [isGridFillingCells, thumbnailSizePx]);
+  const { previewSizePx: gridPreviewPx, lineHeightPx: gridRowHeightPx } = getGridTileSize(gridCellWidthPx);
   const gridRowCount = Math.ceil(totalRootEntryCount / Math.max(1, gridColumns));
   const isGridWindowingEnabled = isGridView && gridRowCount >= ENTRY_WINDOWING_THRESHOLD;
   const {
@@ -253,15 +262,34 @@ function FilesystemPanel({
     const endEntry = gridVirtualEndIndex * gridColumns;
     return entries.slice(startEntry, endEntry);
   }, [isGridView, gridVirtualStartIndex, gridVirtualEndIndex, gridColumns, entries]);
+  // The tree's count, in entries rather than lines: that keeps the tiles rendered without a window
+  // to about as many as the rows the tree would render.
+  const isFoldableGridWindowingEnabled = isFoldableGridView && isEntryWindowingEnabled;
+  const foldableGrid = useFoldableGridLayout({
+    isEnabled: isFoldableGridView,
+    isWindowingEnabled: isFoldableGridWindowingEnabled,
+    treeRows,
+    unresolvedRootEntryCount,
+    thumbnailSizePx,
+    availableWidthPx: gridAvailableWidthPx,
+    minCellWidthPx: gridMinCellWidthPx,
+    gapPx: GRID_GAP_PX,
+    getTileSize: getGridTileSize,
+    scrollContainerRef: panelScrollRef,
+    anchorRef: foldableGridAnchorRef,
+  });
 
-  const effectiveVisibleEntries = isGridView ? visibleGridEntries : visibleEntries;
+  // What the view on screen renders gets thumbnails and workspace-folder styling.
+  let effectiveVisibleEntries = visibleEntries;
+  if (isGridView) effectiveVisibleEntries = visibleGridEntries;
+  else if (isFoldableGridView) effectiveVisibleEntries = foldableGrid.visibleEntries;
   const { thumbnailSrcByPath } = useFilesystemThumbnails({
     currentPath,
     visibleEntries: effectiveVisibleEntries,
     // Filling previews grow with the pane up to about twice the chosen size (one column just short
     // of fitting two). Asking for that from the chosen size, not the measured one, means resizing
     // never swaps the cached size (and blanks the thumbnails) back and forth.
-    thumbnailSizePx: isGridView && isGridFillingCells ? thumbnailSizePx * 2 : thumbnailSizePx,
+    thumbnailSizePx: isTileView && isGridFillingCells ? thumbnailSizePx * 2 : thumbnailSizePx,
   });
   const breadcrumbs = buildBreadcrumbs(currentPath, currentDrive);
   const workspaceFolderPathSet = useFilesystemWorkspaceFolders({
@@ -315,6 +343,8 @@ function FilesystemPanel({
     currentPath,
     selectedPaths,
     selectionFocusPath,
+    // Only the foldable grid moves by column; the other views keep to the entry order.
+    getVerticalNeighbourPath: isFoldableGridView ? foldableGrid.getVerticalNeighbourPath : undefined,
     drivePaths: drives.map((drive) => drive.path),
     treeRows: viewRows,
     isBrowsing,
@@ -488,64 +518,46 @@ function FilesystemPanel({
     };
   }, [flushFilesystemState]);
 
-  useEffect(() => {
-    const handleUndoRedoShortcut = (event) => {
-      if (event.defaultPrevented) return;
-      if (event.metaKey || event.altKey || !event.ctrlKey) return;
-      if (isEditableKeyboardTarget(event.target)) return;
+  // F2 renames the selection; Ctrl+Z undoes and Ctrl+Y (or Ctrl+Shift+Z) redoes this pane's last
+  // file operation.
+  const handleShortcutKeys = useCallback((event) => {
+    if (event.defaultPrevented || isEditableKeyboardTarget(event.target)) return;
+    if (isEntryOperationInProgress) return;
 
-      const pressedKey = event.key.toLowerCase();
-      const wantsUndo = pressedKey === "z" && !event.shiftKey;
-      const wantsRedo = pressedKey === "y" || (pressedKey === "z" && event.shiftKey);
-      if (!wantsUndo && !wantsRedo) return;
-
-      if (!isPanelActive()) return;
-      if (isEntryOperationInProgress) return;
-
-      event.preventDefault();
-      if (wantsUndo) {
-        undoEntries();
-      } else {
-        redoEntries();
-      }
-    };
-
-    window.addEventListener("keydown", handleUndoRedoShortcut);
-    return () => {
-      window.removeEventListener("keydown", handleUndoRedoShortcut);
-    };
-  }, [isEntryOperationInProgress, isPanelActive, redoEntries, undoEntries]);
-
-  useEffect(() => {
-    const handleRenameShortcut = event => {
-      if (event.defaultPrevented || event.repeat) return;
-      if (!isCommandShortcutMatch(COMMAND_IDS.FILESYSTEM_RENAME_SELECTED, event)) return;
-      if (isEditableKeyboardTarget(event.target)) return;
-
-      if (!isPanelActive()) return;
-      if (isEntryOperationInProgress) return;
-
+    if (isCommandShortcutMatch(COMMAND_IDS.FILESYSTEM_RENAME_SELECTED, event)) {
+      if (event.repeat) return;
       event.preventDefault();
       executeFilesystemShortcutCommand(COMMAND_IDS.FILESYSTEM_RENAME_SELECTED);
-    };
+      return;
+    }
 
-    window.addEventListener("keydown", handleRenameShortcut);
-    return () => {
-      window.removeEventListener("keydown", handleRenameShortcut);
-    };
-  }, [executeFilesystemShortcutCommand, isEntryOperationInProgress, isPanelActive]);
+    if (event.metaKey || event.altKey || !event.ctrlKey) return;
+    const pressedKey = event.key.toLowerCase();
+    const wantsUndo = pressedKey === "z" && !event.shiftKey;
+    const wantsRedo = pressedKey === "y" || (pressedKey === "z" && event.shiftKey);
+    if (!wantsUndo && !wantsRedo) return;
+
+    event.preventDefault();
+    if (wantsUndo) undoEntries();
+    else redoEntries();
+  }, [executeFilesystemShortcutCommand, isEntryOperationInProgress, redoEntries, undoEntries]);
   useEffect(() => {
-    const handlePanelNavigationKeys = (event) => {
-      if (event.defaultPrevented) return;
+    // Keys go to the pane under the pointer. F2, Ctrl+Z and Ctrl+Y do so even while another pane's
+    // list has focus, like the app's shortcuts, which send them there too: whichever of the two
+    // the window runs first takes the key, and the other leaves it. Arrows, Enter and Delete go to
+    // a focused list first (the section's onKeyDown), so one from inside a filesystem panel was
+    // already offered to that panel; taking one it left alone would act on this pane.
+    const handleWindowKeyDown = (event) => {
       if (!isPanelActive()) return;
-      handlePanelKeyDown(event);
+      handleShortcutKeys(event);
+      if (!event.target.closest?.("[data-filesystem-panel]")) handlePanelKeyDown(event);
     };
 
-    window.addEventListener("keydown", handlePanelNavigationKeys);
+    window.addEventListener("keydown", handleWindowKeyDown);
     return () => {
-      window.removeEventListener("keydown", handlePanelNavigationKeys);
+      window.removeEventListener("keydown", handleWindowKeyDown);
     };
-  }, [handlePanelKeyDown, isPanelActive]);
+  }, [handlePanelKeyDown, handleShortcutKeys, isPanelActive]);
   useEffect(() => {
     const handleAppCommand = (event) => {
       const detail = event?.detail ?? {};
@@ -621,18 +633,41 @@ function FilesystemPanel({
     upDestinationPath,
     updateViewStyle,
   ]);
+  // Scrolling moves the window of the view on screen, and loads more once that window nears the
+  // end of what is loaded, counted in its own units.
+  let activeWindow = {
+    scheduleRecompute: scheduleEntryWindowRecompute,
+    isEnabled: isEntryWindowingEnabled,
+    loadedCount: treeRows.length,
+    endIndex: virtualEndIndex,
+  };
+  if (isGridView) {
+    activeWindow = {
+      scheduleRecompute: scheduleGridWindowRecompute,
+      isEnabled: isGridWindowingEnabled,
+      loadedCount: entries.length,
+      endIndex: gridVirtualEndIndex * gridColumns,
+    };
+  } else if (isFoldableGridView) {
+    activeWindow = {
+      scheduleRecompute: foldableGrid.scheduleRecompute,
+      isEnabled: isFoldableGridWindowingEnabled,
+      loadedCount: foldableGrid.loadedLineCount,
+      endIndex: foldableGrid.endIndex,
+    };
+  }
   const { handlePanelScroll } = useFilesystemPanelLoadMore({
     panelRef: panelScrollRef,
     handlePanelListScroll,
-    scheduleEntryWindowRecompute: isGridView ? scheduleGridWindowRecompute : scheduleEntryWindowRecompute,
-    isEntryWindowingEnabled: isGridView ? isGridWindowingEnabled : isEntryWindowingEnabled,
+    scheduleEntryWindowRecompute: activeWindow.scheduleRecompute,
+    isEntryWindowingEnabled: activeWindow.isEnabled,
     hasMoreEntries,
     isLoadingEntries,
     isLoadingMoreEntries,
     loadMoreEntries,
     isBrowsing,
-    treeRowsCount: isGridView ? entries.length : treeRows.length,
-    virtualEndIndex: isGridView ? gridVirtualEndIndex * gridColumns : virtualEndIndex,
+    treeRowsCount: activeWindow.loadedCount,
+    virtualEndIndex: activeWindow.endIndex,
   });
   const panelStyle = useMemo(() => ({
     "--entry-font-size": `var(${thumbnailSizePx <= 32 ? "--font-size-small" : "--font-size-base"})`,
@@ -645,6 +680,7 @@ function FilesystemPanel({
     className={`${styles.panelContent} ${isPanelDropOver && isInternalDragActive ? styles.panelDropTarget : ""} ${isExternalDragOver ? styles.externalDropTarget : ""}`}
     style={panelStyle}
     aria-label="Filesystem panel"
+    data-filesystem-panel
     data-drop-destination-path={currentPath || undefined}
     onKeyDown={handlePanelKeyDown}
     onWheel={handleCtrlWheel}
@@ -709,7 +745,7 @@ function FilesystemPanel({
     </PanelHeader>
     <div
       ref={panelScrollRef}
-      className={`${shellStyles.panelBody} ${styles.panelScrollBody} ${isGridView ? styles.gridPanelBody : ""}`}
+      className={`${shellStyles.panelBody} ${styles.panelScrollBody} ${isTileView ? styles.gridPanelBody : ""}`}
       data-testid="filesystem-panel-scroll-container"
       data-panel-scroll="true"
       onClick={handlePanelBackgroundClick}
@@ -811,6 +847,19 @@ function FilesystemPanel({
           onEntryContextMenu: handleEntryContextMenu,
           onEntryRenameSubmit: handleEntryRenameSubmit,
           onEntryRenameCancel: handleEntryRenameCancel,
+        }}
+        foldable={{
+          lines: foldableGrid.lines,
+          containerRef: setGridElement,
+          anchorRef: foldableGridAnchorRef,
+          isWindowingEnabled: isFoldableGridWindowingEnabled,
+          topSpacerHeight: foldableGrid.topSpacerHeight,
+          bottomSpacerHeight: foldableGrid.bottomSpacerHeight,
+          tileLayouts: foldableGrid.tileLayouts,
+          minCellWidthPx: gridMinCellWidthPx,
+          folderLineHeightPx: foldableGrid.folderLineHeightPx,
+          selectedPathSet,
+          workspaceFolderPathSet,
         }}
       />
     </div>

@@ -48,11 +48,13 @@ function getEntryButtonClassName({
     .join(" ");
 }
 
-function getEntryIndentNode(nestingDepth) {
-  if (nestingDepth <= 0) return null;
+// One guide per level. The foldable grid's nested tile lines draw it too, so the guides of the
+// folder rows above run on through the tiles.
+export function EntryIndent({ depth }) {
+  if (depth <= 0) return null;
 
   return <span className={styles.entryIndent} aria-hidden>
-    {Array.from({ length: nestingDepth }, (_, index) => <span
+    {Array.from({ length: depth }, (_, index) => <span
       key={`indent-${index}`}
       className={styles.indentGuide}
     />)}
@@ -218,7 +220,7 @@ function EntryItem({
     }
   }
 
-  const indent = getEntryIndentNode(nestingDepth);
+  const indent = <EntryIndent depth={nestingDepth} />;
   const entryPreview = getEntryPreviewNode(thumbnailSrc, entryIconClassName);
   const trailing = getEntryTrailingNode(meta, details);
   const contextAttributes = getEntryContextAttributes({
