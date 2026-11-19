@@ -579,8 +579,14 @@ function FilesystemPanel({
           handleCreateFolder(resolveCreateCommandOptions(context));
         },
         [COMMAND_IDS.FILESYSTEM_DELETE_SELECTED]: () => handleDeleteSelectedEntries(),
-        [COMMAND_IDS.FILESYSTEM_UNDO]: () => undoEntries(),
-        [COMMAND_IDS.FILESYSTEM_REDO]: () => redoEntries(),
+        // Like the pane's own Ctrl+Z / Ctrl+Y, and every other entry command: not while a copy,
+        // move, delete or import is running in the pane.
+        [COMMAND_IDS.FILESYSTEM_UNDO]: () => {
+          if (!isEntryOperationInProgress) undoEntries();
+        },
+        [COMMAND_IDS.FILESYSTEM_REDO]: () => {
+          if (!isEntryOperationInProgress) redoEntries();
+        },
         [COMMAND_IDS.FILESYSTEM_OPEN_SELECTED_FOLDER_IN_NEW_TAB]: () => {
           handleOpenSelectedEntryInNewTab();
         },
@@ -619,6 +625,7 @@ function FilesystemPanel({
     handleOpenSelectedEntryInNewTab,
     goBack,
     goForward,
+    isEntryOperationInProgress,
     navigateWithExitConfirm,
     openQueryInput,
     paneId,

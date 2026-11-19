@@ -215,14 +215,15 @@ describe("FilesystemPanel", () => {
 
         directoryState[sourceParent] = sourceEntries.filter((entry) => entry.path !== source);
         const destinationEntries = directoryState[destinationDir] ?? [];
+        const destination = path.win32.join(destinationDir, sourceName);
         directoryState[destinationDir] = [
           ...destinationEntries,
           {
             ...sourceEntry,
-            path: path.win32.join(destinationDir, sourceName),
+            path: destination,
           },
         ];
-        return null;
+        return { destination, merge: null };
       }
 
       if (command === "rename_path") {
@@ -4758,7 +4759,7 @@ describe("FilesystemPanel", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
-  it("leaves F2 and Ctrl+Z alone while a move in the pane runs", async () => {
+  it("leaves F2, Ctrl+Z and the undo / redo commands alone while a move in the pane runs", async () => {
     const moveGate = Promise.withResolvers();
     const baseInvoke = invoke.getMockImplementation();
     invoke.mockImplementation(async (command, payload) => {
@@ -4790,6 +4791,9 @@ describe("FilesystemPanel", () => {
     renamedButton.focus();
     fireEvent.keyDown(renamedButton, { key: "F2" });
     fireEvent.keyDown(renamedButton, { key: "z", ctrlKey: true });
+    // The app's shortcut listener, the palette and the context menu send these as commands.
+    dispatchFilesystemCommand("filesystem.undo", "pane-busy-keys");
+    dispatchFilesystemCommand("filesystem.redo", "pane-busy-keys");
     await flushPromises();
 
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();

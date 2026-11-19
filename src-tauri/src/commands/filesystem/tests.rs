@@ -1,6 +1,6 @@
 use super::watcher::{
-  create_filesystem_watcher, drain_watchers_in_path_tree, remap_path_prefix, watch_state_key,
-  ManagedFilesystemWatcher,
+  create_filesystem_watcher, drain_watchers_in_path_tree, drain_watchers_on_path, remap_path_prefix,
+  watch_state_key, ManagedFilesystemWatcher,
 };
 use super::listing::{build_directory_page, filter_entries, read_sorted_directory_entries, ListingSort};
 use super::{
@@ -408,5 +408,28 @@ fn drain_watchers_in_path_tree_keeps_unrelated_watchers_active() {
     == Some("outside"));
 
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
+}
+
+#[test]
+fn drain_watchers_on_path_leaves_the_watchers_inside_that_folder() {
+  let folder = PathBuf::from("C:\\Users\\Photos");
+  let mut watchers: HashMap<String, ManagedFilesystemWatcher> = HashMap::new();
+  for (watch_id, canonical_path) in [("folder", folder.clone()), ("child", folder.join("Trips"))] {
+    watchers.insert(
+      watch_state_key("main", watch_id),
+      ManagedFilesystemWatcher {
+        _watcher: create_filesystem_watcher(|_| {}).expect("watcher should initialize for test"),
+        canonical_path,
+        window_label: "main".to_string(),
+        watch_id: watch_id.to_string(),
+      },
+    );
+  }
+
+  let drained = drain_watchers_on_path(&mut watchers, &folder);
+
+  let drained_ids: Vec<&str> = drained.iter().map(|watcher| watcher.watch_id.as_str()).collect();
+  assert_eq!(drained_ids, ["folder"]);
+  assert!(watchers.contains_key(&watch_state_key("main", "child")));
 }
 

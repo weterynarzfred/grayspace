@@ -165,9 +165,9 @@ npm run tauri_dev
 * [x] rename (F2)
   * [ ] bulk rename
 * [x] copy / move / delete run in the background (progress and Cancel in the panel header)
-  * [x] name conflicts ask: Replace (old item to the Recycle Bin) / Keep both / Skip
+  * [x] name conflicts ask: Replace (old item to the Recycle Bin once the new one is ready next to it; a folder onto a folder merges into it, same-named files inside are replaced the same way, but inside a merge a folder is never replaced by a file or link; a link (symlink / junction) in the destination is replaced, never written through; a linked folder in the source is copied as its contents, like Explorer, and a move on one drive moves the link itself; a folder that holds the item is not replaced, nor merged into where the merge would reach the item) / Keep both / Skip
   * [x] copying into the same folder keeps both
-  * [ ] merge folders on Replace (currently the whole folder is replaced)
+  * [x] merge folders on Replace (a move removes the source folders it empties and can be undone, also after a cancel or error; a cancelled or failed merge keeps what it already moved or copied, and an item it was about to replace stays in place)
   * [ ] operation queue (the panel waits for its running operation)
 * [x] cut / copy / paste
   * [x] system integration

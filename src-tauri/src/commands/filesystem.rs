@@ -26,7 +26,7 @@ pub use search::{
 pub use shell_menu::filesystem_show_shell_menu;
 pub use transfer::{
   delete_paths, filesystem_transfer_cancel, filesystem_transfer_conflicts, import_paths, move_path,
-  FilesystemTransferState,
+  recreate_folders, remove_empty_folders, FilesystemTransferState,
 };
 pub use watcher::{
   filesystem_watch_start, filesystem_watch_stop, handle_filesystem_window_destroyed,

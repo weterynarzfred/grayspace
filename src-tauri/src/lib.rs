@@ -11,7 +11,7 @@ use commands::filesystem::{
   handle_filesystem_window_destroyed, handle_search_window_destroyed, import_paths,
   keyboard_modifier_state,
   list_directory, list_directory_page, list_drives, move_path, open_path, parent_path,
-  rename_path,
+  recreate_folders, remove_empty_folders, rename_path,
   start_external_drag, FilesystemDirectoryListingState, FilesystemSearchState,
   FilesystemTransferState, FilesystemWatchState,
 };
@@ -92,6 +92,8 @@ pub fn run() {
       parent_path,
       open_path,
       move_path,
+      recreate_folders,
+      remove_empty_folders,
       filesystem_transfer_conflicts,
       filesystem_transfer_cancel,
       filesystem_show_shell_menu,

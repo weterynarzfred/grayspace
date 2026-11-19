@@ -114,6 +114,31 @@ pub(super) fn drain_watchers_in_path_tree(
   suspended
 }
 
+pub(super) fn drain_watchers_on_path(
+  watchers: &mut HashMap<String, ManagedFilesystemWatcher>,
+  canonical_path: &Path,
+) -> Vec<ManagedFilesystemWatcher> {
+  let keys_to_remove: Vec<String> = watchers
+    .iter()
+    .filter_map(|(key, watcher)| (watcher.canonical_path == canonical_path).then_some(key.clone()))
+    .collect();
+  keys_to_remove.iter().filter_map(|key| watchers.remove(key)).collect()
+}
+
+/// A watch on a folder that was removed stays on the removed folder and reports nothing once a
+/// new folder is created at its path; this starts the watches on exactly that path again.
+pub(super) fn restart_watchers_on_path(
+  state: &State<FilesystemWatchState>,
+  app_handle: &tauri::AppHandle,
+  canonical_path: &Path,
+) {
+  let stale_watchers = match state.watchers.lock() {
+    Ok(mut watchers) => drain_watchers_on_path(&mut watchers, canonical_path),
+    Err(_) => return,
+  };
+  restore_suspended_watchers(state, app_handle, canonical_path, canonical_path, stale_watchers);
+}
+
 pub(super) fn suspend_watchers_for_path(
   state: &State<FilesystemWatchState>,
   source_canonical_path: &Path,

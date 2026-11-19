@@ -40,7 +40,7 @@ describe("useFilesystemTransfers", () => {
   });
 
   it("asks about conflicts and maps the answer to sources and a policy", async () => {
-    invoke.mockResolvedValue(["C:\\a.txt"]);
+    invoke.mockResolvedValue([{ path: "C:\\a.txt", mergesFolders: false }]);
     const openChoice = vi.fn();
     const { result } = renderHook(() => useFilesystemTransfers({ openChoice }));
     const sources = ["C:\\a.txt", "C:\\b.txt"];
@@ -58,12 +58,31 @@ describe("useFilesystemTransfers", () => {
 
     expect(openChoice).toHaveBeenCalledWith(expect.objectContaining({
       title: "Item already exists",
-      message: expect.stringContaining('a.txt already exists in "Target"'),
+      message: 'a.txt already exists in "Target". Replaced items go to the Recycle Bin.',
       choices: [
         { id: "replace", label: "Replace" },
         { id: "keep-both", label: "Keep both" },
         { id: "skip", label: "Skip" },
       ],
+    }));
+  });
+
+  it("tells that Replace merges folders when a folder lands on a folder", async () => {
+    invoke.mockResolvedValue([
+      { path: "C:\\notes.txt", mergesFolders: false },
+      { path: "C:\\Photos", mergesFolders: true },
+    ]);
+    const openChoice = vi.fn(async () => "replace");
+    const { result } = renderHook(() => useFilesystemTransfers({ openChoice }));
+    const sources = ["C:\\notes.txt", "C:\\Photos"];
+
+    expect(await result.current.resolveConflicts(sources, "D:\\Backup"))
+      .toEqual({ sourcePaths: sources, conflictPolicy: "replace" });
+    expect(openChoice).toHaveBeenCalledWith(expect.objectContaining({
+      title: "2 items already exist",
+      message: 'notes.txt, Photos already exist in "Backup". '
+        + "Replace merges folders into same-named folders and replaces same-named files inside them. "
+        + "Replaced items go to the Recycle Bin.",
     }));
   });
 

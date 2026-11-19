@@ -111,12 +111,14 @@ export default function useFilesystemEntryOperations({
     redoStackRef.current = [];
   }, [trimUndoStack]);
 
-  const pushMoveHistoryEntry = useCallback((items = []) => {
-    const normalizedItems = normalizeMoveHistoryItems(items);
-    if (normalizedItems.length === 0) return;
+  const pushMoveHistoryEntry = useCallback(({ movedItems, removedFolders }) => {
+    const normalizedItems = normalizeMoveHistoryItems(movedItems);
+    // A merge of empty folders into existing ones moves no items but removes the source folders.
+    if (normalizedItems.length === 0 && removedFolders.length === 0) return;
     pushHistoryEntry({
       kind: "move",
       items: normalizedItems,
+      removedFolders,
     });
   }, [pushHistoryEntry]);
 
@@ -131,12 +133,18 @@ export default function useFilesystemEntryOperations({
     });
   }, [pushHistoryEntry]);
 
+  // Resolves with what moved, for the history, and with the error that stopped it part way, if
+  // any: a merge into an existing folder lists the items it moved inside it (also when it stopped
+  // part way) and the source folders it removed. Undo recreates such folders before moving the
+  // items back and redo removes them again after, both while the pane is busy.
   const runMovePairs = useCallback(async (
     movePairs,
     {
       activePath = "",
       removeSelection = true,
       conflictPolicy = "fail",
+      recreateFolders = [],
+      removeEmptyFolders = [],
     } = {},
   ) => {
     const actionablePairs = movePairs.filter((pair) =>
@@ -146,55 +154,69 @@ export default function useFilesystemEntryOperations({
       && pair.destinationDir
       && pair.sourcePath !== pair.destinationDir,
     );
-    if (actionablePairs.length === 0) return [];
+    const changesFolders = recreateFolders.length > 0 || removeEmptyFolders.length > 0;
+    if (actionablePairs.length === 0 && !changesFolders) return { movedItems: [], removedFolders: [], error: null };
 
+    const movedSourcePaths = [];
     const movedItems = [];
-    let moveErrorToThrow = null;
+    const removedFolders = [];
+    let error = null;
 
     setIsMovingEntry(true);
     setError("");
     const transfer = beginTransfer("move", actionablePairs.length);
 
     try {
+      if (recreateFolders.length > 0) await invoke("recreate_folders", { paths: recreateFolders });
       for (const pair of actionablePairs) {
         if (transfer.cancelRequested) break;
-        const movedResult = await invoke("move_path", {
+        const moveResult = await invoke("move_path", {
           source: pair.sourcePath,
           destinationDir: pair.destinationDir,
+          targetName: pair.targetName,
           jobId: transfer.jobId,
           conflictPolicy,
         });
-        movedItems.push({
-          sourcePath: pair.sourcePath,
-          destinationPath: resolveDestinationPath(
-            pair.sourcePath,
-            pair.destinationDir,
-            movedResult,
-          ),
-        });
-        advanceTransfer(movedItems.length);
+        if (moveResult.merge) {
+          // One by one: spreading a record of 100k+ items into push() overflows the call stack.
+          for (const item of moveResult.merge.movedItems) movedItems.push(item);
+          for (const folder of moveResult.merge.removedFolders) removedFolders.push(folder);
+        } else {
+          movedItems.push({
+            sourcePath: pair.sourcePath,
+            destinationPath: resolveDestinationPath(
+              pair.sourcePath,
+              pair.destinationDir,
+              moveResult.destination,
+            ),
+          });
+        }
+        movedSourcePaths.push(pair.sourcePath);
+        advanceTransfer(movedSourcePaths.length);
+        // A merge that failed part way reports what it moved until then, recorded above.
+        if (moveResult.error) throw moveResult.error;
       }
+      if (removeEmptyFolders.length > 0) await invoke("remove_empty_folders", { paths: removeEmptyFolders });
     } catch (moveError) {
-      if (!transfer.cancelRequested) moveErrorToThrow = moveError;
+      if (!transfer.cancelRequested) error = moveError;
     } finally {
       endTransfer();
-      if (activePath && movedItems.length > 0) {
+      if (activePath && (movedSourcePaths.length > 0 || changesFolders)) {
         try {
           await refreshEntriesForPath(activePath);
         } catch (refreshError) {
-          moveErrorToThrow = moveErrorToThrow || refreshError;
+          error = error || refreshError;
         }
       }
 
-      if (removeSelection && movedItems.length > 0) {
-        removeSelectionPaths(new Set(movedItems.map(item => item.sourcePath)));
+      if (removeSelection && movedSourcePaths.length > 0) {
+        removeSelectionPaths(new Set(movedSourcePaths));
       }
 
       setIsMovingEntry(false);
     }
 
-    if (moveErrorToThrow) throw moveErrorToThrow;
-    return movedItems;
+    return { movedItems, removedFolders, error };
   }, [
     advanceTransfer,
     beginTransfer,
@@ -333,7 +355,7 @@ export default function useFilesystemEntryOperations({
     try {
       const resolved = await resolveConflicts(normalizedSourcePaths, destinationDir);
       if (!resolved) return [];
-      const movedItems = await runMovePairs(
+      const moved = await runMovePairs(
         resolved.sourcePaths.map(sourcePath => ({
           sourcePath,
           destinationDir,
@@ -344,8 +366,10 @@ export default function useFilesystemEntryOperations({
           conflictPolicy: resolved.conflictPolicy,
         },
       );
-      pushMoveHistoryEntry(movedItems);
-      return movedItems;
+      // What moved before an error can be undone too.
+      pushMoveHistoryEntry(moved);
+      if (moved.error) throw moved.error;
+      return moved.movedItems;
     } catch (moveError) {
       notifyOperationError({
         title: "Move failed",
@@ -589,33 +613,44 @@ export default function useFilesystemEntryOperations({
     const activePath = currentPathRef.current || currentPath;
 
     if (lastEntry.kind === "move") {
-      const undoPairs = lastEntry.items
+      const { items } = lastEntry;
+      const undoPairs = items
         .slice()
         .reverse()
         .map((item) => ({
           sourcePath: item.destinationPath,
           destinationDir: getParentDirectoryPath(item.sourcePath),
+          // Back under its own name, which Keep both may have changed.
+          targetName: getPathName(item.sourcePath),
         }))
         .filter(pair => pair.destinationDir);
-      if (undoPairs.length === 0) return false;
 
-      try {
-        await runMovePairs(undoPairs, {
-          activePath,
-          removeSelection: false,
-          errorMessage: "Failed to undo move.",
-        });
-        undoStackRef.current.pop();
-        redoStackRef.current.push(lastEntry);
-        return true;
-      } catch (undoError) {
-        notifyUser({
-          title: "Undo failed",
-          message: getNavigationErrorMessage(undoError, "Failed to undo move."),
-          tone: "error",
-        });
-        return false;
-      }
+      const { movedItems, error } = await runMovePairs(undoPairs, {
+        activePath,
+        removeSelection: false,
+        errorMessage: "Failed to undo move.",
+        // A merge removed the source folders it emptied; the items go back into them.
+        recreateFolders: lastEntry.removedFolders,
+      });
+      // A cancel or error part way leaves the items it did not move back on the undo stack. Both
+      // parts keep the removed folders: recreating one that is there does nothing, and redo
+      // removes only empty ones.
+      const notUndone = items.slice(0, items.length - movedItems.length);
+      const undone = items.slice(items.length - movedItems.length);
+      undoStackRef.current.pop();
+      if (notUndone.length > 0) undoStackRef.current.push({ ...lastEntry, items: notUndone });
+      if (undone.length > 0) redoStackRef.current.push({ ...lastEntry, items: undone });
+      // A merge that only removed folders has no items: it is undone once they are back.
+      if (items.length === 0 && error) undoStackRef.current.push(lastEntry);
+      if (items.length === 0 && !error) redoStackRef.current.push(lastEntry);
+      if (!error) return true;
+
+      notifyUser({
+        title: "Undo failed",
+        message: getNavigationErrorMessage(error, "Failed to undo move."),
+        tone: "error",
+      });
+      return false;
     }
 
     if (lastEntry.kind === "rename") {
@@ -648,31 +683,38 @@ export default function useFilesystemEntryOperations({
     const activePath = currentPathRef.current || currentPath;
 
     if (lastEntry.kind === "move") {
-      const redoPairs = lastEntry.items
+      const { items } = lastEntry;
+      const redoPairs = items
         .map(item => ({
           sourcePath: item.sourcePath,
           destinationDir: getParentDirectoryPath(item.destinationPath),
+          targetName: getPathName(item.destinationPath),
         }))
         .filter(pair => pair.destinationDir);
-      if (redoPairs.length === 0) return false;
 
-      try {
-        await runMovePairs(redoPairs, {
-          activePath,
-          removeSelection: false,
-          errorMessage: "Failed to redo move.",
-        });
-        redoStackRef.current.pop();
-        undoStackRef.current.push(lastEntry);
-        return true;
-      } catch (redoError) {
-        notifyUser({
-          title: "Redo failed",
-          message: getNavigationErrorMessage(redoError, "Failed to redo move."),
-          tone: "error",
-        });
-        return false;
-      }
+      const { movedItems, error } = await runMovePairs(redoPairs, {
+        activePath,
+        removeSelection: false,
+        errorMessage: "Failed to redo move.",
+        // As the merge did, leaves no emptied source folders behind.
+        removeEmptyFolders: lastEntry.removedFolders,
+      });
+      // Split as in undo: the items a cancel or error left stay on the redo stack.
+      const redone = items.slice(0, movedItems.length);
+      const notRedone = items.slice(movedItems.length);
+      redoStackRef.current.pop();
+      if (notRedone.length > 0) redoStackRef.current.push({ ...lastEntry, items: notRedone });
+      if (redone.length > 0) undoStackRef.current.push({ ...lastEntry, items: redone });
+      if (items.length === 0 && error) redoStackRef.current.push(lastEntry);
+      if (items.length === 0 && !error) undoStackRef.current.push(lastEntry);
+      if (!error) return true;
+
+      notifyUser({
+        title: "Redo failed",
+        message: getNavigationErrorMessage(error, "Failed to redo move."),
+        tone: "error",
+      });
+      return false;
     }
 
     if (lastEntry.kind === "rename") {

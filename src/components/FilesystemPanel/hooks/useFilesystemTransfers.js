@@ -15,13 +15,16 @@ function createTransferJobId() {
   return `filesystem-transfer-${crypto.randomUUID()}`;
 }
 
-function describeConflicts(conflictingPaths, destinationDir) {
-  const names = conflictingPaths.slice(0, MAX_LISTED_CONFLICT_NAMES).map(getPathName);
-  const remainingCount = conflictingPaths.length - names.length;
+function describeConflicts(conflicts, destinationDir) {
+  const names = conflicts.slice(0, MAX_LISTED_CONFLICT_NAMES).map((conflict) => getPathName(conflict.path));
+  const remainingCount = conflicts.length - names.length;
   const nameList = `${names.join(", ")}${remainingCount > 0 ? ` and ${remainingCount} more` : ""}`;
   const folderName = getPathName(destinationDir) || destinationDir;
-  return `${nameList} already ${conflictingPaths.length === 1 ? "exists" : "exist"} in "${folderName}". `
-    + "Replaced items go to the Recycle Bin.";
+  const mergeNote = conflicts.some((conflict) => conflict.mergesFolders)
+    ? "Replace merges folders into same-named folders and replaces same-named files inside them. "
+    : "";
+  return `${nameList} already ${conflicts.length === 1 ? "exists" : "exist"} in "${folderName}". `
+    + `${mergeNote}Replaced items go to the Recycle Bin.`;
 }
 
 // Progress, cancel and name-conflict handling for copy / move operations that run in the
@@ -72,24 +75,25 @@ export default function useFilesystemTransfers({ openChoice = undefined }) {
 
   // Asks what to do about names already taken in the destination. Resolves with the sources to
   // transfer and the backend conflict policy, or null when the user cancels. "Skip" is handled
-  // here by leaving the conflicting sources out.
+  // here by leaving the conflicting sources out; Replace with folders on both sides merges them
+  // in the backend.
   const resolveConflicts = useCallback(async (sourcePaths, destinationDir) => {
-    const conflictingPaths = await invoke("filesystem_transfer_conflicts", {
+    const conflicts = await invoke("filesystem_transfer_conflicts", {
       sources: sourcePaths,
       destinationDir,
     });
-    if (conflictingPaths.length === 0) return { sourcePaths, conflictPolicy: "fail" };
+    if (conflicts.length === 0) return { sourcePaths, conflictPolicy: "fail" };
 
     const choice = await openChoice?.({
-      title: conflictingPaths.length === 1 ? "Item already exists" : `${conflictingPaths.length} items already exist`,
-      message: describeConflicts(conflictingPaths, destinationDir),
+      title: conflicts.length === 1 ? "Item already exists" : `${conflicts.length} items already exist`,
+      message: describeConflicts(conflicts, destinationDir),
       tone: "warning",
       choices: CONFLICT_CHOICES,
     });
     if (!choice) return null;
     if (choice !== "skip") return { sourcePaths, conflictPolicy: choice };
 
-    const conflictingPathSet = new Set(conflictingPaths);
+    const conflictingPathSet = new Set(conflicts.map((conflict) => conflict.path));
     return {
       sourcePaths: sourcePaths.filter((sourcePath) => !conflictingPathSet.has(sourcePath)),
       conflictPolicy: "fail",

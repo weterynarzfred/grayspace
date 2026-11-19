@@ -1,6 +1,6 @@
 use super::{
-  copy_item, delete_paths_core, filesystem_transfer_conflicts, import_paths_core, move_across_devices,
-  move_item, ConflictPolicy, TransferProgress,
+  copy_across_devices, copy_item, delete_paths_core, filesystem_transfer_conflicts, import_paths_core,
+  move_item, move_whole, ConflictPolicy, TransferProgress,
 };
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -15,7 +15,7 @@ fn unique_test_root(prefix: &str) -> PathBuf {
 }
 
 fn move_path(source: &str, destination_dir: &str) -> Result<(), String> {
-  move_item(Path::new(source), Path::new(destination_dir), ConflictPolicy::Fail, &mut TransferProgress::silent())
+  move_item(Path::new(source), Path::new(destination_dir), None, ConflictPolicy::Fail, &mut TransferProgress::silent())
     .map(|_| ())
 }
 
@@ -130,7 +130,7 @@ fn move_across_devices_falls_back_to_copy_and_delete_for_file() {
   fs::create_dir_all(&destination_dir).expect("should create destination dir");
   fs::write(&source_file, "hello").expect("should create source file");
 
-  move_across_devices(&source_file, &destination_file, &mut TransferProgress::silent())
+  move_whole(&source_file, &destination_file, copy_across_devices, &mut TransferProgress::silent())
     .expect("cross-device fallback should copy and delete source file");
 
   assert!(
@@ -158,7 +158,7 @@ fn move_across_devices_falls_back_to_copy_and_delete_for_directory() {
   fs::write(source_dir.join("root.txt"), "root").expect("should create source root file");
   fs::write(nested_dir.join("leaf.txt"), "leaf").expect("should create nested source file");
 
-  move_across_devices(&source_dir, &destination_path, &mut TransferProgress::silent())
+  move_whole(&source_dir, &destination_path, copy_across_devices, &mut TransferProgress::silent())
     .expect("cross-device fallback should copy and delete source directory");
 
   assert!(
@@ -420,15 +420,102 @@ fn move_item_is_a_no_op_for_items_already_in_place_and_fails_on_conflicts() {
   let (test_root, source_dir, destination_dir) = create_conflict_fixture("grayspace_move_policies");
   let source_file = source_dir.join("notes.txt");
 
-  let conflict = move_item(&source_file, &destination_dir, ConflictPolicy::Fail, &mut TransferProgress::silent());
-  let in_place = move_item(&source_file, &source_dir, ConflictPolicy::Fail, &mut TransferProgress::silent())
+  let conflict = move_item(&source_file, &destination_dir, None, ConflictPolicy::Fail, &mut TransferProgress::silent());
+  let in_place = move_item(&source_file, &source_dir, None, ConflictPolicy::Fail, &mut TransferProgress::silent())
     .expect("moving into the same folder should be a no-op");
   let source_still_exists = source_file.exists();
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
 
   assert!(conflict.is_err());
-  assert_eq!(in_place, None);
+  assert_eq!(in_place.destination, None);
   assert!(source_still_exists);
+}
+
+#[test]
+fn move_item_puts_the_item_under_the_target_name_as_undo_and_redo_of_keep_both_do() {
+  let (test_root, source_dir, destination_dir) = create_conflict_fixture("grayspace_move_target_name");
+  let move_named = |source: &Path, destination_dir: &Path, target_name: Option<&str>, policy: ConflictPolicy| {
+    move_item(source, destination_dir, target_name, policy, &mut TransferProgress::silent())
+  };
+  let kept_file = destination_dir.join("notes.001.txt");
+
+  let kept = move_named(&source_dir.join("notes.txt"), &destination_dir, None, ConflictPolicy::KeepBoth)
+    .expect("keep both should move the file");
+  let undone = move_named(&kept_file, &source_dir, Some("notes.txt"), ConflictPolicy::Fail)
+    .expect("undo should move the file back under its own name");
+  let source_names = file_names(&source_dir);
+  let redone = move_named(&source_dir.join("notes.txt"), &destination_dir, Some("notes.001.txt"), ConflictPolicy::Fail)
+    .expect("redo should move the file under the name keep both gave it");
+  let taken = move_named(&kept_file, &destination_dir, Some("notes.txt"), ConflictPolicy::Fail);
+  let mut destination_names = file_names(&destination_dir);
+  destination_names.sort();
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+
+  let path_of = |path: PathBuf| Some(path.to_string_lossy().to_string());
+  assert_eq!(kept.destination, path_of(kept_file.clone()));
+  assert_eq!(undone.destination, path_of(source_dir.join("notes.txt")));
+  assert_eq!(source_names, ["notes.txt"]);
+  assert_eq!(redone.destination, path_of(kept_file));
+  assert!(taken.err().is_some_and(|error| error.contains("already exists")), "the target name should be taken");
+  assert_eq!(destination_names, ["notes.001.txt", "notes.txt"]);
+}
+
+fn file_names(dir: &Path) -> Vec<String> {
+  fs::read_dir(dir)
+    .expect("should list folder")
+    .map(|entry| entry.expect("should read entry").file_name().to_string_lossy().to_string())
+    .collect()
+}
+
+#[test]
+fn copy_item_and_move_item_replace_put_the_new_file_in_the_place_of_the_old_one() {
+  let (test_root, source_dir, destination_dir) = create_conflict_fixture("grayspace_replace");
+  let source_file = source_dir.join("notes.txt");
+  let destination_file = destination_dir.join("notes.txt");
+
+  let copied = copy_item(&source_file, &destination_dir, ConflictPolicy::Replace, &mut TransferProgress::silent())
+    .expect("replacing copy should succeed");
+  let copied_contents = fs::read_to_string(&destination_file).expect("copy should exist");
+  fs::write(&destination_file, "old").expect("should put the old file back");
+  let moved = move_item(&source_file, &destination_dir, None, ConflictPolicy::Replace, &mut TransferProgress::silent())
+    .expect("replacing move should succeed");
+  let moved_contents = fs::read_to_string(&destination_file).expect("moved file should exist");
+  let destination_names = file_names(&destination_dir);
+  let source_still_exists = source_file.exists();
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+
+  assert_eq!(copied, Some(destination_file.clone()));
+  assert_eq!(copied_contents, "new");
+  assert_eq!(moved.destination, Some(destination_file.to_string_lossy().to_string()));
+  assert_eq!(moved_contents, "new");
+  assert!(!source_still_exists);
+  assert_eq!(destination_names, ["notes.txt"]);
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn replace_keeps_the_old_file_when_the_new_one_cannot_be_copied_or_moved_next_to_it() {
+  use std::os::windows::fs::OpenOptionsExt;
+
+  let (test_root, source_dir, destination_dir) = create_conflict_fixture("grayspace_replace_failure");
+  let source_file = source_dir.join("notes.txt");
+  // Without any sharing nothing can read or move the file while this handle is open.
+  let lock = fs::OpenOptions::new().read(true).share_mode(0).open(&source_file).expect("should lock the file");
+
+  let copied = copy_item(&source_file, &destination_dir, ConflictPolicy::Replace, &mut TransferProgress::silent());
+  let moved = move_item(&source_file, &destination_dir, None, ConflictPolicy::Replace, &mut TransferProgress::silent());
+  drop(lock);
+  let destination_contents = fs::read_to_string(destination_dir.join("notes.txt")).expect("old file should remain");
+  let destination_names = file_names(&destination_dir);
+  let source_contents = fs::read_to_string(&source_file).expect("source should remain");
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
+
+  let source = source_file.to_string_lossy().to_string();
+  assert!(copied.expect_err("copying a locked file should fail").contains(&source));
+  assert!(moved.err().is_some_and(|error| error.contains(&source)));
+  assert_eq!(destination_contents, "old");
+  assert_eq!(destination_names, ["notes.txt"]);
+  assert_eq!(source_contents, "new");
 }
 
 #[test]
@@ -447,7 +534,8 @@ fn transfer_conflicts_lists_sources_whose_name_is_taken() {
   );
   fs::remove_dir_all(&test_root).expect("should clean up temp root");
 
-  assert_eq!(conflicts, vec![path_of(source_dir.join("notes.txt"))]);
+  let conflicting_paths: Vec<_> = conflicts.into_iter().map(|conflict| conflict.path).collect();
+  assert_eq!(conflicting_paths, vec![path_of(source_dir.join("notes.txt"))]);
   assert!(same_folder_conflicts.is_empty());
 }
 
