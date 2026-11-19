@@ -4665,10 +4665,14 @@ describe("FilesystemPanel", () => {
       ]) {
         pressKey(notesInA, keyOptions);
         expectedRenames.push(rename);
+        // The rename first, then the pane done with it: a key pressed while an undo still runs is
+        // ignored, so the next one must wait.
+        await waitFor(() => {
+          expect(getUndoAndRedoRenames(callsBefore)).toEqual(expectedRenames);
+        });
         await waitFor(() => {
           expect(paneB.queryByText("Moving item...")).not.toBeInTheDocument();
         });
-        expect(getUndoAndRedoRenames(callsBefore)).toEqual(expectedRenames);
       }
 
       renameCommandPaneIds.length = 0;
@@ -5869,12 +5873,11 @@ describe("FilesystemPanel", () => {
       expect(getShownSelection()).toEqual(["C:\\Media"]);
     });
 
-    it.each(["folder-tree", "details", "grid"])("keeps Up/Down to the entry order and Right/Left to folders in %s view", async (viewType) => {
+    it.each(["folder-tree", "details"])("keeps Up/Down to the entry order and Right/Left to folders in %s view", async (viewType) => {
       renderFoldableGrid({ viewType, thumbnailSizePx: 128 });
       const usersButton = await screen.findByRole("button", { name: /^Users/ });
       const notesButton = screen.getByRole("button", { name: /notes\.txt/ });
 
-      // Grid view lays the five entries out in 4 columns, and Down still goes to the next one.
       fireEvent.click(usersButton);
       fireEvent.keyDown(usersButton, { key: "ArrowDown" });
       expect(getShownSelection()).toEqual(["C:\\Temp"]);
@@ -5883,6 +5886,74 @@ describe("FilesystemPanel", () => {
       fireEvent.keyDown(notesButton, { key: "ArrowRight" });
       fireEvent.keyDown(notesButton, { key: "ArrowLeft" });
       expect(getShownSelection()).toEqual(["C:\\notes.txt"]);
+    });
+
+    it("walks grid view's own rows: what open folders hold stays out, and a resize re-wraps them", async () => {
+      const resizeGrid = observeFoldableGridResizes();
+      renderFoldableGrid({ viewType: "grid", thumbnailSizePx: 128, expandedPaths: ["C:\\Users"] });
+      const usersButton = await screen.findByRole("button", { name: /^Users/ });
+      const tempButton = screen.getByRole("button", { name: /^Temp/ });
+      const draftButton = screen.getByRole("button", { name: /draft\.md/ });
+
+      // Users is open (as the folder tree would show it), yet the rows are only the top level:
+      // [Users Temp notes.txt draft.md] [.grayspace].
+      fireEvent.click(tempButton);
+      fireEvent.keyDown(tempButton, { key: "ArrowDown" });
+      expect(getShownSelection()).toEqual(["C:\\.grayspace"]);
+      // Left on the open Users doesn't close it (checked in the folder tree below).
+      fireEvent.click(usersButton);
+      fireEvent.keyDown(usersButton, { key: "ArrowLeft" });
+      expect(getShownSelection()).toEqual(["C:\\Users"]);
+
+      // 3 columns: [Users Temp notes.txt] [draft.md .grayspace].
+      resizeGrid(450);
+      fireEvent.click(tempButton);
+      fireEvent.keyDown(tempButton, { key: "ArrowDown" });
+      expect(getShownSelection()).toEqual(["C:\\.grayspace"]);
+      fireEvent.click(draftButton);
+      fireEvent.keyDown(draftButton, { key: "ArrowUp" });
+      expect(getShownSelection()).toEqual(["C:\\Users"]);
+
+      dispatchFilesystemCommand("filesystem.view.folderTree", "pane-foldable");
+      expect(await screen.findByRole("button", { name: /todo\.txt/ })).toBeInTheDocument();
+    });
+
+    it("moves by column with Up/Down in grid view, and through the cells with Right/Left", async () => {
+      renderFoldableGrid({ viewType: "grid", thumbnailSizePx: 128 });
+      const usersButton = await screen.findByRole("button", { name: /^Users/ });
+      const tempButton = screen.getByRole("button", { name: /^Temp/ });
+      const draftButton = screen.getByRole("button", { name: /draft\.md/ });
+      const configButton = screen.getByRole("button", { name: /\.grayspace/ });
+
+      // 4 columns: [Users Temp notes.txt draft.md] [.grayspace]. Down clamps to the shorter row,
+      // and Up loops around like every view's arrows.
+      fireEvent.click(tempButton);
+      fireEvent.keyDown(tempButton, { key: "ArrowDown" });
+      expect(getShownSelection()).toEqual(["C:\\.grayspace"]);
+      fireEvent.keyDown(configButton, { key: "ArrowUp" });
+      expect(getShownSelection()).toEqual(["C:\\Users"]);
+      fireEvent.keyDown(usersButton, { key: "ArrowUp" });
+      expect(getShownSelection()).toEqual(["C:\\.grayspace"]);
+
+      // Right/Left step through the cells, across a row's end, and stop at the ends.
+      fireEvent.click(draftButton);
+      fireEvent.keyDown(draftButton, { key: "ArrowRight" });
+      expect(getShownSelection()).toEqual(["C:\\.grayspace"]);
+      fireEvent.keyDown(configButton, { key: "ArrowRight" });
+      expect(getShownSelection()).toEqual(["C:\\.grayspace"]);
+      fireEvent.click(usersButton);
+      fireEvent.keyDown(usersButton, { key: "ArrowLeft" });
+      expect(getShownSelection()).toEqual(["C:\\Users"]);
+      // A folder cell doesn't open in place, so Right moves on instead.
+      fireEvent.keyDown(usersButton, { key: "ArrowRight" });
+      expect(getShownSelection()).toEqual(["C:\\Temp"]);
+      expect(invoke).not.toHaveBeenCalledWith("list_directory", expect.objectContaining({ path: "C:\\Users" }));
+
+      // Shift+Down extends by a row and stops at the last one.
+      fireEvent.keyDown(tempButton, { key: "ArrowDown", shiftKey: true });
+      expect(getShownSelection()).toEqual(["C:\\Temp", "C:\\notes.txt", "C:\\draft.md", "C:\\.grayspace"]);
+      fireEvent.keyDown(tempButton, { key: "ArrowDown", shiftKey: true });
+      expect(getShownSelection()).toEqual(["C:\\Temp", "C:\\notes.txt", "C:\\draft.md", "C:\\.grayspace"]);
     });
 
     it("takes drops in the empty space between an opened folder's tiles into that folder, lighting its row and tiles", async () => {

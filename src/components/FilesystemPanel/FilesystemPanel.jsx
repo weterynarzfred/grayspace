@@ -22,6 +22,7 @@ import useFilesystemClipboardCommands from "./hooks/useFilesystemClipboardComman
 import useWorkspaceExitNavigation from "./hooks/useWorkspaceExitNavigation";
 import useGridLayout from "./hooks/useGridLayout";
 import useFoldableGridLayout from "./hooks/useFoldableGridLayout";
+import { findVerticalNeighbourPath } from "./foldableGridLines";
 import { useNotificationCenter } from "../../notifications/notificationCenter";
 import isEditableKeyboardTarget from "../../utils/isEditableKeyboardTarget";
 import { uniqueNonEmptyPaths } from "../../utils/pathSelection";
@@ -304,6 +305,23 @@ function FilesystemPanel({
     () => (isGridView ? treeRows.filter((row) => row.depth === 0) : treeRows),
     [isGridView, treeRows],
   );
+  // Grid view's rows of cells, as lines the foldable grid's column-wise arrow keys can walk.
+  const gridLines = useMemo(() => {
+    if (!isGridView) return [];
+    const lines = [];
+    for (let index = 0; index < viewRows.length; index += gridColumns) {
+      lines.push({ kind: "tiles", rows: viewRows.slice(index, index + gridColumns) });
+    }
+    return lines;
+  }, [gridColumns, isGridView, viewRows]);
+  const getGridVerticalNeighbourPath = useCallback(
+    (path, direction, wraps) => findVerticalNeighbourPath(gridLines, path, direction, wraps),
+    [gridLines],
+  );
+  // Both grid views move by column; the folder tree and details keep to the entry order.
+  let getVerticalNeighbourPath;
+  if (isFoldableGridView) getVerticalNeighbourPath = foldableGrid.getVerticalNeighbourPath;
+  else if (isGridView) getVerticalNeighbourPath = getGridVerticalNeighbourPath;
   const {
     treeData,
     selectedEntryPaths,
@@ -343,8 +361,8 @@ function FilesystemPanel({
     currentPath,
     selectedPaths,
     selectionFocusPath,
-    // Only the foldable grid moves by column; the other views keep to the entry order.
-    getVerticalNeighbourPath: isFoldableGridView ? foldableGrid.getVerticalNeighbourPath : undefined,
+    getVerticalNeighbourPath,
+    canOpenFoldersWithArrows: !isGridView,
     drivePaths: drives.map((drive) => drive.path),
     treeRows: viewRows,
     isBrowsing,

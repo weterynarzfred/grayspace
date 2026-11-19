@@ -65,6 +65,7 @@ npm run tauri_dev
   * `Arrow Up/Down` move selection (loops), from the item last clicked or moved to
   * `Shift+Arrow Up/Down` range selection (stops at the first / last item)
   * `Arrow Right/Left` expand/collapse the folder last clicked or moved to
+  * in grid view `Arrow Up/Down` go to the cell in the same column on the row above / below (loops; a shorter last row takes its last cell), and `Arrow Right/Left` step through the cells in reading order (folders don't open in place; stops at the first / last cell); with `Shift`, Up/Down extend by a row and stop at the first / last row
   * `Enter` open selected item(s)
   * `Ctrl+Enter` open selected folder in new tab
   * `Alt+ArrowLeft` go back in folder history
@@ -187,7 +188,7 @@ npm run tauri_dev
   * [x] previews in both grid views fill their cell; cached at 64 / 256 / 512 px, and sizes from 192 px up use 512 px so the bigger previews stay sharp
 * [x] grid / foldable grid views
   * [x] persist view type and thumbnail size per workspace, and per folder outside workspaces
-  * [ ] column-aware arrow keys in grid view (the foldable grid has them)
+  * [x] column-aware arrow keys in grid view
   * [ ] New / Paste from the menu of an opened folder's empty space in the foldable grid go into that folder (now the current folder, while drops there go into the opened one)
 * [x] details view (date modified, type, size columns)
   * [ ] resizable / configurable columns
@@ -200,6 +201,7 @@ npm run tauri_dev
 * [x] allow "sub" filesystem panels that don't hijack the workspace context
 * [x] deselect file on empty space click
 * [x] virtualize file lists in large folders
+  * [ ] arrow keys scroll to an item outside the rendered part of a long list (all views; now Up/Down looping around can move the selection off screen)
 
 ### terminal (ctrl + shift + `)
 

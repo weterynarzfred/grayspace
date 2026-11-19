@@ -63,9 +63,11 @@ export default function useFilesystemPanelInteractions({
   currentPath = "",
   selectedPaths = [],
   selectionFocusPath = "",
-  // Given only by a view that lays entries out in tiles (the foldable grid): (path, direction,
+  // Given only by a view that lays entries out in tiles (both grid views): (path, direction,
   // wraps) => the entry above or below `path`, or "".
   getVerticalNeighbourPath = undefined,
+  // False where folders are cells that don't open in place (grid view): Right/Left then move.
+  canOpenFoldersWithArrows = true,
   drivePaths = [],
   treeRows = [],
   isBrowsing = false,
@@ -562,8 +564,9 @@ export default function useFilesystemPanelInteractions({
   ]);
 
   // Up/Down step through the entry order, or by column in a tile layout. Left/Right open or close
-  // the folder row the keyboard is on; in a tile layout they otherwise step through the reading
-  // order. False when the key did nothing, so the event is left alone.
+  // the folder the keyboard is on (unless canOpenFoldersWithArrows is off); in a tile layout they
+  // otherwise step through the reading order. False when the key did nothing, so the event is left
+  // alone.
   const handleArrowKey = useCallback((key, extendSelection) => {
     const paths = keyboardNavigationPaths;
     if (paths.length === 0) return false;
@@ -587,7 +590,9 @@ export default function useFilesystemPanelInteractions({
     }
 
     const row = rowByPath[referencePath];
-    const canOpenOrClose = row?.entry.is_dir && (direction > 0 ? !row.isExpanded : row.isExpanded);
+    const canOpenOrClose = canOpenFoldersWithArrows
+      && row?.entry.is_dir
+      && (direction > 0 ? !row.isExpanded : row.isExpanded);
     // Shift+Left/Right in a tile layout only extend the range.
     if (canOpenOrClose && !(isTileLayout && extendSelection)) {
       onToggleDirectoryExpanded?.(referencePath);
@@ -600,6 +605,7 @@ export default function useFilesystemPanelInteractions({
     moveSelectionTo(nextPath, isExtendingRange);
     return true;
   }, [
+    canOpenFoldersWithArrows,
     getVerticalNeighbourPath,
     keyboardNavigationPaths,
     moveSelectionTo,
