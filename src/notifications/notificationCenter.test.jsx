@@ -60,7 +60,52 @@ describe("notificationCenter", () => {
       tone: "success",
       position: { x: 8, y: 8 },
       dismissOnOutside: true,
+      takeFocus: true,
     });
+  });
+
+  it("lets notifications and choices leave the focus alone", () => {
+    const { result } = renderHook(() => useNotificationCenter(), {
+      wrapper: NotificationCenterWrapper,
+    });
+    const dismissActive = () => act(() => {
+      result.current.dismissNotification(result.current.activeNotification.id);
+    });
+
+    act(() => {
+      result.current.pushNotification({ title: "Copy failed", tone: "error", takeFocus: false });
+      result.current.openChoice({ title: "Item already exists", choices: [], takeFocus: false });
+      result.current.openChoice({ title: "2 items already exist", choices: [] });
+    });
+
+    expect(result.current.activeNotification).toMatchObject({ title: "Copy failed", takeFocus: false });
+    dismissActive();
+    expect(result.current.activeNotification).toMatchObject({ title: "Item already exists", takeFocus: false });
+    dismissActive();
+    expect(result.current.activeNotification).toMatchObject({ title: "2 items already exist", takeFocus: true });
+  });
+
+  it("withdraws a choice when its signal aborts: it leaves the queue and resolves with null", async () => {
+    const { result } = renderHook(() => useNotificationCenter(), {
+      wrapper: NotificationCenterWrapper,
+    });
+    const abortController = new AbortController();
+
+    let choicePromise;
+    act(() => {
+      choicePromise = result.current.openChoice({
+        title: "Item already exists",
+        choices: [{ id: "replace", label: "Replace" }],
+        signal: abortController.signal,
+      });
+      result.current.pushNotification({ title: "Copy failed" });
+    });
+    expect(result.current.activeNotification?.title).toBe("Item already exists");
+
+    act(() => abortController.abort());
+
+    expect(result.current.activeNotification?.title).toBe("Copy failed");
+    expect(await choicePromise).toBeNull();
   });
 
   it("resolves confirm notifications on confirm and dismiss actions", async () => {

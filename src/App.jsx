@@ -17,6 +17,7 @@ import {
   workspaceReducer,
 } from "./workspace/workspaceStore";
 import useTabDragDrop from "./workspace/useTabDragDrop";
+import useWindowCloseGuard from "./workspace/useWindowCloseGuard";
 import useWorkspaceLifecycle from "./workspace/useWorkspaceLifecycle";
 import useWorkspaceActions from "./workspace/useWorkspaceActions";
 import useWorkspaceTabTitles from "./workspace/useWorkspaceTabTitles";
@@ -41,6 +42,10 @@ import { getSelectedPathsFromState } from "./utils/pathSelection";
 import isEditableKeyboardTarget from "./utils/isEditableKeyboardTarget";
 import { getPaneIdsInLayoutOrder } from "./components/workspacePanelLayoutUtils";
 import { FILESYSTEM_FLUSH_STATE_EVENT } from "./components/FilesystemPanel/filesystemPanelEvents";
+import {
+  forgetPaneHistories,
+  getPaneHistoryKey,
+} from "./components/FilesystemPanel/operations/filesystemOperationHistory";
 import usePreviewPaneTabs from "./components/PreviewPanel/usePreviewPaneTabs";
 
 import styles from "./App.module.scss";
@@ -139,9 +144,13 @@ function App() {
   currentWindowIdRef.current = viewState.currentWindowId;
 
   useWorkspaceLifecycle({ dispatch, currentWindowIdRef });
+  useWindowCloseGuard(openConfirm);
 
   const currentWindow = selectCurrentWindow(viewState.snapshot, viewState.currentWindowId);
-  const tabs = selectTabsForWindow(viewState.snapshot, currentWindow);
+  const tabs = useMemo(
+    () => selectTabsForWindow(viewState.snapshot, currentWindow),
+    [currentWindow, viewState.snapshot],
+  );
   const tabTitlesByTabId = useWorkspaceTabTitles(tabs);
   const titledTabs = useMemo(() => tabs.map((tab) => ({
     ...tab,
@@ -460,6 +469,14 @@ function App() {
     refreshRecentFolders({ notifyOnError: false });
   }, [activeTab?.tabId, activeTab?.terminalCwdHint, refreshRecentFolders]);
 
+  // Undo histories are kept outside the panes, so they survive remounts; those of panes that left
+  // the window go.
+  useEffect(() => {
+    forgetPaneHistories(new Set(tabs.flatMap((tab) => (
+      Object.keys(tab.paneStates).map((paneId) => getPaneHistoryKey(tab.tabId, paneId))
+    ))));
+  }, [tabs]);
+
   if (!currentWindow || !activeTab || !preferences) {
     return <main className={styles.appShell}>
       <div className={styles.loadingShell}>
@@ -549,7 +566,10 @@ function App() {
       onSelect={handleRecentFolderSelect}
       onClose={closeRecentFolders}
     />
+    {/* New elements for each notification: one that takes no focus (a late conflict question)
+      must not inherit it from the one answered before it, where a stray Enter would pick for it. */}
     <SystemNotificationPopover
+      key={activeNotification?.id}
       open={Boolean(activeNotification)}
       notification={activeNotification}
       onDismiss={dismissNotification}

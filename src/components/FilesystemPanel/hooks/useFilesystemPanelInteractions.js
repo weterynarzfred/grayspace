@@ -83,8 +83,6 @@ export default function useFilesystemPanelInteractions({
   drivePaths = [],
   treeRows = [],
   isBrowsing = false,
-  isEntryOperationInProgress = false,
-  isExternalDragEnabled = false,
   setSelectedPath,
   selectEntry,
   openEntry,
@@ -167,12 +165,11 @@ export default function useFilesystemPanelInteractions({
     entries: treeData.entries,
     entryParentByPath: treeData.entryParentByPath,
     selectedPaths: selectedEntryPaths,
-    isMovingEntry: isEntryOperationInProgress,
     onDropTransfer: runInternalDropTransfer,
   });
 
   const handleExternalDragStateChange = useCallback((dragState) => {
-    if (!isExternalDragEnabled) {
+    if (!isBrowsing) {
       setExternalDropDestinationPath("");
       return;
     }
@@ -182,7 +179,7 @@ export default function useFilesystemPanelInteractions({
       return;
     }
     setExternalDropDestinationPath(resolveExternalDropDestinationFromPoint(clientPosition, currentPath));
-  }, [currentPath, isExternalDragEnabled]);
+  }, [currentPath, isBrowsing]);
 
   const handleExternalDropPaths = useCallback(async (droppedPaths, context = {}) => {
     const destinationDir = resolveExternalDropDestinationFromPoint(
@@ -213,14 +210,14 @@ export default function useFilesystemPanelInteractions({
 
   const { isExternalDragOver } = useExternalPathDrop({
     panelRef,
-    isEnabled: isExternalDragEnabled,
+    isEnabled: isBrowsing,
     onDropPaths: handleExternalDropPaths,
     onExternalDragStateChange: handleExternalDragStateChange,
   });
 
   useExternalFilesystemDrag({
     dragPaths: dnd.externalDragPaths,
-    isEnabled: isExternalDragEnabled,
+    isEnabled: isBrowsing,
     onExternalDragStart: dnd.markExternalDragStart,
     onExternalDragError: dnd.clearExternalDragStart,
   });
@@ -351,10 +348,10 @@ export default function useFilesystemPanelInteractions({
   }, [clearSelectedEntries]);
 
   const beginRenameEntry = useCallback((path) => {
-    if (!isBrowsing || isEntryOperationInProgress || !treeData.entryByPath[path]) return false;
+    if (!isBrowsing || !treeData.entryByPath[path]) return false;
     setRenamingPath(path);
     return true;
-  }, [isBrowsing, isEntryOperationInProgress, treeData.entryByPath]);
+  }, [isBrowsing, treeData.entryByPath]);
   const handleBeginRenameSelectedEntry = useCallback(() => (
     selectedEntryPaths.length === 1 && beginRenameEntry(selectedEntryPaths[0])
   ), [beginRenameEntry, selectedEntryPaths]);
@@ -447,7 +444,7 @@ export default function useFilesystemPanelInteractions({
     createErrorTitle,
     options = {},
   ) => {
-    if (!isBrowsing || isEntryOperationInProgress) return false;
+    if (!isBrowsing) return false;
     if (typeof createAction !== "function") return false;
 
     const overrideParentDir = typeof options?.parentDir === "string" ? options.parentDir : "";
@@ -483,7 +480,6 @@ export default function useFilesystemPanelInteractions({
     beginRenameForPath,
     emitTabSelectedFiles,
     isBrowsing,
-    isEntryOperationInProgress,
     onExpandDirectory,
     pushNotification,
     resolveCreateTarget,
@@ -509,10 +505,6 @@ export default function useFilesystemPanelInteractions({
   }, [currentPath]);
 
   useEffect(() => {
-    if (!isExternalDragEnabled) setExternalDropDestinationPath("");
-  }, [isExternalDragEnabled]);
-
-  useEffect(() => {
     if (renamingPath && !treeData.entryByPath[renamingPath]) setRenamingPath("");
   }, [renamingPath, treeData.entryByPath]);
 
@@ -526,14 +518,14 @@ export default function useFilesystemPanelInteractions({
 
   const handleDeleteSelectedEntries = useCallback(async () => {
     const normalizedSelection = uniqueNonEmptyPaths(selectedEntryPaths);
-    if (!isBrowsing || normalizedSelection.length === 0 || isEntryOperationInProgress) return;
+    if (!isBrowsing || normalizedSelection.length === 0) return;
 
     const selectedEntries = normalizedSelection
       .map((path) => treeData.entryByPath[path])
       .filter(Boolean);
     const confirmMessage = selectedEntries.length === 1
-      ? `Delete "${selectedEntries[0].name}" permanently?`
-      : `Delete ${selectedEntries.length} selected items permanently?`;
+      ? `Move "${selectedEntries[0].name}" to the Recycle Bin?`
+      : `Move ${selectedEntries.length} selected items to the Recycle Bin?`;
 
     const shouldDelete = await openConfirm({
       title: "Delete selected items?",
@@ -544,17 +536,13 @@ export default function useFilesystemPanelInteractions({
     });
     if (!shouldDelete) return;
 
-    try {
-      await deleteEntries(normalizedSelection);
-      emitTabSelectedFiles([]);
-    } catch {
-      // The hook surfaces user-facing errors via status messages.
-    }
+    // The delete may wait its turn in the tab's queue; the selection clears at once.
+    deleteEntries(normalizedSelection);
+    clearSelectedEntries();
   }, [
+    clearSelectedEntries,
     deleteEntries,
-    emitTabSelectedFiles,
     isBrowsing,
-    isEntryOperationInProgress,
     openConfirm,
     selectedEntryPaths,
     treeData.entryByPath,
@@ -694,7 +682,7 @@ export default function useFilesystemPanelInteractions({
   );
 
   const handleOpenSelectedEntryInNewTab = useCallback(() => {
-    if (!isBrowsing || isEntryOperationInProgress) return false;
+    if (!isBrowsing) return false;
     if (selectedEntryPaths.length !== 1) return false;
 
     const selectedPath = selectedEntryPaths[0];
@@ -708,7 +696,6 @@ export default function useFilesystemPanelInteractions({
     return true;
   }, [
     isBrowsing,
-    isEntryOperationInProgress,
     openEntry,
     selectedEntryPaths,
     treeData.entryByPath,
@@ -724,7 +711,6 @@ export default function useFilesystemPanelInteractions({
 
   const handlePanelKeyDown = useCallback((event) => {
     if (event.defaultPrevented || event.repeat) return;
-    if (isEntryOperationInProgress) return;
     if (isEditableKeyboardTarget(event.target)) return;
     if (hasCommandModifiers(event)) return;
     // Enter, arrows and Delete on any pane's header buttons and in the (portaled) search options
@@ -740,7 +726,6 @@ export default function useFilesystemPanelInteractions({
     handleArrowKey,
     handleDeleteKeyPress,
     handleOpenSelectedEntry,
-    isEntryOperationInProgress,
   ]);
 
   return {

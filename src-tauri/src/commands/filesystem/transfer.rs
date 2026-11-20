@@ -654,8 +654,10 @@ pub(super) fn delete_paths_core(paths: Vec<String>) -> Result<(), String> {
   }
 
   for path in normalized_paths {
-    if !path.exists() {
-      return Err(format!("The path '{}' does not exist.", path.to_string_lossy()));
+    // A queued delete can run after an earlier operation moved or deleted some of its items.
+    // symlink_metadata, unlike exists(), does not follow links, so a dangling link is still trashed.
+    if fs::symlink_metadata(&path).is_err() {
+      continue;
     }
     trash::delete(&path).map_err(|error| error.to_string())?;
   }

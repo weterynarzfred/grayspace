@@ -76,8 +76,8 @@ npm run tauri_dev
   * `Ctrl+C` / `Ctrl+X` / `Ctrl+V` copy / cut / paste (shares the Windows clipboard)
   * `Ctrl+Shift+T` create text file and rename immediately
   * `Ctrl+Shift+N` create folder and rename immediately
-  * `Ctrl+Z` undo filesystem action
-  * `Ctrl+Y` redo filesystem action
+  * `Ctrl+Z` take back the pane's newest operation still waiting in the tab's queue; with none waiting, undo filesystem action (not while an operation runs in the tab)
+  * `Ctrl+Y` redo filesystem action (not while an operation runs in the tab)
   * `Ctrl+L` or `Alt+D` focus breadcrumb path input
   * `Ctrl+F` filter current folder by name (`Enter` / `Arrow Down` back to the list, `Esc` clears; cleared when leaving the folder)
   * `Ctrl+Shift+F` search current folder and subfolders by name; results replace the listing and work like normal entries (first 5000 matches, symlinks/junctions not followed); `Ctrl+F` / `Ctrl+Shift+F` inside the box switch between filter and search
@@ -169,7 +169,11 @@ npm run tauri_dev
   * [x] name conflicts ask: Replace (old item to the Recycle Bin once the new one is ready next to it; a folder onto a folder merges into it, same-named files inside are replaced the same way, but inside a merge a folder is never replaced by a file or link; a link (symlink / junction) in the destination is replaced, never written through; a linked folder in the source is copied as its contents, like Explorer, and a move on one drive moves the link itself; a folder that holds the item is not replaced, nor merged into where the merge would reach the item) / Keep both / Skip
   * [x] copying into the same folder keeps both
   * [x] merge folders on Replace (a move removes the source folders it empties and can be undone, also after a cancel or error; a cancelled or failed merge keeps what it already moved or copied, and an item it was about to replace stays in place)
-  * [ ] operation queue (the panel waits for its running operation)
+  * [x] operation queue: one per tab, run one at a time (tabs and windows run side by side); a copy, move, paste, drop or delete started while one runs waits its turn, rename and new file / folder run at once
+    * name conflicts are asked when the operation starts, against the folder as it is then; the question of one that had to wait names it and leaves the keyboard alone
+    * every filesystem pane of the tab shows a header line: the running operation with its progress and Cancel, then how many wait (hover for the list) and Cancel queued; when the running one fails or is cancelled while others wait, the queue pauses (`Paused · 2 queued`, Resume)
+    * `Ctrl+Z` takes back the pane's newest waiting operation, which then never runs; otherwise undo and redo don't wait: they do nothing while an operation runs, and start at once ahead of a paused queue
+    * closing a tab or window with operations asks first, then cancels them and waits for the running one to stop, so its cleanup runs (partial copies removed); a tab with operations stays in its window (dragging it to another window or out is refused)
 * [x] cut / copy / paste
   * [x] system integration
 * [x] undo (ctrl+z)

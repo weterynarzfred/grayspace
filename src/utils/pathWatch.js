@@ -26,6 +26,14 @@ export function isSamePath(leftPath, rightPath) {
   return normalizedLeft === normalizedRight;
 }
 
+// Whether `path` is `rootPath` or lies anywhere under it.
+export function isPathInsideRoot(path, rootPath) {
+  const normalizedPath = normalizePathForComparison(path);
+  const normalizedRootPath = normalizePathForComparison(rootPath);
+  if (!normalizedPath || !normalizedRootPath) return false;
+  return normalizedPath === normalizedRootPath || normalizedPath.startsWith(`${normalizedRootPath}/`);
+}
+
 export function getParentDirectoryPath(path) {
   if (typeof path !== "string") return "";
 

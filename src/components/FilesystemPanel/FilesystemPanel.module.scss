@@ -224,7 +224,7 @@
   color: $text-warning;
 }
 
-.cancelTransferButton {
+.operationButton {
   @include interactive-tile;
   margin-left: 0.5rem;
   padding: 0 0.45rem;

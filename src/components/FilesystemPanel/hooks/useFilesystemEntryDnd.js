@@ -8,7 +8,6 @@ export default function useFilesystemEntryDnd({ paneId, entry, drag, isRenaming 
     dropDestinationPath = "",
     selectedEntryPaths = [],
     isSelectedForDrag = false,
-    isMovingEntry = false,
     activeDragPathSet = undefined,
     activeDropDestinationPath = "",
   } = drag;
@@ -20,7 +19,7 @@ export default function useFilesystemEntryDnd({ paneId, entry, drag, isRenaming 
     isDragging,
   } = useDraggable({
     id: getDragEntryDndId(paneId, entry.path),
-    disabled: isMovingEntry || isRenaming,
+    disabled: isRenaming,
     data: {
       kind: "filesystem-entry",
       sourcePath: entry.path,
@@ -30,7 +29,7 @@ export default function useFilesystemEntryDnd({ paneId, entry, drag, isRenaming 
   });
   const { setNodeRef: setDroppableNodeRef } = useDroppable({
     id: getEntryDndId(entry.path),
-    disabled: isMovingEntry || isRenaming || !destinationPath,
+    disabled: isRenaming || !destinationPath,
     data: {
       kind: "entry",
       path: destinationPath,

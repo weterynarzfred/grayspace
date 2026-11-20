@@ -1,5 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  enqueueFilesystemOperation,
+  getTabOperations,
+  hasFilesystemOperations,
+  resetFilesystemOperationQueue,
+} from "../components/FilesystemPanel/operations/filesystemOperationQueue";
 import useWorkspaceActions from "./useWorkspaceActions";
 import {
   workspaceCloseTab,
@@ -21,6 +27,11 @@ import {
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+}));
+
+// The operation queue listens to transfer progress while it has operations.
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn(async () => () => {}),
 }));
 
 vi.mock("./workspaceApi", () => ({
@@ -67,6 +78,17 @@ function createActiveTab(overrides = {}) {
     paneStates: {},
     ...overrides,
   };
+}
+
+// A file operation of the tab that runs until the test ends it with an outcome.
+function startGatedOperation(tabId, label) {
+  const gate = Promise.withResolvers();
+  const finished = enqueueFilesystemOperation(tabId, {
+    label,
+    paneKey: `${tabId}::left`,
+    run: () => gate.promise,
+  });
+  return { finished, finish: (outcome) => gate.resolve(outcome) };
 }
 
 describe("useWorkspaceActions handleSetTabCwdHint", () => {
@@ -642,5 +664,130 @@ describe("useWorkspaceActions safety and error flows", () => {
       sessionId: "term-2",
       command: "npm run dev",
     });
+  });
+});
+
+describe("useWorkspaceActions closing a tab with file operations", () => {
+  beforeEach(() => {
+    invoke.mockReset();
+    invoke.mockResolvedValue(null);
+    workspaceCloseTab.mockReset();
+    workspaceCloseTab.mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    resetFilesystemOperationQueue();
+  });
+
+  function renderActions(openConfirm, pushNotification) {
+    return renderHook(() => useWorkspaceActions({
+      currentWindow: { windowId: "window-1" },
+      activeTab: createActiveTab(),
+      pushNotification,
+      openConfirm,
+    }));
+  }
+
+  it("asks before closing a tab with file operations, cancels them, waits for the running one, then closes", async () => {
+    const openConfirm = vi.fn().mockResolvedValue(true);
+    const copy = startGatedOperation("tab-2", "Copying");
+    const move = startGatedOperation("tab-2", "Moving");
+    startGatedOperation("tab-3", "Copying");
+    const copyOperation = getTabOperations("tab-2").running;
+    const { result } = renderActions(openConfirm);
+
+    const closing = result.current.handleCloseTab("tab-2");
+
+    expect(openConfirm).toHaveBeenCalledWith(expect.objectContaining({
+      confirmLabel: "Cancel them and close",
+      cancelLabel: "Keep tab",
+    }));
+    expect(await move.finished).toBe("dropped");
+    expect(copyOperation.cancelRequested).toBe(true);
+    expect(invoke).toHaveBeenCalledWith("filesystem_transfer_cancel", { jobId: copyOperation.id });
+    // The copy's cleanup still runs.
+    expect(workspaceCloseTab).not.toHaveBeenCalled();
+
+    copy.finish("cancelled");
+    await closing;
+
+    expect(workspaceCloseTab).toHaveBeenCalledWith("window-1", "tab-2");
+    expect(hasFilesystemOperations("tab-2")).toBe(false);
+    expect(getTabOperations("tab-3").running.cancelRequested).toBe(false);
+  });
+
+  it("keeps the tab and its operations when the user keeps it", async () => {
+    const openConfirm = vi.fn().mockResolvedValue(false);
+    startGatedOperation("tab-2", "Copying");
+    startGatedOperation("tab-2", "Moving");
+    const { result } = renderActions(openConfirm);
+
+    await result.current.handleCloseTab("tab-2");
+
+    expect(openConfirm).toHaveBeenCalledTimes(1);
+    expect(workspaceCloseTab).not.toHaveBeenCalled();
+    expect(getTabOperations("tab-2").running.cancelRequested).toBe(false);
+    expect(getTabOperations("tab-2").queued).toHaveLength(1);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on another close of the tab while one asks or waits, and asks again once the tab was kept", async () => {
+    const keep = Promise.withResolvers();
+    const openConfirm = vi.fn().mockReturnValueOnce(keep.promise).mockResolvedValueOnce(true);
+    const copy = startGatedOperation("tab-2", "Copying");
+    const copyOperation = getTabOperations("tab-2").running;
+    const { result } = renderActions(openConfirm);
+
+    const kept = result.current.handleCloseTab("tab-2");
+    result.current.handleCloseTab("tab-2");
+    expect(openConfirm).toHaveBeenCalledTimes(1);
+    keep.resolve(false);
+    await kept;
+
+    const closing = result.current.handleCloseTab("tab-2");
+    expect(openConfirm).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(copyOperation.cancelRequested).toBe(true));
+    // Nothing seems to happen while the copy stops, so the user clicks × again.
+    result.current.handleCloseTab("tab-2");
+    expect(openConfirm).toHaveBeenCalledTimes(2);
+    copy.finish("cancelled");
+    await closing;
+
+    expect(workspaceCloseTab).toHaveBeenCalledTimes(1);
+    expect(workspaceCloseTab).toHaveBeenCalledWith("window-1", "tab-2");
+  });
+
+  it("forgets a close that failed, so the tab can be closed again", async () => {
+    const answer = Promise.withResolvers();
+    const openConfirm = vi.fn().mockReturnValueOnce(answer.promise);
+    const pushNotification = vi.fn();
+    const copy = startGatedOperation("tab-2", "Copying");
+    // The copy ends while the question is open, and the tab goes to another window.
+    workspaceCloseTab.mockRejectedValueOnce(new Error("Tab not found in target window."));
+    const { result } = renderActions(openConfirm, pushNotification);
+
+    const closing = result.current.handleCloseTab("tab-2");
+    copy.finish("done");
+    await copy.finished;
+    answer.resolve(true);
+    await closing;
+    await vi.waitFor(() => expect(pushNotification).toHaveBeenCalledTimes(1));
+
+    // Back in this window.
+    await result.current.handleCloseTab("tab-2");
+
+    expect(workspaceCloseTab).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes a tab without operations without asking, also while another tab has some", async () => {
+    const openConfirm = vi.fn();
+    startGatedOperation("tab-3", "Copying");
+    const { result } = renderActions(openConfirm);
+
+    await result.current.handleCloseTab("tab-2");
+
+    expect(openConfirm).not.toHaveBeenCalled();
+    expect(workspaceCloseTab).toHaveBeenCalledWith("window-1", "tab-2");
+    expect(getTabOperations("tab-3").running.cancelRequested).toBe(false);
   });
 });

@@ -70,8 +70,9 @@ export default function useFilesystemClipboardCommands({
       currentPath,
     );
 
+    // Both may wait their turn in the tab's queue; paste doesn't wait for them.
     if (clipboardMode === "copy") {
-      await copyEntries(clipboardPaths, destinationDir);
+      copyEntries(clipboardPaths, destinationDir);
       return true;
     }
 
@@ -82,7 +83,8 @@ export default function useFilesystemClipboardCommands({
     });
     if (actionableMovePaths.length === 0) return false;
 
-    await moveEntries(actionableMovePaths, destinationDir);
+    // Cleared once the move is queued, so a second paste can't queue the same move again.
+    moveEntries(actionableMovePaths, destinationDir);
     clearFilesystemClipboardState();
     await clearFilesystemClipboard();
     return true;

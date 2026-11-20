@@ -117,6 +117,7 @@ export function NotificationCenterProvider({ children }) {
       tone: resolveNotificationTone(options.tone),
       position: resolvePopoverPosition(options.position, lastPointerPositionRef.current),
       dismissOnOutside: options.dismissOnOutside !== false,
+      takeFocus: options.takeFocus !== false,
     };
 
     setNotifications(previousNotifications => [...previousNotifications, notification]);
@@ -151,6 +152,9 @@ export function NotificationCenterProvider({ children }) {
 
   // Like openConfirm with several answers: resolves with the picked choice id, or null when
   // cancelled or dismissed. `choices` is [{ id, label }].
+  // `takeFocus: false` (here and in pushNotification) leaves the keyboard where it is, for one that
+  // comes up while the user does something else: a stray Enter then can't pick a choice.
+  // Aborting `signal` withdraws the question, e.g. when what asked it is cancelled.
   const openChoice = useCallback((options = {}) => new Promise((resolve) => {
     const notificationId = createNotificationId();
     const choiceNotification = {
@@ -163,11 +167,13 @@ export function NotificationCenterProvider({ children }) {
       cancelLabel: options.cancelLabel || "Cancel",
       position: resolvePopoverPosition(options.position, lastPointerPositionRef.current),
       dismissOnOutside: options.dismissOnOutside !== false,
+      takeFocus: options.takeFocus !== false,
     };
 
     confirmResolversRef.current.set(notificationId, { resolve, defaultAction: null, dismissValue: null });
     setNotifications(previousNotifications => [...previousNotifications, choiceNotification]);
-  }), []);
+    options.signal?.addEventListener("abort", () => dismissNotification(notificationId));
+  }), [dismissNotification]);
 
   const activeNotification = notifications[0] ?? null;
 

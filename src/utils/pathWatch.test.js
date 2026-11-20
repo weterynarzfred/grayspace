@@ -1,5 +1,6 @@
 import {
   getParentDirectoryPath,
+  isPathInsideRoot,
   isSamePath,
   normalizePathForComparison,
 } from "./pathWatch";
@@ -25,6 +26,16 @@ describe("pathWatch", () => {
     expect(isSamePath("", "c:/users/alice")).toBe(false);
     expect(isSamePath("c:/users/alice", "")).toBe(false);
     expect(isSamePath("c:/users/alice", "c:/users/bob")).toBe(false);
+  });
+
+  it("finds a path inside a root at any depth, or the root itself, by normalized value", () => {
+    expect(isPathInsideRoot("C:\\Users\\Alice\\notes.txt", "c:/users/")).toBe(true);
+    expect(isPathInsideRoot("\\\\?\\C:\\Users\\Alice", "C:\\Users\\Alice\\")).toBe(true);
+    expect(isPathInsideRoot("C:\\Users\\Alice", "C:\\")).toBe(true);
+    expect(isPathInsideRoot("C:\\Users2", "C:\\Users")).toBe(false);
+    expect(isPathInsideRoot("C:\\Users", "C:\\Users\\Alice")).toBe(false);
+    expect(isPathInsideRoot("", "C:\\Users")).toBe(false);
+    expect(isPathInsideRoot("C:\\Users", "")).toBe(false);
   });
 
   it("computes parent directories across file, drive, and mixed separator paths", () => {

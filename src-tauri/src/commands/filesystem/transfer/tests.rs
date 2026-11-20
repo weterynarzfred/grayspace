@@ -214,17 +214,22 @@ fn delete_paths_removes_directory_recursively() {
 }
 
 #[test]
-fn delete_paths_rejects_missing_path() {
+fn delete_paths_skips_missing_paths_and_trashes_the_rest() {
   let test_root = unique_test_root("grayspace_delete_missing");
   let missing_path = test_root.join("missing.txt");
-  let delete_target = missing_path.to_string_lossy().to_string();
+  let file_path = test_root.join("notes.txt");
+  fs::create_dir_all(&test_root).expect("should create temp root");
+  fs::write(&file_path, "remove me").expect("should create temp file");
 
-  let result = delete_paths(vec![delete_target]);
+  delete_paths(vec![
+    missing_path.to_string_lossy().to_string(),
+    file_path.to_string_lossy().to_string(),
+  ])
+  .expect("delete_paths should skip the missing path");
 
-  assert!(result.is_err());
-  assert!(result
-    .expect_err("should return an error")
-    .contains("does not exist."));
+  assert!(!file_path.exists(), "file after the missing path should be removed");
+
+  fs::remove_dir_all(&test_root).expect("should clean up temp root");
 }
 
 #[test]

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { hasFilesystemOperations } from "../components/FilesystemPanel/operations/filesystemOperationQueue";
 import { parseTabDndId, resolveTabDropAction } from "./dragCoordinator";
 import {
   workspaceCloseWindow,
@@ -89,6 +90,16 @@ export default function useTabDragDrop({ snapshot, currentWindow, onError }) {
       overId: event.over?.id,
       pointer: tabDragRef.current.pointerCurrent,
     });
+
+    // A tab's file operations live in this window's JS: another window would neither show nor
+    // cancel them.
+    const leavesWindow = dropAction.kind === "detach"
+      || (dropAction.kind === "move" && dropAction.targetWindowId !== dropAction.sourceWindowId);
+    if (leavesWindow && hasFilesystemOperations(draggedTabId)) {
+      onError("Wait for this tab's file operations to finish, or cancel them, before moving it to another window.");
+      resetDragState();
+      return;
+    }
 
     try {
       if (dropAction.kind === "move") {

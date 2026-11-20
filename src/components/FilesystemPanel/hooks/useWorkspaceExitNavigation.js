@@ -1,6 +1,5 @@
 import { useCallback } from "react";
-import { isPathInsideRoot } from "../filesystemPanelUtils";
-import { isSamePath } from "../../../utils/pathWatch";
+import { isPathInsideRoot, isSamePath } from "../../../utils/pathWatch";
 
 function normalizeDriveLetterPath(path) {
   if (typeof path !== "string") return "";

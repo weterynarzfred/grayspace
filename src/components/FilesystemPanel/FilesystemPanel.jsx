@@ -6,6 +6,7 @@ import { buildBreadcrumbs } from "./Breadcrumbs";
 import FilesystemQueryInput from "./FilesystemQueryInput";
 import FilesystemPanelListContent from "./FilesystemPanelListContent";
 import FilesystemStatusMessages from "./FilesystemStatusMessages";
+import FilesystemOperationStatus from "./operations/FilesystemOperationStatus";
 import { normalizeFilesystemPaneState } from "./filesystemPaneState";
 import { areSearchOptionsEqual, isSkippingFolders } from "./filesystemSearchOptions";
 import useFilesystemNavigation from "./hooks/useFilesystemNavigation";
@@ -107,6 +108,7 @@ function FilesystemPanel({
   const { openConfirm, openChoice, pushNotification } = useNotificationCenter();
   const nav = useFilesystemNavigation(initialFilesystemStateRef.current, {
     tabId,
+    paneId,
     tabWorkspaceRoot,
     pushNotification,
     openChoice,
@@ -137,11 +139,6 @@ function FilesystemPanel({
     isSearchActive,
     searchStatus,
     searchError,
-    isMovingEntry,
-    isDeletingEntries,
-    isImportingExternal,
-    transferProgress,
-    cancelTransfer,
     error,
     setSelectedPath,
     selectDrive,
@@ -182,8 +179,6 @@ function FilesystemPanel({
     searchOptions,
   });
   const isBrowsing = currentPath !== "";
-  const isEntryOperationInProgress = isMovingEntry || isDeletingEntries || isImportingExternal;
-  const isExternalDragEnabled = isBrowsing && !isEntryOperationInProgress;
   const {
     treeRows,
     toggleDirectoryExpanded,
@@ -399,8 +394,6 @@ function FilesystemPanel({
     drivePaths: drives.map((drive) => drive.path),
     treeRows: viewRows,
     isBrowsing,
-    isEntryOperationInProgress,
-    isExternalDragEnabled,
     setSelectedPath,
     selectEntry,
     openEntry,
@@ -427,7 +420,7 @@ function FilesystemPanel({
     setNodeRef: setPanelDropNodeRef,
   } = useDroppable({
     id: dnd.getPanelDropId(currentPath),
-    disabled: !isBrowsing || isEntryOperationInProgress,
+    disabled: !isBrowsing,
     data: {
       kind: "panel",
       path: currentPath,
@@ -468,7 +461,7 @@ function FilesystemPanel({
     pushNotification,
   });
   const { copySelection, pasteEntries } = useFilesystemClipboardCommands({
-    isEnabled: isBrowsing && !isEntryOperationInProgress,
+    isEnabled: isBrowsing,
     currentPath,
     entryByPath: treeData.entryByPath,
     resolveSelectedPaths: resolveCommandSelectedEntryPaths,
@@ -570,10 +563,9 @@ function FilesystemPanel({
   }, [flushFilesystemState]);
 
   // F2 renames the selection; Ctrl+Z undoes and Ctrl+Y (or Ctrl+Shift+Z) redoes this pane's last
-  // file operation.
+  // file operation (or takes back one still waiting, see useFilesystemQueuedOperations).
   const handleShortcutKeys = useCallback((event) => {
     if (event.defaultPrevented || isEditableKeyboardTarget(event.target)) return;
-    if (isEntryOperationInProgress) return;
 
     if (isCommandShortcutMatch(COMMAND_IDS.FILESYSTEM_RENAME_SELECTED, event)) {
       if (event.repeat) return;
@@ -591,7 +583,7 @@ function FilesystemPanel({
     event.preventDefault();
     if (wantsUndo) undoEntries();
     else redoEntries();
-  }, [executeFilesystemShortcutCommand, isEntryOperationInProgress, redoEntries, undoEntries]);
+  }, [executeFilesystemShortcutCommand, redoEntries, undoEntries]);
   useEffect(() => {
     // Keys go to the pane under the pointer. F2, Ctrl+Z and Ctrl+Y do so even while another pane's
     // list has focus, like the app's shortcuts, which send them there too: whichever of the two
@@ -630,14 +622,8 @@ function FilesystemPanel({
           handleCreateFolder(resolveCreateCommandOptions(context));
         },
         [COMMAND_IDS.FILESYSTEM_DELETE_SELECTED]: () => handleDeleteSelectedEntries(),
-        // Like the pane's own Ctrl+Z / Ctrl+Y, and every other entry command: not while a copy,
-        // move, delete or import is running in the pane.
-        [COMMAND_IDS.FILESYSTEM_UNDO]: () => {
-          if (!isEntryOperationInProgress) undoEntries();
-        },
-        [COMMAND_IDS.FILESYSTEM_REDO]: () => {
-          if (!isEntryOperationInProgress) redoEntries();
-        },
+        [COMMAND_IDS.FILESYSTEM_UNDO]: () => undoEntries(),
+        [COMMAND_IDS.FILESYSTEM_REDO]: () => redoEntries(),
         [COMMAND_IDS.FILESYSTEM_OPEN_SELECTED_FOLDER_IN_NEW_TAB]: () => {
           handleOpenSelectedEntryInNewTab();
         },
@@ -676,7 +662,6 @@ function FilesystemPanel({
     handleOpenSelectedEntryInNewTab,
     goBack,
     goForward,
-    isEntryOperationInProgress,
     navigateWithExitConfirm,
     openQueryInput,
     paneId,
@@ -748,15 +733,11 @@ function FilesystemPanel({
       panelLabel={panelLabel}
       onPanelTypeChange={onPanelTypeChange}
     >
+      <FilesystemOperationStatus tabId={tabId} />
       <FilesystemStatusMessages
         isBrowsing={isBrowsing}
         isLoadingDrives={isLoadingDrives}
         isLoadingEntries={isLoadingEntries}
-        isMovingEntry={isMovingEntry}
-        isDeletingEntries={isDeletingEntries}
-        isImportingExternal={isImportingExternal}
-        transferProgress={transferProgress}
-        onCancelTransfer={cancelTransfer}
         error={error}
       />
       {queryMode && isBrowsing && <FilesystemQueryInput
@@ -817,7 +798,6 @@ function FilesystemPanel({
           isLoadingDrives,
           isLoadingEntries,
           error,
-          isEntryOperationInProgress,
           unmatchedFilter: filter && !isSearchActive && hasLoadedCurrentPath && entries.length === 0 ? filter : "",
           search: isSearchActive
             ? {
@@ -845,7 +825,6 @@ function FilesystemPanel({
           loadSubfoldersForPath,
           focusPathInputRequestKey: breadcrumbFocusRequestKey,
           activeDragPaths: effectiveActiveDragPaths,
-          isMovingEntry,
           getDropIdForPath: dnd.getBreadcrumbDropId,
           workspaceFolderPathSet,
           recentFoldersEntries,

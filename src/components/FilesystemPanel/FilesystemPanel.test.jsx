@@ -5,6 +5,12 @@ import { cursorPosition } from "@tauri-apps/api/window";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import FilesystemPanel from "./FilesystemPanel";
 import { clearFilesystemClipboardState } from "./filesystemClipboardStore";
+import { forgetPaneHistories } from "./operations/filesystemOperationHistory";
+import {
+  getTabOperations,
+  hasFilesystemOperations,
+  resetFilesystemOperationQueue,
+} from "./operations/filesystemOperationQueue";
 import PanelsDndLayer from "../PanelsDndLayer";
 import { APP_COMMAND_EVENT } from "../../commands/commandEvents";
 import { COMMAND_IDS, isCommandShortcutMatch } from "../../commands/commandRegistry";
@@ -12,8 +18,10 @@ import executeCommand from "../../commands/executeCommand";
 import { flushPromises, runInAct, runInAsyncAct } from "../../test/utils/actCallbacks";
 import { advanceTimersBy } from "../../test/utils/timers";
 
-const { openConfirmMock } = vi.hoisted(() => ({
+const { openConfirmMock, openChoiceMock, pushNotificationMock } = vi.hoisted(() => ({
   openConfirmMock: vi.fn(),
+  openChoiceMock: vi.fn(),
+  pushNotificationMock: vi.fn(),
 }));
 
 const dndCallbacks = {
@@ -33,6 +41,8 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("../../notifications/notificationCenter", () => ({
   useNotificationCenter: () => ({
     openConfirm: openConfirmMock,
+    openChoice: openChoiceMock,
+    pushNotification: pushNotificationMock,
   }),
 }));
 
@@ -393,6 +403,19 @@ describe("FilesystemPanel", () => {
 
       throw new Error(`Unhandled invoke: ${command}`);
     });
+  });
+
+  // Most tests share tabId "", and the operation queue and the undo histories are module state. A
+  // test that leaves an operation behind fails, and the queue is cleared for the next one anyway.
+  afterEach(async () => {
+    try {
+      await waitFor(() => {
+        expect(hasFilesystemOperations()).toBe(false);
+      });
+    } finally {
+      resetFilesystemOperationQueue();
+      forgetPaneHistories(new Set());
+    }
   });
 
   it("loads and shows available drives", async () => {
@@ -2368,7 +2391,7 @@ describe("FilesystemPanel", () => {
     expect(usersInA).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(document.activeElement, { key: "Delete" });
     await waitFor(() => {
-      expect(openConfirmMock).toHaveBeenCalledWith(expect.objectContaining({ message: "Delete \"draft.md\" permanently?" }));
+      expect(openConfirmMock).toHaveBeenCalledWith(expect.objectContaining({ message: "Move \"draft.md\" to the Recycle Bin?" }));
     });
   });
 
@@ -3825,8 +3848,15 @@ describe("FilesystemPanel", () => {
     expect(invoke).toHaveBeenCalledWith("filesystem_clipboard_set", { paths: ["C:\\draft.md"], mode: "copy" });
   });
 
-  it("cuts selected entries, pastes into folder context target, and clears cut clipboard", async () => {
+  it("cuts selected entries, pastes into folder context target, and clears the cut once the move is queued, so a second paste queues nothing", async () => {
+    const moveGate = Promise.withResolvers();
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command === "move_path") await moveGate.promise;
+      return baseInvoke(command, payload);
+    });
     renderFilesystemPanel({
+      tabId: "tab-event-cut-paste",
       paneId: "pane-event-cut-paste",
     });
 
@@ -3883,15 +3913,25 @@ describe("FilesystemPanel", () => {
         },
       }));
     });
+    await flushPromises();
 
-    await waitFor(() => {
-      const moveCalls = invoke.mock.calls.filter(([command, args]) => (
-        command === "move_path"
-        && args?.source === "C:\\notes.txt"
-        && args?.destinationDir === "C:\\Users"
-      ));
-      expect(moveCalls).toHaveLength(1);
+    // The first move still runs: the cut went when it was queued, not when it is done.
+    expect(getTabOperations("tab-event-cut-paste")).toMatchObject({
+      running: { label: 'Moving "notes.txt" to "Users"' },
+      queued: [],
     });
+    await act(async () => {
+      moveGate.resolve();
+    });
+    await waitFor(() => {
+      expect(hasFilesystemOperations("tab-event-cut-paste")).toBe(false);
+    });
+    const moveCalls = invoke.mock.calls.filter(([command, args]) => (
+      command === "move_path"
+      && args?.source === "C:\\notes.txt"
+      && args?.destinationDir === "C:\\Users"
+    ));
+    expect(moveCalls).toHaveLength(1);
   });
 
   it("selects the right-clicked entry when it is outside current selection", async () => {
@@ -4273,7 +4313,7 @@ describe("FilesystemPanel", () => {
       expect(invoke).toHaveBeenCalledWith("delete_paths", { paths: shownRange });
     });
     expect(openConfirmMock).toHaveBeenCalledWith(expect.objectContaining({
-      message: "Delete 4 selected items permanently?",
+      message: "Move 4 selected items to the Recycle Bin?",
     }));
   });
 
@@ -4972,13 +5012,13 @@ describe("FilesystemPanel", () => {
       ]) {
         pressKey(notesInA, keyOptions);
         expectedRenames.push(rename);
-        // The rename first, then the pane done with it: a key pressed while an undo still runs is
+        // The rename first, then the tab done with it: a key pressed while an undo still runs is
         // ignored, so the next one must wait.
         await waitFor(() => {
           expect(getUndoAndRedoRenames(callsBefore)).toEqual(expectedRenames);
         });
         await waitFor(() => {
-          expect(paneB.queryByText("Moving item...")).not.toBeInTheDocument();
+          expect(hasFilesystemOperations("tab-app-shortcuts")).toBe(false);
         });
       }
 
@@ -5070,57 +5110,418 @@ describe("FilesystemPanel", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
   });
 
-  it("leaves F2, Ctrl+Z and the undo / redo commands alone while a move in the pane runs", async () => {
-    const moveGate = Promise.withResolvers();
-    const baseInvoke = invoke.getMockImplementation();
-    invoke.mockImplementation(async (command, payload) => {
-      if (command === "move_path") await moveGate.promise;
-      return baseInvoke(command, payload);
-    });
-    renderFilesystemPanel({
-      paneId: "pane-busy-keys",
-      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
-    });
-    // A rename first, so Ctrl+Z has something to undo.
-    const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
-    fireEvent.click(notesButton);
-    notesButton.focus();
-    fireEvent.keyDown(notesButton, { key: "F2" });
-    await commitRename(screen, "renamed.txt");
-    await waitFor(() => {
-      expect(screen.queryByText("Moving item...")).not.toBeInTheDocument();
-    });
+  describe("operation queue", () => {
+    // Holds back every call of `command` until the returned gate opens.
+    function gateCommand(command) {
+      const gate = Promise.withResolvers();
+      const baseInvoke = invoke.getMockImplementation();
+      invoke.mockImplementation(async (calledCommand, payload) => {
+        if (calledCommand === command) await gate.promise;
+        return baseInvoke(calledCommand, payload);
+      });
+      return gate;
+    }
 
-    dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\draft.md" } });
-    await dndCallbacks.onDragEnd?.({ active: { id: "entry:C:\\draft.md" }, over: { id: "entry:C:\\Users" } });
-    await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({ source: "C:\\draft.md" }));
-    });
-    const callsBefore = invoke.mock.calls.length;
-    const renamedButton = screen.getByRole("button", { name: /renamed\.txt/i });
-    fireEvent.click(renamedButton);
-    renamedButton.focus();
-    fireEvent.keyDown(renamedButton, { key: "F2" });
-    fireEvent.keyDown(renamedButton, { key: "z", ctrlKey: true });
-    // The app's shortcut listener, the palette and the context menu send these as commands.
-    dispatchFilesystemCommand("filesystem.undo", "pane-busy-keys");
-    dispatchFilesystemCommand("filesystem.redo", "pane-busy-keys");
-    await flushPromises();
+    // Drags `sourcePath` from the pane `sourcePaneId` (from each pane when left out) onto the
+    // droppable `overId`.
+    async function dropEntry(sourcePath, overId, sourcePaneId = undefined) {
+      const active = { id: `entry:${sourcePath}`, data: { current: { sourcePath, sourcePaneId } } };
+      dndCallbacks.onDragStart?.({ active });
+      await dndCallbacks.onDragEnd?.({ active, over: { id: overId } });
+    }
 
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(getUndoAndRedoRenames(callsBefore)).toEqual([]);
+    // The tab's line in a pane's header (FilesystemOperationStatus).
+    function getOperationLine(pane = screen) {
+      return pane.queryByRole("status", { name: "File operations" });
+    }
 
-    // Once the move is done, F2 renames again.
-    await act(async () => {
+    function getQueuedLabels(tabId) {
+      return getTabOperations(tabId).queued.map((operation) => operation.label);
+    }
+
+    // Each move and copy the backend got, in order.
+    function getTransferCalls(fromCallIndex = 0) {
+      return invoke.mock.calls.slice(fromCallIndex)
+        .filter(([command]) => command === "move_path" || command === "import_paths")
+        .map(([command, payload]) => (command === "move_path"
+          ? `move ${payload.source} -> ${payload.destinationDir}`
+          : `copy ${payload.paths.join(", ")} -> ${payload.destinationDir}`));
+    }
+
+    function renderQueuePanel(tabId, paneId = "pane-queue") {
+      return renderFilesystemPanel({
+        tabId,
+        paneId,
+        filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+      });
+    }
+
+    it("keeps the pane usable while a move runs: F2 renames at once, a paste, a drop and an Explorer drop wait their turn, and undo / redo leave the history alone", async () => {
+      const moveGate = gateCommand("move_path");
+      renderQueuePanel("tab-busy-keys", "pane-busy-keys");
+      // A rename first, so Ctrl+Z has something to undo.
+      const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+      fireEvent.click(notesButton);
+      notesButton.focus();
+      fireEvent.keyDown(notesButton, { key: "F2" });
+      await commitRename(screen, "renamed.txt");
+
+      await dropEntry("C:\\draft.md", "entry:C:\\Users");
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({ source: "C:\\draft.md" }));
+      });
+      const callsBefore = invoke.mock.calls.length;
+      const renamedButton = screen.getByRole("button", { name: /renamed\.txt/i });
+      fireEvent.click(renamedButton);
+      renamedButton.focus();
+      fireEvent.keyDown(renamedButton, { key: "z", ctrlKey: true });
+      // The app's shortcut listener, the palette and the context menu send these as commands.
+      dispatchFilesystemCommand("filesystem.undo", "pane-busy-keys");
+      dispatchFilesystemCommand("filesystem.redo", "pane-busy-keys");
+      await flushPromises();
+      expect(getUndoAndRedoRenames(callsBefore)).toEqual([]);
+
+      fireEvent.keyDown(renamedButton, { key: "F2" });
+      await commitRename(screen, "renamed2.txt");
+      const renamed2Button = await screen.findByRole("button", { name: /renamed2\.txt/i });
+      expect(getTabOperations("tab-busy-keys").running.label).toBe('Moving "draft.md" to "Users"');
+
+      fireEvent.click(renamed2Button);
+      dispatchFilesystemCommand("filesystem.copy", "pane-busy-keys");
+      fireEvent.click(screen.getByRole("button", { name: /^Temp/ }));
+      dispatchFilesystemCommand("filesystem.paste", "pane-busy-keys");
+      await flushPromises();
+      await dropEntry("C:\\renamed2.txt", "entry:C:\\Users");
+      expect(getOperationLine()).toHaveTextContent("Moving...Cancel · 2 queuedCancel queued");
+      screen.getByLabelText("Filesystem panel").getBoundingClientRect = () => ({
+        left: 0,
+        top: 0,
+        right: 500,
+        bottom: 500,
+        width: 500,
+        height: 500,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
+      // Not awaited yet: the drop is done once its import is, after what waits ahead of it.
+      const explorerDropped = externalDropCallback({
+        payload: { type: "drop", paths: ["D:\\Downloads\\clip.mp4"], position: { x: 100, y: 100 } },
+      });
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+      expect(getQueuedLabels("tab-busy-keys")).toEqual([
+        'Copying "renamed2.txt" to "Temp"',
+        'Moving "renamed2.txt" to "Users"',
+        'Importing "clip.mp4" to "C:"',
+      ]);
+      expect(getTransferCalls(callsBefore)).toEqual([]);
+
       moveGate.resolve();
+      await explorerDropped;
+
+      await waitFor(() => {
+        expect(getOperationLine()).not.toBeInTheDocument();
+      });
+      expect(getTransferCalls()).toEqual([
+        "move C:\\draft.md -> C:\\Users",
+        "copy C:\\renamed2.txt -> C:\\Temp",
+        "move C:\\renamed2.txt -> C:\\Users",
+        "copy D:\\Downloads\\clip.mp4 -> C:\\",
+      ]);
     });
-    await waitFor(() => {
-      expect(screen.queryByText(/^Moving/)).not.toBeInTheDocument();
+
+    it("shows the tab's operations in every Filesystem pane of the tab, also in one mounted later, and runs them one after another", async () => {
+      const moveGate = gateCommand("move_path");
+      const { paneA, paneB } = renderPanesWithPointerOverB("tab-two-panes");
+      await paneA.findByRole("button", { name: /notes\.txt/i });
+      await paneB.findByRole("button", { name: /todo\.txt/i });
+
+      await dropEntry("C:\\notes.txt", "entry:C:\\Users", "pane-a");
+      await dropEntry("C:\\draft.md", "entry:C:\\Temp", "pane-a");
+      await waitFor(() => {
+        expect(getOperationLine(paneA)).toHaveTextContent("Moving...Cancel · 1 queuedCancel queued");
+      });
+      expect(getOperationLine(paneB)).toHaveTextContent("Moving...Cancel · 1 queuedCancel queued");
+      expect(within(getOperationLine(paneA)).getByText(/1 queued/)).toHaveAttribute("title", 'Moving "draft.md" to "Temp"');
+      render(
+        <PanelsDndLayer>
+          <div data-testid="pane-later">
+            <FilesystemPanel tabId="tab-two-panes" paneId="pane-later" />
+          </div>
+          <div data-testid="pane-other-tab">
+            <FilesystemPanel tabId="tab-other" paneId="pane-other-tab" />
+          </div>
+        </PanelsDndLayer>,
+      );
+      const paneLater = within(screen.getByTestId("pane-later"));
+      expect(getOperationLine(paneLater)).toHaveTextContent("Moving...Cancel · 1 queued");
+      expect(getOperationLine(within(screen.getByTestId("pane-other-tab")))).not.toBeInTheDocument();
+      expect(getTransferCalls()).toEqual(["move C:\\notes.txt -> C:\\Users"]);
+
+      await act(async () => {
+        moveGate.resolve();
+      });
+
+      await waitFor(() => {
+        expect(getOperationLine(paneA)).not.toBeInTheDocument();
+      });
+      expect(getOperationLine(paneB)).not.toBeInTheDocument();
+      expect(getOperationLine(paneLater)).not.toBeInTheDocument();
+      expect(getTransferCalls()).toEqual(["move C:\\notes.txt -> C:\\Users", "move C:\\draft.md -> C:\\Temp"]);
+      // Each pane of the tab lists its folder again.
+      await waitFor(() => {
+        expect(paneB.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+        expect(paneA.queryByRole("button", { name: /draft\.md/i })).not.toBeInTheDocument();
+      });
     });
-    const renamedButtonAfterMove = screen.getByRole("button", { name: /renamed\.txt/i });
-    renamedButtonAfterMove.focus();
-    fireEvent.keyDown(renamedButtonAfterMove, { key: "F2" });
-    expect(await screen.findByRole("textbox")).toHaveValue("renamed.txt");
+
+    it("keeps the tab's operation, its Cancel and the pane's history across a remount, as on a tab switch", async () => {
+      const moveGate = gateCommand("move_path");
+      const props = {
+        tabId: "tab-remount",
+        paneId: "pane-remount",
+        filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 },
+      };
+      const firstMount = renderFilesystemPanel(props);
+      await screen.findByRole("button", { name: /notes\.txt/i });
+      await dropEntry("C:\\notes.txt", "entry:C:\\Users");
+      await waitFor(() => {
+        expect(getOperationLine()).toHaveTextContent("Moving...Cancel");
+      });
+      firstMount.unmount();
+
+      renderFilesystemPanel(props);
+      expect(getOperationLine()).toHaveTextContent("Moving...Cancel");
+      await act(async () => {
+        moveGate.resolve();
+      });
+      await waitFor(() => {
+        expect(getOperationLine()).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+      });
+
+      // The move went into the pane's history, which the remount kept: Ctrl+Z moves it back.
+      const usersButton = await screen.findByRole("button", { name: /^Users/ });
+      usersButton.focus();
+      fireEvent.keyDown(usersButton, { key: "z", ctrlKey: true });
+      await waitFor(() => {
+        expect(getTransferCalls()).toEqual(["move C:\\notes.txt -> C:\\Users", "move C:\\Users\\notes.txt -> C:\\"]);
+      });
+      expect(await screen.findByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
+    });
+
+    it("takes back the pane's newest waiting operation on Ctrl+Z, and undoes nothing while one runs", async () => {
+      const moveGate = gateCommand("move_path");
+      renderQueuePanel("tab-take-back");
+      await screen.findByRole("button", { name: /notes\.txt/i });
+      await dropEntry("C:\\notes.txt", "entry:C:\\Users");
+      await dropEntry("C:\\draft.md", "entry:C:\\Temp");
+      await waitFor(() => {
+        expect(getOperationLine()).toHaveTextContent("· 1 queued");
+      });
+
+      const tempButton = screen.getByRole("button", { name: /^Temp/ });
+      tempButton.focus();
+      fireEvent.keyDown(tempButton, { key: "z", ctrlKey: true });
+      expect(getOperationLine()).not.toHaveTextContent("queued");
+      // Nothing of the pane waits any more, and the move still runs.
+      fireEvent.keyDown(tempButton, { key: "z", ctrlKey: true });
+      await flushPromises();
+      expect(getTransferCalls()).toEqual(["move C:\\notes.txt -> C:\\Users"]);
+
+      await act(async () => {
+        moveGate.resolve();
+      });
+      await waitFor(() => {
+        expect(getOperationLine()).not.toBeInTheDocument();
+      });
+      expect(getTransferCalls()).toEqual(["move C:\\notes.txt -> C:\\Users"]);
+      const tempButtonAfterMove = screen.getByRole("button", { name: /^Temp/ });
+      tempButtonAfterMove.focus();
+      fireEvent.keyDown(tempButtonAfterMove, { key: "z", ctrlKey: true });
+      await waitFor(() => {
+        expect(getTransferCalls()).toEqual(["move C:\\notes.txt -> C:\\Users", "move C:\\Users\\notes.txt -> C:\\"]);
+      });
+    });
+
+    it("asks about conflicts when an operation starts: one started meanwhile waits, and its question comes later without taking the focus", async () => {
+      const baseInvoke = invoke.getMockImplementation();
+      // Every source is taken in its destination.
+      invoke.mockImplementation(async (command, payload) => (command === "filesystem_transfer_conflicts"
+        ? payload.sources.map((path) => ({ path, mergesFolders: false }))
+        : baseInvoke(command, payload)));
+      const firstAnswer = Promise.withResolvers();
+      openChoiceMock.mockReturnValueOnce(firstAnswer.promise).mockResolvedValueOnce("keep-both");
+      renderQueuePanel("tab-conflicts");
+      await screen.findByRole("button", { name: /notes\.txt/i });
+
+      await dropEntry("C:\\notes.txt", "entry:C:\\Users");
+      await waitFor(() => {
+        expect(openChoiceMock).toHaveBeenCalledTimes(1);
+      });
+      // In an idle tab the question comes at once, as before: with the focus, closed by a click elsewhere.
+      expect(openChoiceMock).toHaveBeenLastCalledWith(expect.objectContaining({
+        title: "Item already exists",
+        takeFocus: true,
+        dismissOnOutside: true,
+      }));
+      expect(getOperationLine()).toHaveTextContent('Moving "notes.txt" to "Users"...');
+      expect(within(getOperationLine()).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+
+      await dropEntry("C:\\draft.md", "entry:C:\\Temp");
+      await flushPromises();
+      expect(getQueuedLabels("tab-conflicts")).toEqual(['Moving "draft.md" to "Temp"']);
+      expect(openChoiceMock).toHaveBeenCalledTimes(1);
+      // The user goes on renaming meanwhile.
+      const usersButton = screen.getByRole("button", { name: /^Users/ });
+      fireEvent.click(usersButton);
+      usersButton.focus();
+      fireEvent.keyDown(usersButton, { key: "F2" });
+      const renameInput = await screen.findByRole("textbox");
+      fireEvent.change(renameInput, { target: { value: "Users2" } });
+      await waitFor(() => {
+        expect(renameInput).toHaveFocus();
+      });
+
+      await act(async () => {
+        firstAnswer.resolve("replace");
+      });
+      await waitFor(() => {
+        expect(getOperationLine()).not.toBeInTheDocument();
+      });
+
+      // Asked once the first move was done, naming its operation, and leaving the keyboard alone:
+      // the rename box keeps its focus (a blur would commit it), and a stray Enter can't pick
+      // Replace.
+      expect(openChoiceMock).toHaveBeenCalledTimes(2);
+      expect(openChoiceMock).toHaveBeenLastCalledWith(expect.objectContaining({
+        title: 'Moving "draft.md" to "Temp": Item already exists',
+        takeFocus: false,
+        dismissOnOutside: false,
+      }));
+      expect(renameInput).toHaveFocus();
+      expect(renameInput).toHaveValue("Users2");
+      expect(invoke).not.toHaveBeenCalledWith("rename_path", expect.anything());
+      expect(invoke.mock.calls
+        .filter(([command]) => command === "move_path")
+        .map(([, payload]) => `${payload.source} (${payload.conflictPolicy})`))
+        .toEqual(["C:\\notes.txt (replace)", "C:\\draft.md (keep-both)"]);
+      fireEvent.keyDown(renameInput, { key: "Escape" });
+    });
+
+    it("stops the running copy on Cancel and pauses the queue, until Cancel queued drops what waits", async () => {
+      const copyGate = Promise.withResolvers();
+      const baseInvoke = invoke.getMockImplementation();
+      invoke.mockImplementation(async (command, payload) => {
+        if (command === "import_paths") await copyGate.promise;
+        // The backend stops the copy, whose call then fails.
+        if (command === "filesystem_transfer_cancel") {
+          copyGate.reject("The transfer was cancelled.");
+          return null;
+        }
+        return baseInvoke(command, payload);
+      });
+      renderQueuePanel("tab-cancel");
+      fireEvent.click(await screen.findByRole("button", { name: /notes\.txt/i }));
+      dispatchFilesystemCommand("filesystem.copy", "pane-queue");
+      fireEvent.click(screen.getByRole("button", { name: /^Temp/ }));
+      dispatchFilesystemCommand("filesystem.paste", "pane-queue");
+      await waitFor(() => {
+        expect(getOperationLine()).toHaveTextContent("Copying...Cancel");
+      });
+      await dropEntry("C:\\draft.md", "entry:C:\\Users");
+      await waitFor(() => {
+        expect(getOperationLine()).toHaveTextContent("Copying...Cancel · 1 queuedCancel queued");
+      });
+
+      fireEvent.click(within(getOperationLine()).getByRole("button", { name: "Cancel" }));
+      expect(getOperationLine()).toHaveTextContent("Cancelling...");
+      await waitFor(() => {
+        expect(getOperationLine()).toHaveTextContent("Paused · 1 queuedResumeCancel queued");
+      });
+      // What is started meanwhile waits too.
+      await dropEntry("C:\\notes.txt", "entry:C:\\Users");
+      await waitFor(() => {
+        expect(getOperationLine()).toHaveTextContent("Paused · 2 queued");
+      });
+      expect(getTransferCalls()).toEqual(["copy C:\\notes.txt -> C:\\Temp"]);
+      expect(pushNotificationMock).not.toHaveBeenCalled();
+
+      fireEvent.click(within(getOperationLine()).getByRole("button", { name: "Cancel queued" }));
+      expect(getOperationLine()).not.toBeInTheDocument();
+      await dropEntry("C:\\draft.md", "entry:C:\\Users");
+      await waitFor(() => {
+        expect(getTransferCalls()).toEqual(["copy C:\\notes.txt -> C:\\Temp", "move C:\\draft.md -> C:\\Users"]);
+      });
+    });
+
+    it("pauses the queue after a failed move, with a toast that leaves the focus alone, and runs what waits on Resume", async () => {
+      const failGate = Promise.withResolvers();
+      const baseInvoke = invoke.getMockImplementation();
+      invoke.mockImplementation(async (command, payload) => {
+        if (command === "move_path" && payload.source === "C:\\notes.txt") {
+          await failGate.promise;
+          throw "Access is denied. (os error 5)";
+        }
+        return baseInvoke(command, payload);
+      });
+      renderQueuePanel("tab-failure");
+      await screen.findByRole("button", { name: /notes\.txt/i });
+      await dropEntry("C:\\notes.txt", "entry:C:\\Users");
+      await dropEntry("C:\\draft.md", "entry:C:\\Users");
+      await waitFor(() => {
+        expect(getOperationLine()).toHaveTextContent("· 1 queued");
+      });
+
+      await act(async () => {
+        failGate.resolve();
+      });
+      await waitFor(() => {
+        expect(getOperationLine()).toHaveTextContent("Paused · 1 queuedResumeCancel queued");
+      });
+      expect(pushNotificationMock).toHaveBeenCalledWith({
+        title: "Move failed",
+        message: "Access is denied. (os error 5)",
+        tone: "error",
+        takeFocus: false,
+      });
+      expect(getTransferCalls()).toEqual(["move C:\\notes.txt -> C:\\Users"]);
+
+      fireEvent.click(within(getOperationLine()).getByRole("button", { name: "Resume" }));
+      await waitFor(() => {
+        expect(getOperationLine()).not.toBeInTheDocument();
+      });
+      expect(getTransferCalls()).toEqual(["move C:\\notes.txt -> C:\\Users", "move C:\\draft.md -> C:\\Users"]);
+    });
+
+    it("asks before a delete, saying the Recycle Bin, clears the selection on confirm and shows the delete without Cancel", async () => {
+      const deleteGate = gateCommand("delete_paths");
+      renderQueuePanel("tab-delete");
+      const notesButton = await screen.findByRole("button", { name: /notes\.txt/i });
+      fireEvent.click(notesButton);
+      fireEvent.keyDown(notesButton, { key: "Delete" });
+
+      await waitFor(() => {
+        expect(getOperationLine()).toHaveTextContent('Deleting "notes.txt"...');
+      });
+      expect(openConfirmMock).toHaveBeenCalledWith(expect.objectContaining({
+        title: "Delete selected items?",
+        message: 'Move "notes.txt" to the Recycle Bin?',
+        confirmLabel: "Delete",
+      }));
+      expect(getShownSelection()).toEqual([]);
+      expect(within(getOperationLine()).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+
+      await act(async () => {
+        deleteGate.resolve();
+      });
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: /notes\.txt/i })).not.toBeInTheDocument();
+      });
+      expect(getOperationLine()).not.toBeInTheDocument();
+    });
   });
 
   it("lets go of focus when a header button is clicked, so keys go to the pane under the pointer", async () => {
@@ -6314,14 +6715,13 @@ describe("FilesystemPanel", () => {
       const usersRunDroppable = findLineDroppable("foldable-run:pane-foldable-gap:tiles:1:C:\\Users:0:0");
       expect(usersRunDroppable).toEqual({
         id: "foldable-run:pane-foldable-gap:tiles:1:C:\\Users:0:0",
-        disabled: false,
         data: { kind: "folder-run", path: "C:\\Users", isDirectory: true, paneId: "pane-foldable-gap" },
       });
       expect(usersRun.querySelectorAll("[class*='tileRunLine']")).toHaveLength(1);
       expect(laterUsersRun.querySelectorAll("[class*='tileRunLine']")).toHaveLength(2);
       ["foldable-run:pane-foldable-gap:tiles:1:C:\\Users:1:0", "foldable-run:pane-foldable-gap:tiles:1:C:\\Users:1:1"]
         .forEach((id) => {
-          expect(findLineDroppable(id)).toEqual({ id, disabled: false, data: usersRunDroppable.data });
+          expect(findLineDroppable(id)).toEqual({ id, data: usersRunDroppable.data });
         });
       // Root runs leave drops to the pane: the current folder.
       expect(rootRun.querySelectorAll("[class*='tileRunLine']")).toHaveLength(0);
@@ -6366,7 +6766,7 @@ describe("FilesystemPanel", () => {
       return nodeById;
     }
 
-    it("takes drops on any line of an opened folder's long run, each line a droppable of its own, and none while the move runs", async () => {
+    it("takes drops on any line of an opened folder's long run, each line a droppable of its own, also while a move runs", async () => {
       // At 128 px, u01..u16 are 4 lines of 4 in one run. As one droppable, a run taller than the
       // pane would lose to the pane's (pointerWithin prefers the rect whose corners are nearest).
       addUsersFiles(16, (index) => `u${String(index + 1).padStart(2, "0")}`);
@@ -6391,7 +6791,6 @@ describe("FilesystemPanel", () => {
       const thirdLine = getLineOptions(lineIds[2]);
       expect(thirdLine).toEqual({
         id: lineIds[2],
-        disabled: false,
         data: { kind: "folder-run", path: "C:\\Users", isDirectory: true, paneId: "pane-foldable-long" },
       });
 
@@ -6411,15 +6810,26 @@ describe("FilesystemPanel", () => {
         }));
       });
 
-      // Like the rest of the pane, the lines take no drops until the move is done.
+      // Like the rest of the pane, the lines keep taking drops while the move runs; the next move
+      // waits its turn.
+      dndCallbacks.onDragStart?.({ active: { id: "entry:C:\\draft.md" } });
+      dndCallbacks.onDragOver?.({ active: { id: "entry:C:\\draft.md" }, over: overThirdLine });
       await waitFor(() => {
-        expect(lineIds.map((id) => getLineOptions(id).disabled)).toEqual([true, true, true, true]);
+        expect(run.className).toMatch(/tileRunDropTarget/);
       });
+      await dndCallbacks.onDragEnd?.({ active: { id: "entry:C:\\draft.md" }, over: overThirdLine });
+      expect(lineIds.map((id) => getLineOptions(id).disabled)).toEqual([undefined, undefined, undefined, undefined]);
+      expect(getTabOperations("tab-foldable").queued.map((operation) => operation.label))
+        .toEqual(['Moving "draft.md" to "Users"']);
+
       await act(async () => {
         moveGate.resolve();
       });
       await waitFor(() => {
-        expect(lineIds.map((id) => getLineOptions(id).disabled)).toEqual([false, false, false, false]);
+        expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({
+          source: "C:\\draft.md",
+          destinationDir: "C:\\Users",
+        }));
       });
     });
 

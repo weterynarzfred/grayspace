@@ -9,8 +9,8 @@ import styles from "./FilesystemPanelFoldableGridContent.module.scss";
 // The drop target over one rendered line of a nested run. One per line, not one for the run:
 // pointerWithin ranks the droppables under the pointer by their corners' mean distance from it, so
 // a run taller than the pane would lose to the pane's droppable (the current folder).
-function FoldableRunLineDropTarget({ id, index, disabled, data }) {
-  const { setNodeRef } = useDroppable({ id, disabled, data });
+function FoldableRunLineDropTarget({ id, index, data }) {
+  const { setNodeRef } = useDroppable({ id, data });
   return (
     <div ref={setNodeRef} className={styles.tileRunLine} style={{ "--line-index": index }} aria-hidden />
   );
@@ -53,7 +53,6 @@ function FoldableTileRun({ paneId, lines, tileLayout, drag, children }) {
           key={line.indexInRun}
           id={getFoldableRunLineDndId(paneId, key, line.indexInRun)}
           index={index}
-          disabled={drag.isMovingEntry}
           data={{ kind: "folder-run", path: parentPath, isDirectory: true, paneId }}
         />
       ))}

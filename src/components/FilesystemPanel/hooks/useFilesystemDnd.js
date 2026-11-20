@@ -45,7 +45,6 @@ function useFilesystemDnd({
   entries,
   entryParentByPath = {},
   selectedPaths,
-  isMovingEntry,
   onDropTransfer = undefined,
 }) {
   const [activeDragPaths, setActiveDragPaths] = useState([]);
@@ -301,17 +300,13 @@ function useFilesystemDnd({
       return;
     }
 
-    if (isMovingEntry || actionableSourcePaths.length === 0 || !canDropIntoDestination) return;
+    if (actionableSourcePaths.length === 0 || !canDropIntoDestination) return;
 
-    try {
-      await onDropTransfer?.({
-        sourcePaths: actionableSourcePaths,
-        destinationDir,
-        shouldCopy,
-      });
-    } catch {
-      // Entry operations handle user-facing notifications on failure.
-    }
+    await onDropTransfer?.({
+      sourcePaths: actionableSourcePaths,
+      destinationDir,
+      shouldCopy,
+    });
   }
 
   function handleDragCancel() {

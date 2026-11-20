@@ -1,5 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import SystemNotificationPopover from "./SystemNotificationPopover";
+
+// The popover takes the focus a frame after it opens.
+async function waitForNextFrame() {
+  await act(() => new Promise((resolve) => requestAnimationFrame(resolve)));
+}
 
 function createNotification(overrides = {}) {
   return {
@@ -116,6 +121,57 @@ describe("SystemNotificationPopover", () => {
     fireEvent.keyDown(root, { key: "ArrowRight" });
     fireEvent.keyDown(root, { key: "Enter" });
     expect(onResolveConfirm).toHaveBeenCalledWith("n-1", true);
+  });
+
+  it("takes the focus when it opens, so Enter picks the preselected choice", async () => {
+    const onResolveConfirm = vi.fn();
+    render(<SystemNotificationPopover
+      open
+      notification={createNotification({ kind: "choice", choices: [{ id: "replace", label: "Replace" }] })}
+      onResolveConfirm={onResolveConfirm}
+    />);
+
+    await waitForNextFrame();
+    const root = screen.getByTestId("system-notification-root");
+    expect(root).toHaveFocus();
+    fireEvent.keyDown(root, { key: "Enter" });
+    expect(onResolveConfirm).toHaveBeenCalledWith("n-1", "replace");
+  });
+
+  it("leaves focus where it is for takeFocus false, so Enter doesn't pick a choice", async () => {
+    const onResolveConfirm = vi.fn();
+    render(<input aria-label="Rename" />);
+    const renameInput = screen.getByRole("textbox", { name: "Rename" });
+    renameInput.focus();
+
+    render(<SystemNotificationPopover
+      open
+      notification={createNotification({
+        kind: "choice",
+        choices: [{ id: "replace", label: "Replace" }],
+        takeFocus: false,
+        dismissOnOutside: false,
+      })}
+      onResolveConfirm={onResolveConfirm}
+    />);
+    await waitForNextFrame();
+
+    expect(renameInput).toHaveFocus();
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+    expect(onResolveConfirm).not.toHaveBeenCalled();
+  });
+
+  it("is not cancelled by Escape when dismissOnOutside is disabled", () => {
+    const onCloseWithDefault = vi.fn();
+    render(<SystemNotificationPopover
+      open
+      notification={createNotification({ kind: "choice", choices: [], dismissOnOutside: false })}
+      onCloseWithDefault={onCloseWithDefault}
+    />);
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onCloseWithDefault).not.toHaveBeenCalled();
   });
 
   it("renders choice actions and resolves with the picked id or null", () => {

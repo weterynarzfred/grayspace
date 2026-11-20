@@ -2,7 +2,13 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import useFilesystemNavigation from "./useFilesystemNavigation";
-import { runInAsyncAct } from "../../../test/utils/actCallbacks";
+import { getPaneHistory, getPaneHistoryKey } from "../operations/filesystemOperationHistory";
+import {
+  cancelFilesystemOperation,
+  getTabOperations,
+  hasFilesystemOperations,
+} from "../operations/filesystemOperationQueue";
+import { flushPromises, runInAsyncAct } from "../../../test/utils/actCallbacks";
 import { advanceTimersBy } from "../../../test/utils/timers";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -86,20 +92,36 @@ function mockFilesystemInvoke({
   });
 }
 
+const PANE_ID = "pane-left";
+let testCount = 0;
+let tabId = "";
+
+// The pane under test, in a tab of its own: the operation queue and the undo histories are module
+// state, which the tests share.
+function renderNavigation(initialFilesystemState, options = {}) {
+  return renderHook(() => useFilesystemNavigation(initialFilesystemState, { tabId, paneId: PANE_ID, ...options }));
+}
+
+function cancelRunningOperation() {
+  cancelFilesystemOperation(tabId, getTabOperations(tabId).running.id);
+}
+
 describe("useFilesystemNavigation", () => {
   beforeEach(() => {
     invoke.mockReset();
     listen.mockClear();
     filesystemWatchHandler = undefined;
+    testCount += 1;
+    tabId = `tab-${testCount}`;
   });
 
   it("starts and stops a watcher as browsing state changes", async () => {
     mockFilesystemInvoke();
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\",
-    }));
+    });
 
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith("filesystem_watch_start", {
@@ -159,10 +181,10 @@ describe("useFilesystemNavigation", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\",
-    }));
+    });
 
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users"]);
@@ -196,11 +218,11 @@ describe("useFilesystemNavigation", () => {
   it("clears browsing state when going up from drive root", async () => {
     mockFilesystemInvoke();
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\",
       selectedPaths: ["C:\\Users"],
-    }));
+    });
 
     await waitFor(() => {
       expect(result.current.isLoadingEntries).toBe(false);
@@ -228,11 +250,11 @@ describe("useFilesystemNavigation", () => {
   it("clears browsing state when parent path escapes current drive", async () => {
     mockFilesystemInvoke({ parentPathForUsers: "D:\\" });
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\Users",
       selectedPaths: ["C:\\Users\\todo.txt"],
-    }));
+    });
 
     await waitFor(() => {
       expect(result.current.isLoadingEntries).toBe(false);
@@ -301,10 +323,10 @@ describe("useFilesystemNavigation", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\",
-    }));
+    });
 
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual([
@@ -319,10 +341,12 @@ describe("useFilesystemNavigation", () => {
 
     expect(result.current.selectedPaths).toEqual(["C:\\todo.txt"]);
 
+    let outcome;
     await act(async () => {
-      await result.current.deleteEntries(["C:\\todo.txt"]);
+      outcome = await result.current.deleteEntries(["C:\\todo.txt"]);
     });
 
+    expect(outcome).toBe("done");
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users"]);
     });
@@ -384,10 +408,10 @@ describe("useFilesystemNavigation", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\Users",
-    }));
+    });
 
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual([
@@ -395,9 +419,9 @@ describe("useFilesystemNavigation", () => {
       ]);
     });
 
-    let movePromise;
-    act(() => {
-      movePromise = result.current.moveEntries(
+    // The move is done; the refresh of the folder it was done in is still on its way.
+    await act(async () => {
+      await result.current.moveEntries(
         ["C:\\Users\\todo.txt"],
         "C:\\Archive",
       );
@@ -418,9 +442,9 @@ describe("useFilesystemNavigation", () => {
       staleRefresh.resolve([
         { name: "stale.txt", path: "C:\\Users\\stale.txt", is_dir: false },
       ]);
-      await movePromise;
     });
 
+    expect(listDirectoryCallCount.get("C:\\Users")).toBe(2);
     expect(result.current.currentPath).toBe("C:\\Projects");
     expect(result.current.entries.map((entry) => entry.path)).toEqual([
       "C:\\Projects\\readme.md",
@@ -482,10 +506,10 @@ describe("useFilesystemNavigation", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\Users",
-    }));
+    });
 
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
@@ -561,10 +585,10 @@ describe("useFilesystemNavigation", () => {
         removedFolders: ["C:\\Users\\Photos\\Trips", "C:\\Users\\Photos"],
       },
     }));
-    const { result } = renderHook(() => useFilesystemNavigation(
+    const { result } = renderNavigation(
       { currentDrive: "C:\\", currentPath: "C:\\Users" },
       { openChoice: async () => "replace" },
-    ));
+    );
     await waitFor(() => {
       expect(result.current.entries).toHaveLength(2);
     });
@@ -581,8 +605,8 @@ describe("useFilesystemNavigation", () => {
       redone = await result.current.redoEntries();
     });
 
-    expect(undone).toBe(true);
-    expect(redone).toBe(true);
+    expect(undone).toBe("done");
+    expect(redone).toBe("done");
     expect(getMoveHistoryCalls()).toEqual([
       "move C:\\Users\\Photos -> C:\\Archive (replace)",
       "recreate_folders C:\\Users\\Photos\\Trips, C:\\Users\\Photos",
@@ -597,7 +621,7 @@ describe("useFilesystemNavigation", () => {
   it("keeps an undo entry for what a cancelled folder merge moved", async () => {
     let result;
     mockFolderMerge(() => {
-      result.current.cancelTransfer();
+      cancelRunningOperation();
       return {
         destination: "C:\\Archive\\Photos",
         merge: {
@@ -606,10 +630,10 @@ describe("useFilesystemNavigation", () => {
         },
       };
     });
-    ({ result } = renderHook(() => useFilesystemNavigation(
+    ({ result } = renderNavigation(
       { currentDrive: "C:\\", currentPath: "C:\\Users" },
       { openChoice: async () => "replace" },
-    )));
+    ));
     await waitFor(() => {
       expect(result.current.entries).toHaveLength(2);
     });
@@ -642,10 +666,10 @@ describe("useFilesystemNavigation", () => {
   }
 
   async function renderMergeNavigation(pushNotification) {
-    const hook = renderHook(() => useFilesystemNavigation(
+    const hook = renderNavigation(
       { currentDrive: "C:\\", currentPath: "C:\\Users" },
       { openChoice: async () => "replace", pushNotification },
-    ));
+    );
     await waitFor(() => {
       expect(hook.result.current.entries).toHaveLength(2);
     });
@@ -673,20 +697,21 @@ describe("useFilesystemNavigation", () => {
     const pushNotification = vi.fn();
     const result = await renderMergeNavigation(pushNotification);
 
+    let moved;
     await act(async () => {
-      await expect(result.current.moveEntries(["C:\\Users\\Photos", "C:\\Users\\notes.txt"], "C:\\Archive"))
-        .rejects.toBe(lockedError("C:\\Users\\notes.txt"));
+      moved = await result.current.moveEntries(["C:\\Users\\Photos", "C:\\Users\\notes.txt"], "C:\\Archive");
     });
     let undone;
     await act(async () => {
       undone = await result.current.undoEntries();
     });
 
+    expect(moved).toBe("failed");
     expect(pushNotification).toHaveBeenCalledWith(expect.objectContaining({
       title: "Move failed",
       message: lockedError("C:\\Users\\notes.txt"),
     }));
-    expect(undone).toBe(true);
+    expect(undone).toBe("done");
     expect(getMoveHistoryCalls()).toEqual([
       "move C:\\Users\\Photos -> C:\\Archive (replace)",
       "move C:\\Users\\notes.txt -> C:\\Archive (replace)",
@@ -709,14 +734,15 @@ describe("useFilesystemNavigation", () => {
     const pushNotification = vi.fn();
     const result = await renderMergeNavigation(pushNotification);
 
+    let moved;
     await act(async () => {
-      await expect(result.current.moveEntries(["C:\\Users\\Photos", "C:\\Users\\notes.txt"], "C:\\Archive"))
-        .rejects.toBe(lockedError("C:\\Users\\Photos\\b.jpg"));
+      moved = await result.current.moveEntries(["C:\\Users\\Photos", "C:\\Users\\notes.txt"], "C:\\Archive");
     });
     await act(async () => {
       await result.current.undoEntries();
     });
 
+    expect(moved).toBe("failed");
     expect(pushNotification).toHaveBeenCalledWith(expect.objectContaining({
       title: "Move failed",
       message: lockedError("C:\\Users\\Photos\\b.jpg"),
@@ -728,17 +754,16 @@ describe("useFilesystemNavigation", () => {
   });
 
   it("splits the entry when an undo is cancelled part way, so redo and undo go on from there", async () => {
-    let result;
     let cancelOnce = true;
     mockFolderMerge(mergeOfThree);
     interceptInvoke((command, payload) => {
       // Cancel is clicked while the first undo moves c.jpg back.
       if (cancelOnce && command === "move_path" && payload.source === "C:\\Archive\\Photos\\c.jpg") {
         cancelOnce = false;
-        result.current.cancelTransfer();
+        cancelRunningOperation();
       }
     });
-    result = await renderMergeNavigation();
+    const result = await renderMergeNavigation();
 
     await act(async () => {
       await result.current.moveEntries(["C:\\Users\\Photos"], "C:\\Archive");
@@ -750,7 +775,7 @@ describe("useFilesystemNavigation", () => {
       });
     }
 
-    expect(outcomes).toEqual([true, true, true, true, false]);
+    expect(outcomes).toEqual(["cancelled", "done", "done", "done", undefined]);
     expect(getMoveHistoryCalls()).toEqual([
       "move C:\\Users\\Photos -> C:\\Archive (replace)",
       "recreate_folders C:\\Users\\Photos",
@@ -793,7 +818,7 @@ describe("useFilesystemNavigation", () => {
       });
     }
 
-    expect(outcomes).toEqual([false, true, true, true]);
+    expect(outcomes).toEqual(["failed", "done", "done", "done"]);
     expect(pushNotification).toHaveBeenCalledWith(expect.objectContaining({
       title: "Redo failed",
       message: lockedError("C:\\Users\\Photos\\b.jpg"),
@@ -836,7 +861,7 @@ describe("useFilesystemNavigation", () => {
     }
 
     // Nothing was undone, so there is nothing to redo, and the retry undoes all of it.
-    expect(outcomes).toEqual([false, false, true]);
+    expect(outcomes).toEqual(["failed", undefined, "done"]);
     expect(getMoveHistoryCalls()).toEqual([
       "move C:\\Users\\Photos -> C:\\Archive (replace)",
       "recreate_folders C:\\Users\\Photos",
@@ -865,7 +890,8 @@ describe("useFilesystemNavigation", () => {
       moved = await result.current.moveEntries(["C:\\Users\\Photos"], "C:\\Archive");
     });
 
-    expect(moved).toHaveLength(200000);
+    expect(moved).toBe("done");
+    expect(getPaneHistory(getPaneHistoryKey(tabId, PANE_ID)).undo[0].items).toHaveLength(200000);
     expect(pushNotification).not.toHaveBeenCalled();
   });
 
@@ -893,8 +919,8 @@ describe("useFilesystemNavigation", () => {
       redone = await result.current.redoEntries();
     });
 
-    expect(undone).toBe(true);
-    expect(redone).toBe(true);
+    expect(undone).toBe("done");
+    expect(redone).toBe("done");
     expect(getMoveHistoryCalls()).toEqual([
       "move C:\\Users\\Photos -> C:\\Archive (replace)",
       "recreate_folders C:\\Users\\Photos\\2019, C:\\Users\\Photos",
@@ -904,40 +930,28 @@ describe("useFilesystemNavigation", () => {
     expect(countRefreshes()).toBe(refreshesAfterUndo + 1);
   });
 
-  it("keeps the pane busy while undo recreates folders and redo removes them", async () => {
+  it("keeps the undo running while it recreates folders and the redo while it removes them", async () => {
     mockFolderMerge(mergeOfThree);
     const result = await renderMergeNavigation();
     await act(async () => {
       await result.current.moveEntries(["C:\\Users\\Photos"], "C:\\Archive");
     });
-    const gates = {
-      recreate_folders: Promise.withResolvers(),
-      remove_empty_folders: Promise.withResolvers(),
-    };
-    interceptInvoke((command) => gates[command]?.promise);
-
-    let undoing;
-    await act(async () => {
-      undoing = result.current.undoEntries();
-    });
-    const busyWhileRecreating = result.current.isMovingEntry;
-    await act(async () => {
-      gates.recreate_folders.resolve();
-      await undoing;
-    });
-    let redoing;
-    await act(async () => {
-      redoing = result.current.redoEntries();
-    });
-    const busyWhileRemoving = result.current.isMovingEntry;
-    await act(async () => {
-      gates.remove_empty_folders.resolve();
-      await redoing;
+    const runningDuringFolderChanges = [];
+    interceptInvoke((command) => {
+      if (command !== "recreate_folders" && command !== "remove_empty_folders") return;
+      runningDuringFolderChanges.push(`${command}: ${getTabOperations(tabId).running?.label}`);
     });
 
-    expect(busyWhileRecreating).toBe(true);
-    expect(busyWhileRemoving).toBe(true);
-    expect(result.current.isMovingEntry).toBe(false);
+    await act(async () => {
+      await result.current.undoEntries();
+    });
+    await act(async () => {
+      await result.current.redoEntries();
+    });
+
+    // So whatever is started meanwhile waits behind them.
+    expect(runningDuringFolderChanges).toEqual(["recreate_folders: Undoing", "remove_empty_folders: Redoing"]);
+    expect(hasFilesystemOperations(tabId)).toBe(false);
   });
 
   it("shows a notification with reason when move fails", async () => {
@@ -969,24 +983,23 @@ describe("useFilesystemNavigation", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { result } = renderHook(() => useFilesystemNavigation(
+    const { result } = renderNavigation(
       { currentDrive: "C:\\", currentPath: "C:\\Users" },
       { pushNotification },
-    ));
+    );
 
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
     });
 
     await act(async () => {
-      await expect(result.current.moveEntries(["C:\\Users\\todo.txt"], "C:\\Archive")).rejects.toThrow(
-        "already exists",
-      );
+      expect(await result.current.moveEntries(["C:\\Users\\todo.txt"], "C:\\Archive")).toBe("failed");
     });
 
     expect(pushNotification).toHaveBeenCalledWith(expect.objectContaining({
       title: "Move failed",
       tone: "error",
+      takeFocus: false,
       message: expect.stringContaining("already exists"),
     }));
     expect(result.current.error).toBe("");
@@ -1051,10 +1064,10 @@ describe("useFilesystemNavigation", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\Users",
-    }));
+    });
 
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
@@ -1147,10 +1160,10 @@ describe("useFilesystemNavigation", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\Users",
-    }));
+    });
 
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual([
@@ -1158,9 +1171,9 @@ describe("useFilesystemNavigation", () => {
       ]);
     });
 
-    let importPromise;
-    act(() => {
-      importPromise = result.current.importExternalPaths(["D:\\Downloads\\clip.mp4"]);
+    // The import is done; the refresh of the folder it went into is still on its way.
+    await act(async () => {
+      await result.current.importExternalPaths(["D:\\Downloads\\clip.mp4"], "C:\\Users");
     });
 
     act(() => {
@@ -1178,9 +1191,9 @@ describe("useFilesystemNavigation", () => {
       staleRefresh.resolve([
         { name: "clip.mp4", path: "C:\\Users\\clip.mp4", is_dir: false },
       ]);
-      await importPromise;
     });
 
+    expect(listDirectoryCallCount.get("C:\\Users")).toBe(2);
     expect(result.current.currentPath).toBe("C:\\Projects");
     expect(result.current.entries.map((entry) => entry.path)).toEqual([
       "C:\\Projects\\readme.md",
@@ -1216,24 +1229,23 @@ describe("useFilesystemNavigation", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { result } = renderHook(() => useFilesystemNavigation(
+    const { result } = renderNavigation(
       { currentDrive: "C:\\", currentPath: "C:\\Users" },
       { pushNotification },
-    ));
+    );
 
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
     });
 
     await act(async () => {
-      await expect(result.current.copyEntries(["C:\\Users\\todo.txt"], "C:\\Archive")).rejects.toThrow(
-        "already exists",
-      );
+      expect(await result.current.copyEntries(["C:\\Users\\todo.txt"], "C:\\Archive")).toBe("failed");
     });
 
     expect(pushNotification).toHaveBeenCalledWith(expect.objectContaining({
       title: "Copy failed",
       tone: "error",
+      takeFocus: false,
       message: expect.stringContaining("already exists"),
     }));
     expect(result.current.error).toBe("");
@@ -1268,24 +1280,23 @@ describe("useFilesystemNavigation", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { result } = renderHook(() => useFilesystemNavigation(
+    const { result } = renderNavigation(
       { currentDrive: "C:\\", currentPath: "C:\\Users" },
       { pushNotification },
-    ));
+    );
 
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual(["C:\\Users\\todo.txt"]);
     });
 
     await act(async () => {
-      await expect(
-        result.current.importExternalPaths(["D:\\Downloads\\clip.mp4"], "C:\\Users"),
-      ).rejects.toThrow("Access is denied");
+      expect(await result.current.importExternalPaths(["D:\\Downloads\\clip.mp4"], "C:\\Users")).toBe("failed");
     });
 
     expect(pushNotification).toHaveBeenCalledWith(expect.objectContaining({
       title: "Import failed",
       tone: "error",
+      takeFocus: false,
       message: expect.stringContaining("Access is denied"),
     }));
     expect(result.current.error).toBe("");
@@ -1325,10 +1336,10 @@ describe("useFilesystemNavigation", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\",
-    }));
+    });
 
     await waitFor(() => {
       expect(result.current.currentPath).toBe("C:\\");
@@ -1386,10 +1397,10 @@ describe("useFilesystemNavigation", () => {
   it("adds go-up transitions to history and supports back-forward from drives view", async () => {
     mockFilesystemInvoke();
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\",
-    }));
+    });
 
     await waitFor(() => {
       expect(result.current.currentPath).toBe("C:\\");
@@ -1461,10 +1472,10 @@ describe("useFilesystemNavigation", () => {
       throw new Error(`Unhandled invoke: ${command}`);
     });
 
-    const { result } = renderHook(() => useFilesystemNavigation({
+    const { result } = renderNavigation({
       currentDrive: "C:\\",
       currentPath: "C:\\",
-    }));
+    });
 
     await waitFor(() => {
       expect(result.current.entries.map((entry) => entry.path)).toEqual([
@@ -1488,10 +1499,14 @@ describe("useFilesystemNavigation", () => {
     });
   });
 
+  // C:\Users holds a.txt and b.txt; every other folder is empty. A `conflicts` function answers
+  // with the conflicts as the destination holds them at the time.
   function mockTransferFolder({
     conflicts = [],
     onImport = async () => ({}),
     onMove = async () => ({ destination: null, merge: null }),
+    onRename = async ({ path, newName }) => ({ path: path.replace(/[^\\]+$/, newName), name: newName, adjusted: false }),
+    onDelete = async () => null,
   } = {}) {
     invoke.mockImplementation(async (command, payload) => {
       if (command === "list_drives") return [{ name: "C:", path: "C:\\" }];
@@ -1504,24 +1519,33 @@ describe("useFilesystemNavigation", () => {
           : [];
         return { entries, hasMore: false, totalCount: entries.length };
       }
-      if (command === "filesystem_transfer_conflicts") return conflicts;
+      if (command === "filesystem_transfer_conflicts") return typeof conflicts === "function" ? conflicts(payload) : conflicts;
       if (command === "import_paths") return onImport(payload);
       if (command === "move_path") return onMove(payload);
+      if (command === "rename_path") return onRename(payload);
+      if (command === "delete_paths") return onDelete(payload);
       if (command === "filesystem_transfer_cancel") return null;
       if (command === "filesystem_watch_start" || command === "filesystem_watch_stop") return null;
+      if (command === "filesystem_search_start" || command === "filesystem_search_cancel") return null;
       throw new Error(`Unhandled invoke: ${command}`);
     });
   }
 
   async function renderTransferNavigation(options) {
-    const hook = renderHook(() => useFilesystemNavigation(
+    const hook = renderNavigation(
       { currentDrive: "C:\\", currentPath: "C:\\Users" },
       options,
-    ));
+    );
     await waitFor(() => {
       expect(hook.result.current.entries).toHaveLength(2);
     });
     return hook;
+  }
+
+  function getMoveCalls() {
+    return invoke.mock.calls
+      .filter(([command]) => command === "move_path")
+      .map(([, payload]) => `${payload.source} -> ${payload.destinationDir}`);
   }
 
   it("skips conflicting items when the user picks Skip", async () => {
@@ -1560,9 +1584,11 @@ describe("useFilesystemNavigation", () => {
     }));
 
     invoke.mockClear();
+    let outcome;
     await act(async () => {
-      await result.current.copyEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+      outcome = await result.current.copyEntries(["C:\\Users\\a.txt"], "C:\\Archive");
     });
+    expect(outcome).toBe("cancelled");
     expect(invoke).not.toHaveBeenCalledWith("import_paths", expect.anything());
   });
 
@@ -1598,13 +1624,13 @@ describe("useFilesystemNavigation", () => {
     });
 
     expect(afterMove).toEqual(["C:\\Archive\\a (2).txt", "C:\\Archive\\a.txt"]);
-    expect(undone).toBe(true);
+    expect(undone).toBe("done");
     expect(afterUndo).toEqual(["C:\\Archive\\a.txt", "C:\\Users\\a.txt"]);
-    expect(redone).toBe(true);
+    expect(redone).toBe("done");
     expect(sortedFiles()).toEqual(["C:\\Archive\\a (2).txt", "C:\\Archive\\a.txt"]);
   });
 
-  it("shows copy progress and treats a cancelled copy as no error", async () => {
+  it("reports copy progress to the tab's queue and treats a cancelled copy as no error", async () => {
     const pushNotification = vi.fn();
     let rejectImport;
     mockTransferFolder({
@@ -1619,19 +1645,441 @@ describe("useFilesystemNavigation", () => {
       copyPromise = result.current.copyEntries(["C:\\Users\\a.txt", "C:\\Users\\b.txt"], "C:\\Archive");
     });
     await waitFor(() => {
-      expect(result.current.transferProgress).toMatchObject({ kind: "copy", itemsTotal: 2 });
+      expect(getTabOperations(tabId).running?.progress).toMatchObject({ kind: "copy", itemsTotal: 2 });
     });
 
-    act(() => result.current.cancelTransfer());
-    expect(invoke).toHaveBeenCalledWith("filesystem_transfer_cancel", {
-      jobId: expect.stringMatching(/^filesystem-transfer-/),
-    });
+    const { id: jobId } = getTabOperations(tabId).running;
+    act(() => cancelRunningOperation());
+    expect(invoke).toHaveBeenCalledWith("filesystem_transfer_cancel", { jobId });
+    let outcome;
     await act(async () => {
       rejectImport(new Error("The transfer was cancelled."));
-      await copyPromise;
+      outcome = await copyPromise;
     });
 
-    expect(result.current.transferProgress).toBeNull();
+    expect(outcome).toBe("cancelled");
+    expect(hasFilesystemOperations(tabId)).toBe(false);
     expect(pushNotification).not.toHaveBeenCalled();
+  });
+
+  it("queues a move behind a running copy and checks its conflicts only when it starts, against the folder as the copy left it", async () => {
+    const copyGate = createDeferred();
+    let isCopyDone = false;
+    mockTransferFolder({
+      // The copy puts a.txt into the archive, where the move then finds it.
+      conflicts: ({ sources }) => (isCopyDone && sources.includes("C:\\Users\\a.txt")
+        ? [{ path: "C:\\Users\\a.txt", mergesFolders: false }]
+        : []),
+      onImport: async () => {
+        await copyGate.promise;
+        isCopyDone = true;
+        return {};
+      },
+    });
+    const openChoice = vi.fn(async () => "keep-both");
+    const { result } = await renderTransferNavigation({ openChoice });
+    const countConflictChecks = () => invoke.mock.calls
+      .filter(([command]) => command === "filesystem_transfer_conflicts")
+      .length;
+
+    let copying;
+    let moving;
+    act(() => {
+      copying = result.current.copyEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+      moving = result.current.moveEntries(["C:\\Users\\a.txt", "C:\\Users\\b.txt"], "C:\\Archive");
+    });
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("import_paths", expect.anything());
+    });
+
+    expect(getTabOperations(tabId).queued.map((operation) => operation.label)).toEqual(['Moving 2 items to "Archive"']);
+    expect(countConflictChecks()).toBe(1);
+    expect(openChoice).not.toHaveBeenCalled();
+
+    let outcomes;
+    await act(async () => {
+      copyGate.resolve();
+      outcomes = await Promise.all([copying, moving]);
+    });
+
+    expect(outcomes).toEqual(["done", "done"]);
+    expect(countConflictChecks()).toBe(2);
+    // Asked only now, without taking the keyboard from whatever the user does by then.
+    expect(openChoice).toHaveBeenCalledTimes(1);
+    expect(openChoice).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Moving 2 items to "Archive": Item already exists',
+      takeFocus: false,
+      dismissOnOutside: false,
+    }));
+    expect(invoke.mock.calls.filter(([command]) => command === "move_path").map(([, payload]) => payload.conflictPolicy))
+      .toEqual(["keep-both", "keep-both"]);
+  });
+
+  it("keeps a pane's history across a remount with the same tab and pane ids", async () => {
+    mockTransferFolder();
+    const firstMount = await renderTransferNavigation();
+    await act(async () => {
+      await firstMount.result.current.moveEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+    });
+    firstMount.unmount();
+
+    const { result } = await renderTransferNavigation();
+    const otherPane = renderNavigation({ currentDrive: "C:\\", currentPath: "C:\\Users" }, { paneId: "pane-right" });
+    let otherPaneUndo;
+    let undone;
+    await act(async () => {
+      otherPaneUndo = await otherPane.result.current.undoEntries();
+      undone = await result.current.undoEntries();
+    });
+
+    expect(otherPaneUndo).toBeUndefined();
+    expect(undone).toBe("done");
+    expect(getMoveCalls()).toEqual(["C:\\Users\\a.txt -> C:\\Archive", "C:\\Archive\\a.txt -> C:\\Users"]);
+  });
+
+  it("takes back the pane's newest waiting operation on undo, leaves another pane's, and undoes nothing while one runs", async () => {
+    const copyGate = createDeferred();
+    mockTransferFolder({ onImport: () => copyGate.promise.then(() => ({})) });
+    const { result } = await renderTransferNavigation();
+    const otherPane = renderNavigation({ currentDrive: "C:\\", currentPath: "C:\\Users" }, { paneId: "pane-right" });
+    // Something to undo, from before.
+    await act(async () => {
+      await result.current.moveEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+    });
+
+    let copying;
+    let moving;
+    let otherPaneMoving;
+    let deleting;
+    act(() => {
+      copying = result.current.copyEntries(["C:\\Users\\b.txt"], "C:\\Backup");
+      moving = result.current.moveEntries(["C:\\Users\\b.txt"], "C:\\Archive");
+      otherPaneMoving = otherPane.result.current.moveEntries(["C:\\Users\\b.txt"], "C:\\Other");
+      deleting = result.current.deleteEntries(["C:\\Users\\b.txt"]);
+    });
+    const undoOutcomes = [];
+    await act(async () => {
+      for (let press = 0; press < 3; press += 1) undoOutcomes.push(await result.current.undoEntries());
+    });
+
+    expect(undoOutcomes).toEqual(["dropped", "dropped", undefined]);
+    expect(await deleting).toBe("dropped");
+    expect(await moving).toBe("dropped");
+    expect(getTabOperations(tabId).queued.map((operation) => operation.label)).toEqual(['Moving "b.txt" to "Other"']);
+    expect(getPaneHistory(getPaneHistoryKey(tabId, PANE_ID)).undo).toHaveLength(1);
+
+    let outcomes;
+    await act(async () => {
+      copyGate.resolve();
+      outcomes = await Promise.all([copying, otherPaneMoving]);
+    });
+    await act(async () => {
+      outcomes.push(await result.current.undoEntries());
+    });
+
+    expect(outcomes).toEqual(["done", "done", "done"]);
+    expect(invoke).not.toHaveBeenCalledWith("delete_paths", expect.anything());
+    expect(getMoveCalls()).toEqual([
+      "C:\\Users\\a.txt -> C:\\Archive",
+      "C:\\Users\\b.txt -> C:\\Other",
+      // Once nothing runs, undo undoes the move from before.
+      "C:\\Archive\\a.txt -> C:\\Users",
+    ]);
+  });
+
+  it("replaces its own entry when a rename lands while an undo runs, so the next undo undoes the rename", async () => {
+    const undoGate = createDeferred();
+    let isUndoing = false;
+    mockTransferFolder({
+      onMove: async () => {
+        if (isUndoing) await undoGate.promise;
+        return { destination: null, merge: null };
+      },
+    });
+    const { result } = await renderTransferNavigation();
+    await act(async () => {
+      await result.current.moveEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+    });
+
+    isUndoing = true;
+    let undoing;
+    act(() => {
+      undoing = result.current.undoEntries();
+    });
+    // F2 in the pane while a.txt moves back.
+    await act(async () => {
+      await result.current.renameEntry("C:\\Users\\b.txt", "c.txt");
+    });
+    let undone;
+    await act(async () => {
+      undoGate.resolve();
+      undone = await undoing;
+    });
+    let renameUndone;
+    await act(async () => {
+      renameUndone = await result.current.undoEntries();
+    });
+
+    expect([undone, renameUndone]).toEqual(["done", "done"]);
+    expect(getMoveCalls()).toEqual(["C:\\Users\\a.txt -> C:\\Archive", "C:\\Archive\\a.txt -> C:\\Users"]);
+    expect(invoke.mock.calls.filter(([command]) => command === "rename_path").map(([, payload]) => payload)).toEqual([
+      { path: "C:\\Users\\b.txt", newName: "c.txt" },
+      { path: "C:\\Users\\c.txt", newName: "b.txt", allowAdjustment: false },
+    ]);
+    expect(getPaneHistory(getPaneHistoryKey(tabId, PANE_ID)).undo).toEqual([]);
+  });
+
+  it("puts a move above a rename made while its question was open and below one made while it moved, so undo takes the newest first", async () => {
+    const answer = createDeferred();
+    const moveGate = createDeferred();
+    mockTransferFolder({
+      conflicts: [{ path: "C:\\Users\\a.txt", mergesFolders: false }],
+      onMove: async () => {
+        await moveGate.promise;
+        return { destination: null, merge: null };
+      },
+    });
+    const openChoice = vi.fn(() => answer.promise);
+    const { result } = await renderTransferNavigation({ openChoice });
+
+    let moving;
+    act(() => {
+      moving = result.current.moveEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+    });
+    await waitFor(() => {
+      expect(openChoice).toHaveBeenCalledTimes(1);
+    });
+    // F2 in the pane while the question is open, which is before the move.
+    await act(async () => {
+      await result.current.renameEntry("C:\\Users\\b.txt", "c.txt");
+    });
+    act(() => answer.resolve("keep-both"));
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("move_path", expect.objectContaining({ source: "C:\\Users\\a.txt" }));
+    });
+    // And again while the move runs.
+    await act(async () => {
+      await result.current.renameEntry("C:\\Users\\c.txt", "d.txt");
+    });
+    await act(async () => {
+      moveGate.resolve();
+      await moving;
+    });
+    const callsBeforeUndo = invoke.mock.calls.length;
+
+    const outcomes = [];
+    for (let press = 0; press < 3; press += 1) {
+      await act(async () => {
+        outcomes.push(await result.current.undoEntries());
+      });
+    }
+
+    expect(outcomes).toEqual(["done", "done", "done"]);
+    expect(invoke.mock.calls.slice(callsBeforeUndo)
+      .filter(([command]) => command === "rename_path" || command === "move_path")
+      .map(([command, payload]) => (command === "move_path"
+        ? `move ${payload.source} -> ${payload.destinationDir}`
+        : `rename ${payload.path} -> ${payload.newName}`)))
+      .toEqual([
+        "rename C:\\Users\\d.txt -> c.txt",
+        "move C:\\Archive\\a.txt -> C:\\Users",
+        "rename C:\\Users\\c.txt -> b.txt",
+      ]);
+  });
+
+  it("refreshes the folder on screen and drops moved items from the selection when an operation of its tab finishes, not one of another tab", async () => {
+    mockTransferFolder();
+    const { result } = await renderTransferNavigation();
+    const otherTabPane = renderNavigation({ currentDrive: "C:\\", currentPath: "C:\\" }, { tabId: `${tabId}-other` });
+    act(() => {
+      result.current.selectEntry("C:\\Users\\a.txt");
+    });
+    act(() => {
+      result.current.selectEntry("C:\\Users\\b.txt", { additive: true });
+    });
+    invoke.mockClear();
+    const countUsersRefreshes = () => invoke.mock.calls
+      .filter(([command, payload]) => command === "list_directory_page" && payload.path === "C:\\Users" && payload.refresh)
+      .length;
+
+    await act(async () => {
+      await otherTabPane.result.current.moveEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+    });
+    expect(countUsersRefreshes()).toBe(0);
+    expect(result.current.selectedPaths).toEqual(["C:\\Users\\a.txt", "C:\\Users\\b.txt"]);
+
+    await act(async () => {
+      await result.current.moveEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+    });
+    expect(countUsersRefreshes()).toBe(1);
+    expect(result.current.selectedPaths).toEqual(["C:\\Users\\b.txt"]);
+
+    // Nor does an import into the folder clear what is selected there.
+    await act(async () => {
+      await result.current.importExternalPaths(["D:\\Downloads\\clip.mp4"], "C:\\Users");
+    });
+    expect(countUsersRefreshes()).toBe(2);
+    expect(result.current.selectedPaths).toEqual(["C:\\Users\\b.txt"]);
+  });
+
+  it("lists nothing again after an operation cancelled at its conflict question", async () => {
+    mockTransferFolder({ conflicts: [{ path: "C:\\Users\\a.txt", mergesFolders: false }] });
+    const { result } = await renderTransferNavigation({ openChoice: async () => null });
+    invoke.mockClear();
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.moveEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+    });
+
+    expect(outcome).toBe("cancelled");
+    expect(invoke).not.toHaveBeenCalledWith("list_directory_page", expect.anything());
+  });
+
+  // A listing loads at most MAX_REFRESH_ENTRY_COUNT (360) entries again and drops the selection
+  // beyond them, so a pane far down a long folder would lose its place.
+  it("lists a folder again only in the panes showing one the operation changed, not its parent or a subfolder, so another keeps its long listing and selection", async () => {
+    const photos = Array.from({ length: 400 }, (_, index) => {
+      const name = `${String(index).padStart(3, "0")}.jpg`;
+      return { name, path: `E:\\Photos\\${name}`, is_dir: false };
+    });
+    mockTransferFolder();
+    const answer = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command !== "list_directory_page" || payload.path !== "E:\\Photos") return answer(command, payload);
+      const entries = photos.slice(payload.offset, payload.offset + payload.limit);
+      return { entries, hasMore: payload.offset + entries.length < photos.length, totalCount: photos.length };
+    });
+    const { result } = await renderTransferNavigation();
+    const photosPane = renderNavigation({ currentDrive: "E:\\", currentPath: "E:\\Photos" }, { paneId: "pane-right" });
+    await waitFor(() => {
+      expect(photosPane.result.current.entries).toHaveLength(120);
+    });
+    // Scrolled down to the end.
+    for (let page = 0; page < 3; page += 1) {
+      await act(async () => {
+        await photosPane.result.current.loadMoreEntries();
+      });
+    }
+    act(() => {
+      photosPane.result.current.selectEntry("E:\\Photos\\380.jpg");
+    });
+    invoke.mockClear();
+
+    for (const destinationDir of ["C:\\Archive", "E:\\Photos\\Edited", "E:\\"]) {
+      await act(async () => {
+        await result.current.copyEntries(["C:\\Users\\a.txt"], destinationDir);
+      });
+    }
+    await flushPromises();
+
+    // Neither the copies' own pane nor the other shows a destination. A folder inside the one shown,
+    // or the one it is in, has a listing of its own.
+    expect(invoke).not.toHaveBeenCalledWith("list_directory_page", expect.anything());
+    expect(photosPane.result.current.entries).toHaveLength(400);
+    expect(photosPane.result.current.selectedPaths).toEqual(["E:\\Photos\\380.jpg"]);
+  });
+
+  // What was copied or deleted by then stays so.
+  it("lists the folder on screen again after a copy into it was cancelled part way", async () => {
+    let rejectImport;
+    mockTransferFolder({
+      onImport: () => new Promise((_resolve, reject) => {
+        rejectImport = reject;
+      }),
+    });
+    const { result } = await renderTransferNavigation();
+    let copyPromise;
+    act(() => {
+      copyPromise = result.current.importExternalPaths(["D:\\Downloads\\a.mp4", "D:\\Downloads\\b.mp4"], "C:\\Users");
+    });
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("import_paths", expect.anything());
+    });
+    invoke.mockClear();
+
+    act(() => cancelRunningOperation());
+    let outcome;
+    await act(async () => {
+      rejectImport(new Error("The transfer was cancelled."));
+      outcome = await copyPromise;
+    });
+
+    expect(outcome).toBe("cancelled");
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("list_directory_page", expect.objectContaining({ path: "C:\\Users", refresh: true }));
+    });
+  });
+
+  it("lists the folder on screen again after a delete in it failed", async () => {
+    mockTransferFolder({
+      onDelete: async () => {
+        throw "Access is denied. (os error 5)";
+      },
+    });
+    const { result } = await renderTransferNavigation({ pushNotification: vi.fn() });
+    invoke.mockClear();
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.deleteEntries(["C:\\Users\\a.txt", "C:\\Users\\b.txt"]);
+    });
+
+    expect(outcome).toBe("failed");
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("list_directory_page", expect.objectContaining({ path: "C:\\Users", refresh: true }));
+    });
+  });
+
+  it("reruns a search when an operation changed a folder inside the searched one, not one elsewhere", async () => {
+    mockTransferFolder();
+    const { result } = await renderTransferNavigation();
+    const countSearchStarts = () => invoke.mock.calls
+      .filter(([command]) => command === "filesystem_search_start")
+      .length;
+    act(() => {
+      result.current.setSearchQuery("txt");
+    });
+    await waitFor(() => {
+      expect(countSearchStarts()).toBe(1);
+    });
+
+    await act(async () => {
+      await result.current.copyEntries(["C:\\Users\\a.txt"], "C:\\Archive");
+    });
+    // Longer than the search waits before it reruns.
+    await flushPromises(200);
+    expect(countSearchStarts()).toBe(1);
+
+    await act(async () => {
+      await result.current.copyEntries(["C:\\Users\\a.txt"], "C:\\Users\\Notes");
+    });
+    await waitFor(() => {
+      expect(countSearchStarts()).toBe(2);
+    });
+  });
+
+  it("shows a Delete failed toast that leaves the focus alone, not an error in the status line", async () => {
+    mockTransferFolder({
+      onDelete: async () => {
+        throw "Access is denied. (os error 5)";
+      },
+    });
+    const pushNotification = vi.fn();
+    const { result } = await renderTransferNavigation({ pushNotification });
+
+    let outcome;
+    await act(async () => {
+      outcome = await result.current.deleteEntries(["C:\\Users\\a.txt"]);
+    });
+
+    expect(outcome).toBe("failed");
+    expect(pushNotification).toHaveBeenCalledWith({
+      title: "Delete failed",
+      message: "Access is denied. (os error 5)",
+      tone: "error",
+      takeFocus: false,
+    });
+    expect(result.current.error).toBe("");
   });
 });

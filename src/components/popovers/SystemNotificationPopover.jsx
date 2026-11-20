@@ -64,8 +64,8 @@ function SystemNotificationPopover({
   useEffect(() => {
     if (!open) return;
     setSelectedActionIndex(defaultActionIndex);
-    requestAnimationFrame(() => rootRef.current?.focus());
-  }, [defaultActionIndex, open, notification?.id]);
+    if (notification?.takeFocus !== false) requestAnimationFrame(() => rootRef.current?.focus());
+  }, [defaultActionIndex, open, notification?.id, notification?.takeFocus]);
 
   if (!notification) return null;
 

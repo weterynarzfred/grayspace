@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  cancelTabFilesystemOperations,
+  hasFilesystemOperations,
+} from "../components/FilesystemPanel/operations/filesystemOperationQueue";
+import { isPathInsideRoot } from "../utils/pathWatch";
 import { getErrorMessage } from "./appRuntime";
 import {
   workspaceCloseTab,
@@ -38,23 +43,6 @@ function resolveTerminalSessionIdFromSplitResult(splitResult, tabId, paneId) {
 
 const getPaneStateKey = (tabId, paneId) => `${tabId}::${paneId}`;
 
-function normalizePathForComparison(path) {
-  const normalized = typeof path === "string" ? path.trim() : "";
-  if (!normalized) return "";
-  return normalized
-    .trim()
-    .replace(/[\\/]+$/, "")
-    .replaceAll("\\", "/")
-    .toLowerCase();
-}
-
-function isPathInsideRoot(path, rootPath) {
-  const normalizedPath = normalizePathForComparison(path);
-  const normalizedRootPath = normalizePathForComparison(rootPath);
-  if (!normalizedPath || !normalizedRootPath) return false;
-  return normalizedPath === normalizedRootPath || normalizedPath.startsWith(`${normalizedRootPath}/`);
-}
-
 export default function useWorkspaceActions({
   currentWindow = null,
   activeTab = null,
@@ -63,6 +51,8 @@ export default function useWorkspaceActions({
 }) {
   const paneDirtyStateRef = useRef(new Map());
   const terminalCwdByTabRef = useRef(new Map());
+  // Tabs whose close asks or waits for their file operations. Tab ids are never reused.
+  const closingTabIdsRef = useRef(new Set());
   const activeTabId = activeTab?.tabId ?? "";
   const activeTabTerminalCwdHint = activeTab?.terminalCwdHint ?? "";
 
@@ -104,10 +94,34 @@ export default function useWorkspaceActions({
     workspaceNewWindow().catch(handleWorkspaceCommandError);
   }, [handleWorkspaceCommandError]);
 
-  const handleCloseTab = useCallback(tabId => {
-    if (!currentWindow) return;
-    workspaceCloseTab(currentWindow.windowId, tabId).catch(handleWorkspaceCommandError);
-  }, [currentWindow, handleWorkspaceCommandError]);
+  // The tab's file operations live in this window's JS and would go on unseen, or be cut off by
+  // the app's exit after its last tab. So they are cancelled first, and the running one is waited
+  // for, so its cleanup runs: partial copies removed, Replace staging undone. Closing it again
+  // meanwhile does nothing: it would ask again, and close the tab a second time.
+  const handleCloseTab = useCallback(async tabId => {
+    if (!currentWindow || closingTabIdsRef.current.has(tabId)) return;
+    if (hasFilesystemOperations(tabId)) {
+      closingTabIdsRef.current.add(tabId);
+      const shouldClose = await openConfirm({
+        title: "Cancel file operations?",
+        message: "This tab's file operations are still running or waiting. Closing the tab cancels them.",
+        tone: "warning",
+        confirmLabel: "Cancel them and close",
+        cancelLabel: "Keep tab",
+      });
+      if (!shouldClose) {
+        closingTabIdsRef.current.delete(tabId);
+        return;
+      }
+      await cancelTabFilesystemOperations(tabId);
+    }
+    workspaceCloseTab(currentWindow.windowId, tabId).catch((error) => {
+      // E.g. the tab went to another window while the question was open: back here, it can be
+      // closed again.
+      closingTabIdsRef.current.delete(tabId);
+      handleWorkspaceCommandError(error);
+    });
+  }, [currentWindow, handleWorkspaceCommandError, openConfirm]);
 
   const handleChangePanelType = useCallback((tabId, paneId, panelType) => {
     if (!tabId) return;

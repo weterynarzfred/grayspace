@@ -64,7 +64,6 @@ function DroppableCrumbButton({
   paneId,
   onSelect,
   onMiddleClick,
-  isMovingEntry,
   activeDragPaths,
   dropId,
   isWorkspaceFolder = false,
@@ -72,7 +71,7 @@ function DroppableCrumbButton({
   const hasDestinationPath = Boolean(crumb.path);
   const { isOver, setNodeRef } = useDroppable({
     id: dropId || `breadcrumb-disabled-${index}`,
-    disabled: !hasDestinationPath || isMovingEntry,
+    disabled: !hasDestinationPath,
     data: {
       kind: "breadcrumb",
       path: crumb.path,
@@ -112,7 +111,6 @@ function Breadcrumbs({
   onMiddleClick,
   onPathSubmit,
   activeDragPaths = [],
-  isMovingEntry = false,
   getDropIdForPath,
   workspaceFolderPathSet = new Set(),
   recentFoldersEntries = [],
@@ -460,7 +458,6 @@ function Breadcrumbs({
             paneId={paneId}
             onSelect={onSelect}
             onMiddleClick={onMiddleClick}
-            isMovingEntry={isMovingEntry}
             activeDragPaths={activeDragPaths}
             dropId={getDropIdForPath(crumb.path)}
             isWorkspaceFolder={workspaceFolderPathSet.has(crumb.path)}

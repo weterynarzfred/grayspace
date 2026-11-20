@@ -72,7 +72,7 @@ function DraggableFilesystemEntry({
     isHidden={entry.is_hidden}
     details={showDetails ? getEntryDetails(entry) : null}
     location={location}
-    isDraggable={!drag.isMovingEntry}
+    isDraggable
     isDragging={isDragging}
     isDropTarget={isDropTarget}
     thumbnailSrc={thumbnailValue ?? thumbnailSrc}

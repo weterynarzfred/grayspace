@@ -44,7 +44,6 @@ export default function FilesystemPanelListContent({
     isLoadingDrives = false,
     isLoadingEntries = false,
     error = "",
-    isEntryOperationInProgress = false,
     unmatchedFilter = "",
     search = null,
   } = browse;
@@ -64,7 +63,6 @@ export default function FilesystemPanelListContent({
     loadSubfoldersForPath: loadSubfoldersForPath = undefined,
     focusPathInputRequestKey: focusPathInputRequestKey = 0,
     activeDragPaths = [],
-    isMovingEntry = false,
     getDropIdForPath: getBreadcrumbDropId = undefined,
     workspaceFolderPathSet = new Set(),
     recentFoldersEntries = [],
@@ -162,7 +160,6 @@ export default function FilesystemPanelListContent({
         loadSubfoldersForPath={loadSubfoldersForPath}
         focusPathInputRequestKey={focusPathInputRequestKey}
         activeDragPaths={activeDragPaths}
-        isMovingEntry={isMovingEntry}
         getDropIdForPath={getBreadcrumbDropId}
         workspaceFolderPathSet={workspaceFolderPathSet}
         recentFoldersEntries={recentFoldersEntries}
@@ -189,7 +186,6 @@ export default function FilesystemPanelListContent({
           renamingPath={gridRenamingPath}
           drag={{
             selectedEntryPaths,
-            isMovingEntry: isEntryOperationInProgress,
             activeDragPathSet,
             activeDropDestinationPath,
           }}
@@ -226,7 +222,6 @@ export default function FilesystemPanelListContent({
           renamingPath={renamingPath}
           drag={{
             selectedEntryPaths,
-            isMovingEntry: isEntryOperationInProgress,
             activeDragPathSet,
             activeDropDestinationPath,
           }}
@@ -269,7 +264,6 @@ export default function FilesystemPanelListContent({
                 dropDestinationPath: row.entry.is_dir ? row.entry.path : parentPath,
                 selectedEntryPaths,
                 isSelectedForDrag: selectedEntryPathSet.has(row.entry.path),
-                isMovingEntry: isEntryOperationInProgress,
                 activeDragPathSet,
                 activeDropDestinationPath,
               }}

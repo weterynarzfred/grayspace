@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { isSamePath, normalizePathForComparison } from "../../../utils/pathWatch";
+import { isPathInsideRoot, isSamePath, normalizePathForComparison } from "../../../utils/pathWatch";
 import useFilesystemDirectoryWatcher from "./useFilesystemDirectoryWatcher";
 
 function flattenEntries({
@@ -39,13 +39,6 @@ function flattenEntries({
 
   walk(rootEntries, 0, rootPath);
   return rows;
-}
-
-function isPathInsideRoot(path, rootPath) {
-  const normalizedPath = normalizePathForComparison(path);
-  const normalizedRootPath = normalizePathForComparison(rootPath);
-  if (!normalizedRootPath) return false;
-  return normalizedPath === normalizedRootPath || normalizedPath.startsWith(`${normalizedRootPath}/`);
 }
 
 function buildExpandedByPath(expandedPaths, rootPath) {
