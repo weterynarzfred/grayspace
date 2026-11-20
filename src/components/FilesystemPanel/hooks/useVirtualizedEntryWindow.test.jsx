@@ -139,4 +139,75 @@ describe("useVirtualizedEntryWindow", () => {
 
     expect(result.current).toMatchObject(GROWN_LINE_WINDOW);
   });
+
+  describe("scrollRowIntoView", () => {
+    // The rows start 40px into the scroll body, which is scrolled 100 rows into the list with 10
+    // rows in view: rows 100-109.
+    function renderScrollableWindow({
+      itemCount = 1000,
+      rowOffsetsPx = undefined,
+      scrollTop = 40 + 100 * ROW_HEIGHT_PX,
+      clientHeight = 10 * ROW_HEIGHT_PX,
+    } = {}) {
+      const scrollContainer = { scrollTop, clientHeight };
+      const listStartAnchor = { offsetTop: 40, offsetParent: scrollContainer };
+      const { result } = renderHook(() => useVirtualizedEntryWindow({
+        itemCount,
+        rowHeightPx: ROW_HEIGHT_PX,
+        rowOffsetsPx,
+        isEnabled: true,
+        scrollContainerRef: { current: scrollContainer },
+        listStartAnchorRef: { current: listStartAnchor },
+      }));
+      return { scrollContainer, scrollRowIntoView: result.current.scrollRowIntoView };
+    }
+
+    it("scrolls up to a row above the view until its top is at the view's top", () => {
+      const { scrollContainer, scrollRowIntoView } = renderScrollableWindow();
+
+      scrollRowIntoView(20);
+
+      expect(scrollContainer.scrollTop).toBe(40 + 20 * ROW_HEIGHT_PX);
+    });
+
+    it("stops a row it scrolls up to below the covered top of the view (a sticky header)", () => {
+      const { scrollContainer, scrollRowIntoView } = renderScrollableWindow();
+
+      scrollRowIntoView(20, 30);
+
+      expect(scrollContainer.scrollTop).toBe(40 + 20 * ROW_HEIGHT_PX - 30);
+    });
+
+    it("scrolls down to a row below the view until its bottom is at the view's bottom", () => {
+      const { scrollContainer, scrollRowIntoView } = renderScrollableWindow();
+
+      scrollRowIntoView(500);
+
+      expect(scrollContainer.scrollTop).toBe(40 + 501 * ROW_HEIGHT_PX - 10 * ROW_HEIGHT_PX);
+    });
+
+    it.each([100, 109])("leaves the view where it is for row %i, which is in it", (index) => {
+      const { scrollContainer, scrollRowIntoView } = renderScrollableWindow();
+
+      scrollRowIntoView(index);
+
+      expect(scrollContainer.scrollTop).toBe(40 + 100 * ROW_HEIGHT_PX);
+    });
+
+    it("finds rows of different heights by their offsets", () => {
+      // A 400px view, 5100px into the lines.
+      const { scrollContainer, scrollRowIntoView } = renderScrollableWindow({
+        itemCount: 100,
+        rowOffsetsPx: LINE_OFFSETS_PX,
+        scrollTop: 40 + 5100,
+        clientHeight: 400,
+      });
+
+      // Tile line 81 spans 8030-8200px; folder line 10 starts at 1000px.
+      scrollRowIntoView(81);
+      expect(scrollContainer.scrollTop).toBe(40 + 8200 - 400);
+      scrollRowIntoView(10);
+      expect(scrollContainer.scrollTop).toBe(40 + 1000);
+    });
+  });
 });

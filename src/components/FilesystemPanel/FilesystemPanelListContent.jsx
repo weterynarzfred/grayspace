@@ -106,6 +106,7 @@ export default function FilesystemPanelListContent({
     columnCount: gridColumnCount = 1,
     minCellWidthPx: gridMinCellWidthPx = 72,
     previewSizePx: gridPreviewSizePx = 22,
+    rowHeightPx: gridRowHeightPx = 62,
     containerRef: gridContainerRef = undefined,
     anchorRef: gridAnchorRef = undefined,
     topSpacerHeight: gridTopSpacerHeight = 0,
@@ -179,6 +180,7 @@ export default function FilesystemPanelListContent({
           columnCount={gridColumnCount}
           minCellWidthPx={gridMinCellWidthPx}
           previewSizePx={gridPreviewSizePx}
+          rowHeightPx={gridRowHeightPx}
           containerRef={gridContainerRef}
           anchorRef={gridAnchorRef}
           topSpacerHeight={gridTopSpacerHeight}

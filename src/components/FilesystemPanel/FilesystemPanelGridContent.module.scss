@@ -1,20 +1,18 @@
+// The anchor, the spacers and the rows of cells stack with no gaps, every row as tall as the
+// window counts it (gridRowHeightPx in FilesystemPanel), so a row starts at the anchor plus its
+// index times that height, as the foldable grid's lines do.
 .gridContainer {
   // A single column never gets narrower than one cell (a narrower pane scrolls sideways);
   // long names don't widen their column.
   min-width: calc(var(--grid-min-cell-width, 72px) + 16px);
   padding: 8px;
+}
+
+// Each grid row is a cell plus the 8 px gap (GRID_GAP_PX), the cell centred in it.
+.gridCells {
   display: grid;
   grid-template-columns: repeat(var(--grid-cols, 4), minmax(0, 1fr));
-  gap: 8px;
-  align-content: start;
-}
-
-.gridAnchor {
-  grid-column: 1 / -1;
-  height: 0;
-  pointer-events: none;
-}
-
-.gridSpacer {
-  grid-column: 1 / -1;
+  grid-auto-rows: var(--grid-row-height);
+  column-gap: 8px;
+  align-items: center;
 }

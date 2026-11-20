@@ -21,6 +21,15 @@
   position: relative;
 }
 
+// Details view. The header (FilesystemDetailsHeader) takes this height and sticks to the top of the
+// body, below its 1rem padding (PanelShell). The scroll padding ends where the stuck header does,
+// so a row scrolled into view (by scrollIntoView, or by the list window's jump, which reads it)
+// stops below the header instead of under it.
+.detailsPanelBody {
+  --details-header-height: 27px;
+  scroll-padding-top: calc(1rem + var(--details-header-height));
+}
+
 // The cells of both grid views grow with the pane's width, so the row height does too. A scrollbar
 // that took width when it appeared could make the rows fit again and disappear, over and over.
 .gridPanelBody {

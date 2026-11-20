@@ -76,12 +76,17 @@ export function getLineOffsets(lines, { folderLineHeightPx, tileLineHeightsPx },
   return offsets;
 }
 
+// The index of the line holding `path`, or -1.
+export function findLineIndex(lines, path) {
+  return lines.findIndex((line) => getLineRows(line).some((row) => row.entry.path === path));
+}
+
 // The entry on the line above (direction -1) or below (1) the line holding `path`: the same column
 // on a tile line, clamped to its length, or the folder of a folder line, which counts as column 0.
 // Loading lines are skipped. Past the first or the last line it wraps around, or gives "" when
 // `wraps` is false. Also "" when no line holds `path`.
 export function findVerticalNeighbourPath(lines, path, direction, wraps) {
-  const lineIndex = lines.findIndex((line) => getLineRows(line).some((row) => row.entry.path === path));
+  const lineIndex = findLineIndex(lines, path);
   if (lineIndex < 0) return "";
 
   const column = getLineRows(lines[lineIndex]).findIndex((row) => row.entry.path === path);

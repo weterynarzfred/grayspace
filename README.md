@@ -62,10 +62,10 @@ npm run tauri_dev
 * `Ctrl+Shift+U` switch active pane to external UI
 * `Ctrl+R` open recently opened folders
 * filesystem panel:
-  * `Arrow Up/Down` move selection (loops), from the item last clicked or moved to
+  * `Arrow Up/Down` move selection, from the item last clicked or moved to; they loop around once the whole folder is loaded (a long folder loads in pages as you scroll; until then they stop at the first / last loaded item)
   * `Shift+Arrow Up/Down` range selection (stops at the first / last item)
   * `Arrow Right/Left` expand/collapse the folder last clicked or moved to
-  * in grid view `Arrow Up/Down` go to the cell in the same column on the row above / below (loops; a shorter last row takes its last cell), and `Arrow Right/Left` step through the cells in reading order (folders don't open in place; stops at the first / last cell); with `Shift`, Up/Down extend by a row and stop at the first / last row
+  * in grid view `Arrow Up/Down` go to the cell in the same column on the row above / below (loops once the whole folder is loaded; a shorter last row takes its last cell), and `Arrow Right/Left` step through the cells in reading order (folders don't open in place; stops at the first / last cell); with `Shift`, Up/Down extend by a row and stop at the first / last row
   * `Enter` open selected item(s)
   * `Ctrl+Enter` open selected folder in new tab
   * `Alt+ArrowLeft` go back in folder history
@@ -90,7 +90,7 @@ npm run tauri_dev
   * view type (folder tree / details / grid / foldable grid) from command palette or context menu ("View"); remembered per workspace, or per folder outside workspaces
   * foldable grid: the folder tree with files as tiles; folders are compact rows (expander, indent guides) at every depth, files are tiles that fill the (indented) width of their level; top-level tiles are laid out like grid view's, and an opened folder keeps its parent's columns with tiles up to 10% narrower, dropping one column at a time when that is not enough
     * opening a folder (expander click, or `Arrow Right` on its row) shows its subfolders as rows and its files as tiles right under its row, one level in; opened folders are shared with the folder tree and details views
-    * `Arrow Up/Down` go to the tile in the same column on the line above / below (a folder row counts as the first column; loops)
+    * `Arrow Up/Down` go to the tile in the same column on the line above / below (a folder row counts as the first column; loops once the whole folder is loaded)
     * `Arrow Right/Left` open / close the folder row you're on; otherwise they step to the next / previous item in reading order and stop at the first / last one; with `Shift` they only extend the range
     * drops on a tile, or in the empty space between an opened folder's tiles, go into that folder (also drops from Explorer); in the top level's empty space they go into the current folder; clicks and right-clicks in empty space act on the current folder
   * sort by name / date modified / size / type from details column headers, command palette or context menu ("Sort By"); same key again reverses the order; remembered with the view type
@@ -201,7 +201,7 @@ npm run tauri_dev
 * [x] allow "sub" filesystem panels that don't hijack the workspace context
 * [x] deselect file on empty space click
 * [x] virtualize file lists in large folders
-  * [ ] arrow keys scroll to an item outside the rendered part of a long list (all views; now Up/Down looping around can move the selection off screen)
+  * [x] arrow keys scroll to an item outside the rendered part of a long list (all views, also when Up/Down loop around, which needs the whole folder loaded)
 
 ### terminal (ctrl + shift + `)
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePanelsDndHandlers } from "../../PanelsDndLayer";
 import useFilesystemDnd from "./useFilesystemDnd";
 import useExternalFilesystemDrag from "./useExternalFilesystemDrag";
@@ -21,11 +21,18 @@ function hasCommandModifiers(event) {
   return event.metaKey || event.ctrlKey || event.altKey;
 }
 
-// The path `direction` steps from `fromPath`, or the first or the last one when `fromPath` isn't
-// in `paths`. Past either end it loops around, or gives "" when it doesn't wrap.
+// The element the panel renders for an entry or a drive, if it renders one.
+function findPathElement(panelElement, path) {
+  return Array.from(panelElement.querySelectorAll("[data-context-id]"))
+    .find((element) => element.dataset.contextId === path);
+}
+
+// The path `direction` steps from `fromPath`. Past either end it loops around, or gives "" when it
+// doesn't wrap. From outside `paths` (nothing selected) it goes to the first path; a step back
+// that wraps goes around to the last one instead.
 function getLinearNeighbourPath(paths, fromPath, direction, wraps) {
   const index = paths.indexOf(fromPath);
-  if (index < 0) return direction > 0 ? paths[0] : paths.at(-1);
+  if (index < 0) return direction > 0 || !wraps ? paths[0] : paths.at(-1);
   if (wraps) return paths[(index + direction + paths.length) % paths.length];
   return paths[index + direction] ?? "";
 }
@@ -68,6 +75,11 @@ export default function useFilesystemPanelInteractions({
   getVerticalNeighbourPath = undefined,
   // False where folders are cells that don't open in place (grid view): Right/Left then move.
   canOpenFoldersWithArrows = true,
+  // True while pages of the folder are left to load: the last loaded entry isn't the last one yet.
+  hasMoreEntries = false,
+  // (path) => scrolls the view to where the entry is. A long list renders only a window of its rows
+  // (useVirtualizedEntryWindow), so an entry outside it has no element to scroll into view.
+  scrollToUnrenderedPath = undefined,
   drivePaths = [],
   treeRows = [],
   isBrowsing = false,
@@ -267,10 +279,10 @@ export default function useFilesystemPanelInteractions({
     const panelElement = panelRef?.current;
     if (!panelElement || !entryPath) return;
 
-    const nextTarget = Array.from(panelElement.querySelectorAll("[data-context-id]"))
-      .find((element) => element.dataset.contextId === entryPath);
-    nextTarget?.scrollIntoView?.({ block: "nearest" });
-  }, [panelRef]);
+    const nextTarget = findPathElement(panelElement, entryPath);
+    if (nextTarget) nextTarget.scrollIntoView?.({ block: "nearest" });
+    else scrollToUnrenderedPath?.(entryPath);
+  }, [panelRef, scrollToUnrenderedPath]);
 
   const handleEntryClick = useCallback((entryPath, event) => {
     const nextSelectedEntryPaths = selectEntry(entryPath, {
@@ -547,15 +559,37 @@ export default function useFilesystemPanelInteractions({
     selectedEntryPaths,
     treeData.entryByPath,
   ]);
+  // The entry the last arrow key moved the keyboard focus to while it had no element (outside a
+  // long list's rendered window): it takes the focus once the view's jump renders it.
+  const pendingFocusPathRef = useRef("");
+  useLayoutEffect(() => {
+    if (!pendingFocusPathRef.current) return;
+    const pendingElement = findPathElement(panelRef.current, pendingFocusPathRef.current);
+    if (!pendingElement) return;
+    pendingFocusPathRef.current = "";
+    pendingElement.focus({ preventScroll: true });
+  });
   const moveSelectionTo = useCallback((nextPath, isExtendingRange) => {
     // Drives aren't entries: they are selected by path.
     const nextSelectedPaths = treeData.entryPathSet.has(nextPath)
       ? selectEntry(nextPath, { range: isExtendingRange, entryPaths: treeData.entryPaths })
       : setSelectedPath(nextPath);
     emitTabSelectedFiles(nextSelectedPaths);
+    // In a list that has the keyboard focus, the focus follows the selection, so the keys keep
+    // coming to that list. Left on the element it was on, it would drop to the document body once
+    // that element left a long list's rendered window, and the keys would go to the pane under the
+    // pointer. Keys that came here by the pointer leave the focus where it is, so the next ones
+    // follow the pointer too.
+    pendingFocusPathRef.current = "";
+    if (panelRef.current.contains(document.activeElement)) {
+      const nextElement = findPathElement(panelRef.current, nextPath);
+      if (nextElement) nextElement.focus({ preventScroll: true });
+      else pendingFocusPathRef.current = nextPath;
+    }
     scrollPathIntoView(nextPath);
   }, [
     emitTabSelectedFiles,
+    panelRef,
     scrollPathIntoView,
     selectEntry,
     setSelectedPath,
@@ -581,10 +615,12 @@ export default function useFilesystemPanelInteractions({
     const direction = key === "ArrowDown" || key === "ArrowRight" ? 1 : -1;
 
     if (key === "ArrowDown" || key === "ArrowUp") {
-      // A Shift range stops at the first and the last entry; plain arrows loop around.
+      // A Shift range stops at the first and the last entry. Plain arrows loop around once the
+      // whole folder is loaded; until then they stop too, at the first and the last loaded entry.
+      const wraps = !isExtendingRange && !hasMoreEntries;
       const nextPath = isTileLayout && referencePath
-        ? getVerticalNeighbourPath(referencePath, direction, !isExtendingRange)
-        : getLinearNeighbourPath(paths, referencePath, direction, !isExtendingRange);
+        ? getVerticalNeighbourPath(referencePath, direction, wraps)
+        : getLinearNeighbourPath(paths, referencePath, direction, wraps);
       if (nextPath) moveSelectionTo(nextPath, isExtendingRange);
       return true;
     }
@@ -607,6 +643,7 @@ export default function useFilesystemPanelInteractions({
   }, [
     canOpenFoldersWithArrows,
     getVerticalNeighbourPath,
+    hasMoreEntries,
     keyboardNavigationPaths,
     moveSelectionTo,
     onToggleDirectoryExpanded,

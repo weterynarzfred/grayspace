@@ -7,6 +7,9 @@
   z-index: 1;
   display: flex;
   gap: 0.5rem;
+  // Pinned for the scroll body's scroll padding (.detailsPanelBody in FilesystemPanel.module.scss):
+  // a line of the columns' small text, their padding and the bottom border.
+  height: var(--details-header-height);
   margin-top: 0.5rem;
   padding: 0 0.5rem;
   background: $bg-panel;

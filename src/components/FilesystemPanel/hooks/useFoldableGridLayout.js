@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import {
   FOLDABLE_FOLDER_ROW_MAX_HEIGHT_PX,
   buildFoldableGridLines,
+  findLineIndex,
   findVerticalNeighbourPath,
   getLineOffsets,
   getLineRows,
@@ -80,6 +81,7 @@ export default function useFoldableGridLayout({
     topSpacerHeight,
     bottomSpacerHeight,
     scheduleRecompute,
+    scrollRowIntoView,
   } = useVirtualizedEntryWindow({
     itemCount: lineOffsets.length - 1,
     rowHeightPx: tileLayouts[0].lineHeightPx,
@@ -101,6 +103,11 @@ export default function useFoldableGridLayout({
     (path, direction, wraps) => findVerticalNeighbourPath(lines, path, direction, wraps),
     [lines],
   );
+  // Scrolls to the line holding `path`, for an entry outside the window.
+  const scrollEntryIntoView = useCallback(
+    (path) => scrollRowIntoView(findLineIndex(lines, path)),
+    [lines, scrollRowIntoView],
+  );
 
   return {
     lines: renderedLines,
@@ -113,5 +120,6 @@ export default function useFoldableGridLayout({
     bottomSpacerHeight,
     scheduleRecompute,
     getVerticalNeighbourPath,
+    scrollEntryIntoView,
   };
 }

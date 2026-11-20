@@ -2092,6 +2092,311 @@ describe("FilesystemPanel", () => {
     expect(screen.getByTestId("filesystem-panel-scroll-container").className).toMatch(/panelScrollBody/);
   });
 
+  it.each([
+    ["details view", { viewType: "details", currentPath: "C:\\" }, /notes\.txt/, true],
+    ["the drive list in details view, which has no header", { viewType: "details", currentPath: "" }, /C:\\/, false],
+    ["the folder tree", { viewType: "folder-tree", currentPath: "C:\\" }, /notes\.txt/, false],
+  ])("gives the scroll body the scroll padding that ends below the sticky details header only where it shows: %s", async (_, viewState, shownName, isPadded) => {
+    renderFilesystemPanel({ filesystemState: { currentDrive: "C:\\", scrollTop: 0, ...viewState } });
+    await screen.findByRole("button", { name: shownName });
+
+    // Test CSS modules resolve any class name: this checks the class is applied, not its rule.
+    const { className } = screen.getByTestId("filesystem-panel-scroll-container");
+    expect(className.includes("detailsPanelBody")).toBe(isPadded);
+  });
+
+  // C:\ holds `leadingEntries`, then `count` files, file-0000.txt on, all listed in its first page.
+  function mockLongListing(count, leadingEntries = []) {
+    const entries = [...leadingEntries, ...Array.from({ length: count }, (_, index) => {
+      const name = `file-${String(index).padStart(4, "0")}.txt`;
+      return { name, path: `C:\\${name}`, is_dir: false };
+    })];
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => (
+      command === "list_directory_page" && payload?.path === "C:\\"
+        ? { entries, hasMore: false, totalCount: entries.length }
+        : baseInvoke(command, payload)
+    ));
+  }
+
+  // jsdom has no layout: the scroll body around `anchor` gets a view `viewHeightPx` tall, and
+  // `anchor`, where the list's rows start, sits 40 px into it (below the breadcrumbs). Setting
+  // scrollTop fires no scroll event in jsdom either, so the tests fire it, as a browser would.
+  function layOutList(anchor, viewHeightPx) {
+    const scrollContainer = anchor.closest("[data-testid='filesystem-panel-scroll-container']");
+    Object.defineProperty(scrollContainer, "clientHeight", { configurable: true, value: viewHeightPx });
+    Object.defineProperty(anchor, "offsetTop", { configurable: true, value: 40 });
+    Object.defineProperty(anchor, "offsetParent", { configurable: true, value: scrollContainer });
+    return scrollContainer;
+  }
+
+  // jsdom has no scrollIntoView; this one records the entry and the options of each call.
+  function recordScrollIntoView() {
+    const calls = [];
+    HTMLElement.prototype.scrollIntoView = function scrollIntoView(options) {
+      calls.push([this.dataset.contextId, options]);
+    };
+    onTestFinished(() => {
+      delete HTMLElement.prototype.scrollIntoView;
+    });
+    return calls;
+  }
+
+  it.each([
+    ["folder-tree", "", 40],
+    // The details body's scroll padding ends where the stuck header does (30 px down here; test
+    // CSS modules carry no rules, so it is set inline), which keeps the first row below the header.
+    ["details", "30px", 40 - 30],
+  ])("scrolls to a row outside a long list's window when Up/Down loop around in %s view, and it renders selected", async (viewType, scrollPaddingTop, firstRowScrollTop) => {
+    mockLongListing(300);
+    renderFilesystemPanel({ filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, viewType } });
+    const firstRow = await screen.findByRole("button", { name: /file-0000\.txt/ });
+    // 22 px rows, 10 of them in view.
+    const scrollContainer = layOutList(document.querySelector("[class*='windowingAnchor']"), 10 * 22);
+    scrollContainer.style.scrollPaddingTop = scrollPaddingTop;
+
+    fireEvent.click(firstRow);
+    fireEvent.keyDown(firstRow, { key: "ArrowUp" });
+    // Row 299, below the view, has no element yet: its bottom comes to the view's bottom.
+    expect(screen.queryByRole("button", { name: /file-0299\.txt/ })).not.toBeInTheDocument();
+    expect(scrollContainer.scrollTop).toBe(40 + 300 * 22 - 10 * 22);
+    fireEvent.scroll(scrollContainer);
+    const lastRow = await screen.findByRole("button", { name: /file-0299\.txt/ });
+    expect(getShownSelection()).toEqual(["C:\\file-0299.txt"]);
+
+    fireEvent.keyDown(lastRow, { key: "ArrowDown" });
+    // Row 0, now above the view: its top comes to the view's top.
+    expect(screen.queryByRole("button", { name: /file-0000\.txt/ })).not.toBeInTheDocument();
+    expect(scrollContainer.scrollTop).toBe(firstRowScrollTop);
+    fireEvent.scroll(scrollContainer);
+    await waitFor(() => {
+      expect(getShownSelection()).toEqual(["C:\\file-0000.txt"]);
+    });
+  });
+
+  it.each([
+    ["", [], 400, "file-0001.txt", "file-0399.txt"],
+    // Users, open with its 3 entries as the folder tree would show it: grid view shows only the
+    // top level, so they take no cells (and no rows).
+    [" past a folder opened in another view", [{ name: "Users", path: "C:\\Users", is_dir: true }], 399, "file-0000.txt", "file-0398.txt"],
+  ])("scrolls grid view to a row of cells outside its window when Up/Down loop around%s, and the cell renders selected", async (_, leadingEntries, fileCount, firstName, lastName) => {
+    // 200 px hold 2 columns of 72 px cells: the 400 cells are 200 rows of 62 px (22 px previews).
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function getClientWidth() {
+      return this.style.getPropertyValue("--grid-cols") ? 200 : 264;
+    });
+    mockLongListing(fileCount, leadingEntries);
+    renderFilesystemPanel({
+      filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, viewType: "grid", expandedPaths: ["C:\\Users"] },
+    });
+    const firstCell = await screen.findByRole("button", { name: firstName });
+    const grid = document.querySelector("[style*='--grid-cols']");
+    expect(grid.style.getPropertyValue("--grid-cols")).toBe("2");
+    // The rows of cells are as tall as the window counts them.
+    expect(grid.style.getPropertyValue("--grid-row-height")).toBe("62px");
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("list_directory", expect.objectContaining({ path: "C:\\Users" }));
+    });
+    await flushPromises();
+    const scrollContainer = layOutList(grid.firstElementChild, 10 * 62);
+
+    // From the first row's second cell, Up goes to the second cell of the last row (199), below
+    // the view.
+    fireEvent.click(firstCell);
+    fireEvent.keyDown(firstCell, { key: "ArrowUp" });
+    expect(screen.queryByRole("button", { name: lastName })).not.toBeInTheDocument();
+    expect(scrollContainer.scrollTop).toBe(40 + 200 * 62 - 10 * 62);
+    fireEvent.scroll(scrollContainer);
+    const lastRowCell = await screen.findByRole("button", { name: lastName });
+    expect(getShownSelection()).toEqual([`C:\\${lastName}`]);
+
+    fireEvent.keyDown(lastRowCell, { key: "ArrowDown" });
+    expect(screen.queryByRole("button", { name: firstName })).not.toBeInTheDocument();
+    expect(scrollContainer.scrollTop).toBe(40);
+    fireEvent.scroll(scrollContainer);
+    await waitFor(() => {
+      expect(getShownSelection()).toEqual([`C:\\${firstName}`]);
+    });
+  });
+
+  it.each([
+    ["folder-tree", "[class*='windowingAnchor']", 22],
+    // jsdom's panes are 0 px wide, so both grids have one column: a row (a line) of 62 px per file.
+    ["grid", "[style*='--grid-cols'] > :first-child", 62],
+    ["foldable-grid", "[data-testid='filesystem-foldable-grid'] > :first-child", 62],
+  ])("stops plain Up/Down at the first and the last loaded entry while a long folder has pages left to load in %s view", async (viewType, anchorSelector, rowHeightPx) => {
+    // C:\ holds 300 files, listed in pages of 120; the second page comes when the test lets it.
+    const entries = Array.from({ length: 300 }, (_, index) => {
+      const name = `file-${String(index).padStart(4, "0")}.txt`;
+      return { name, path: `C:\\${name}`, is_dir: false };
+    });
+    const secondPage = Promise.withResolvers();
+    const baseInvoke = invoke.getMockImplementation();
+    invoke.mockImplementation(async (command, payload) => {
+      if (command !== "list_directory_page" || payload?.path !== "C:\\") return baseInvoke(command, payload);
+      if (payload.offset > 0) await secondPage.promise;
+      const pageEntries = entries.slice(payload.offset, payload.offset + payload.limit);
+      return { entries: pageEntries, hasMore: payload.offset + pageEntries.length < entries.length, totalCount: entries.length };
+    });
+    renderFilesystemPanel({ filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, viewType } });
+    await screen.findByRole("button", { name: /file-0000\.txt/ });
+    const scrollContainer = layOutList(document.querySelector(anchorSelector), 10 * rowHeightPx);
+    const panel = screen.getByLabelText("Filesystem panel");
+
+    // With nothing selected, Up takes the first entry, not the last loaded one, and from there it
+    // doesn't loop around.
+    fireEvent.keyDown(panel, { key: "ArrowUp" });
+    expect(getShownSelection()).toEqual(["C:\\file-0000.txt"]);
+    fireEvent.keyDown(panel, { key: "ArrowUp" });
+    expect(getShownSelection()).toEqual(["C:\\file-0000.txt"]);
+    expect(scrollContainer.scrollTop).toBe(0);
+
+    // Scrolled to the end of the first page, the list asks for the second.
+    scrollContainer.scrollTop = 40 + 110 * rowHeightPx;
+    fireEvent.scroll(scrollContainer);
+    const lastLoadedRow = await screen.findByRole("button", { name: /file-0119\.txt/ });
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("list_directory_page", expect.objectContaining({ path: "C:\\", offset: 120 }));
+    });
+    fireEvent.click(lastLoadedRow);
+    fireEvent.keyDown(lastLoadedRow, { key: "ArrowDown" });
+    expect(getShownSelection()).toEqual(["C:\\file-0119.txt"]);
+
+    // Once it is in, Down goes on into it.
+    await act(async () => secondPage.resolve());
+    await screen.findByRole("button", { name: /file-0120\.txt/ });
+    fireEvent.keyDown(lastLoadedRow, { key: "ArrowDown" });
+    expect(getShownSelection()).toEqual(["C:\\file-0120.txt"]);
+  });
+
+  it("keeps the keyboard with a focused long list whose Up/Down loop around, also while the pointer is over another pane", async () => {
+    mockLongListing(300);
+    const filesystemState = { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 };
+    render(
+      <PanelsDndLayer>
+        <div data-pane-active="false" data-testid="pane-a">
+          <FilesystemPanel tabId="tab-loop-focus" paneId="pane-a" filesystemState={filesystemState} />
+        </div>
+        <div data-pane-active="true" data-testid="pane-b">
+          <FilesystemPanel tabId="tab-loop-focus" paneId="pane-b" filesystemState={filesystemState} />
+        </div>
+      </PanelsDndLayer>,
+    );
+    const paneA = within(screen.getByTestId("pane-a"));
+    const paneB = within(screen.getByTestId("pane-b"));
+    const firstRowInB = await paneB.findByRole("button", { name: /file-0000\.txt/ });
+    const firstRowInA = await paneA.findByRole("button", { name: /file-0000\.txt/ });
+    const scrollContainerA = layOutList(screen.getByTestId("pane-a").querySelector("[class*='windowingAnchor']"), 10 * 22);
+    fireEvent.click(firstRowInB);
+    fireEvent.click(firstRowInA);
+    firstRowInA.focus();
+
+    // The focus moves with the selection.
+    fireEvent.keyDown(firstRowInA, { key: "ArrowDown" });
+    expect(paneA.getByRole("button", { name: /file-0001\.txt/ })).toHaveFocus();
+    // Up to file-0000, then around to file-0299, which has no element yet. The jump takes away
+    // file-0000's row, which has the focus, and the focus goes to file-0299's row as it renders.
+    fireEvent.keyDown(document.activeElement, { key: "ArrowUp" });
+    fireEvent.keyDown(document.activeElement, { key: "ArrowUp" });
+    fireEvent.scroll(scrollContainerA);
+    const lastRowInA = await paneA.findByRole("button", { name: /file-0299\.txt/ });
+    expect(paneA.queryByRole("button", { name: /file-0000\.txt/ })).not.toBeInTheDocument();
+    expect(lastRowInA).toHaveFocus();
+
+    // The next key still goes to A's list, not to B under the pointer.
+    fireEvent.keyDown(document.activeElement, { key: "ArrowUp" });
+    const rowBeforeLastInA = paneA.getByRole("button", { name: /file-0298\.txt/ });
+    expect(rowBeforeLastInA).toHaveAttribute("aria-selected", "true");
+    expect(rowBeforeLastInA).toHaveFocus();
+    expect(firstRowInB).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("gives the focus only to the entry the last arrow key went to, not to one an earlier key left before it rendered", async () => {
+    mockLongListing(300);
+    renderFilesystemPanel({ filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 } });
+    const firstRow = await screen.findByRole("button", { name: /file-0000\.txt/ });
+    const scrollContainer = layOutList(document.querySelector("[class*='windowingAnchor']"), 10 * 22);
+    fireEvent.click(firstRow);
+    firstRow.focus();
+
+    // Up loops around to file-0299, which has no element yet, and Down comes back to file-0000
+    // before file-0299 renders.
+    fireEvent.keyDown(firstRow, { key: "ArrowUp" });
+    fireEvent.keyDown(firstRow, { key: "ArrowDown" });
+    expect(firstRow).toHaveFocus();
+    // jsdom has no scrollIntoView, so the view stays at the end, where Up's jump took it, as if
+    // scrolled there: file-0299 renders, and it doesn't take the focus.
+    fireEvent.scroll(scrollContainer);
+    expect(await screen.findByRole("button", { name: /file-0299\.txt/ })).not.toHaveFocus();
+  });
+
+  it("leaves the focus where it is for keys that reach a pane by the pointer, so the next ones follow the pointer", async () => {
+    const filesystemState = { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0 };
+    render(
+      <PanelsDndLayer>
+        <div data-pane-active="true" data-testid="pane-a">
+          <FilesystemPanel tabId="tab-pointer-keys" paneId="pane-a" filesystemState={filesystemState} />
+        </div>
+        <div data-pane-active="false" data-testid="pane-b">
+          <FilesystemPanel tabId="tab-pointer-keys" paneId="pane-b" filesystemState={filesystemState} />
+        </div>
+      </PanelsDndLayer>,
+    );
+    const paneA = within(screen.getByTestId("pane-a"));
+    const paneB = within(screen.getByTestId("pane-b"));
+    fireEvent.click(await paneB.findByRole("button", { name: /notes\.txt/ }));
+    const usersInA = await paneA.findByRole("button", { name: /^Users/ });
+    openConfirmMock.mockResolvedValue(false);
+
+    // A click on A's empty space or scrollbar takes no focus. jsdom moves none on a click; a
+    // browser focuses the clicked element when it can take focus, as focus() does.
+    const scrollContainerA = screen.getByTestId("pane-a").querySelector("[data-testid='filesystem-panel-scroll-container']");
+    scrollContainerA.focus();
+    fireEvent.click(scrollContainerA);
+    expect(document.body).toHaveFocus();
+
+    // With nothing focused, Down goes to A under the pointer, and the focus stays where it is.
+    fireEvent.keyDown(document.activeElement, { key: "ArrowDown" });
+    expect(usersInA).toHaveAttribute("aria-selected", "true");
+    expect(document.body).toHaveFocus();
+
+    // So once the pointer is over B (WorkspacePanelLayout marks the pane it entered), the keys go
+    // to B.
+    screen.getByTestId("pane-a").dataset.paneActive = "false";
+    screen.getByTestId("pane-b").dataset.paneActive = "true";
+    fireEvent.keyDown(document.activeElement, { key: "ArrowDown" });
+    expect(paneB.getByRole("button", { name: /draft\.md/ })).toHaveAttribute("aria-selected", "true");
+    expect(usersInA).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(document.activeElement, { key: "Delete" });
+    await waitFor(() => {
+      expect(openConfirmMock).toHaveBeenCalledWith(expect.objectContaining({ message: "Delete \"draft.md\" permanently?" }));
+    });
+  });
+
+  it.each(["folder-tree", "details", "grid", "foldable-grid"])("leaves the rows of a short list, all rendered, to scroll into view themselves in %s view", async (viewType) => {
+    const scrolledIntoView = recordScrollIntoView();
+    renderFilesystemPanel({ filesystemState: { currentDrive: "C:\\", currentPath: "C:\\", scrollTop: 0, viewType } });
+    const usersButton = await screen.findByRole("button", { name: /^Users/ });
+
+    fireEvent.click(usersButton);
+    fireEvent.keyDown(usersButton, { key: "ArrowUp" });
+
+    expect(getShownSelection()).toEqual(["C:\\.grayspace"]);
+    expect(scrolledIntoView).toEqual([["C:\\.grayspace", { block: "nearest" }]]);
+    expect(screen.getByTestId("filesystem-panel-scroll-container").scrollTop).toBe(0);
+  });
+
+  it("leaves the drive list, which is never windowed, to scroll its rows into view themselves", async () => {
+    const scrolledIntoView = recordScrollIntoView();
+    renderFilesystemPanel();
+    await screen.findByRole("button", { name: /C:\\/ });
+
+    fireEvent.keyDown(screen.getByLabelText("Filesystem panel"), { key: "ArrowUp" });
+
+    expect(getShownSelection()).toEqual(["C:\\"]);
+    expect(scrolledIntoView).toEqual([["C:\\", { block: "nearest" }]]);
+    expect(screen.getByTestId("filesystem-panel-scroll-container").scrollTop).toBe(0);
+  });
+
   it("imports external files dropped over the filesystem panel", async () => {
     renderFilesystemPanel();
 
@@ -3816,7 +4121,7 @@ describe("FilesystemPanel", () => {
     expect(screen.getByRole("button", { name: /notes\.txt/i })).toBeInTheDocument();
   });
 
-  it("sizes grid thumbnails to fill their cells, but keeps small icons at their size", async () => {
+  it("sizes grid thumbnails to fill their cells, and the rows to fit them, but keeps small icons at their size", async () => {
     let gridWidthPx = 600;
     // Only the grid itself reports this width; the panel around it is wider by its paddings.
     vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function getClientWidth() {
@@ -3841,6 +4146,8 @@ describe("FilesystemPanel", () => {
     const grid = document.querySelector("[style*='--grid-cols']");
     expect(grid.style.getPropertyValue("--grid-cols")).toBe("4");
     expect(grid.style.getPropertyValue("--grid-preview-size")).toBe("130px");
+    // The rows are as tall as the list window counts them: the preview, the name and the gap.
+    expect(grid.style.getPropertyValue("--grid-row-height")).toBe("170px");
     await waitFor(() => {
       expect(getLatestThumbnailSizeHint()).toBe(256);
     });
@@ -5480,6 +5787,31 @@ describe("FilesystemPanel", () => {
       await waitFor(() => {
         const latestCall = invoke.mock.calls.findLast(([command]) => command === "thumbnail_resolve_batch");
         expect(latestCall[1].request.items).toContainEqual(expect.objectContaining({ sourcePath: "C:\\file-0331.txt" }));
+      });
+    });
+
+    it("scrolls to a line outside the window of a large folder when Up/Down loop around, and the tile renders selected", async () => {
+      // 600 px hold 7 columns of 22 px previews: 300 files are 43 lines of 62 px, the last one
+      // holding file-0294 to file-0299.
+      mockLongListing(300);
+      renderFoldableGrid();
+      const firstTile = await screen.findByRole("button", { name: "file-0000.txt" });
+      const scrollContainer = layOutList(screen.getByTestId("filesystem-foldable-grid").firstElementChild, 5 * 62);
+
+      fireEvent.click(firstTile);
+      pressInFoldableGrid("ArrowUp");
+      // file-0294, in the same column on the last line (42), below the view.
+      expect(screen.queryByRole("button", { name: "file-0294.txt" })).not.toBeInTheDocument();
+      expect(scrollContainer.scrollTop).toBe(40 + 43 * 62 - 5 * 62);
+      fireEvent.scroll(scrollContainer);
+      expect(await screen.findByRole("button", { name: "file-0294.txt" })).toHaveAttribute("aria-selected", "true");
+
+      pressInFoldableGrid("ArrowDown");
+      expect(screen.queryByRole("button", { name: "file-0000.txt" })).not.toBeInTheDocument();
+      expect(scrollContainer.scrollTop).toBe(40);
+      fireEvent.scroll(scrollContainer);
+      await waitFor(() => {
+        expect(getShownSelection()).toEqual(["C:\\file-0000.txt"]);
       });
     });
 

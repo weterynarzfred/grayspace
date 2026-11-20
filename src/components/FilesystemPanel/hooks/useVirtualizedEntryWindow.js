@@ -19,6 +19,11 @@ function getOffsetTopWithinContainer(container, element) {
   return offsetTop;
 }
 
+// Where row `index` starts, below the start of the list.
+function getRowTop(index, rowHeightPx, rowOffsetsPx) {
+  return rowOffsetsPx ? rowOffsetsPx[index] : index * rowHeightPx;
+}
+
 // The row containing y: the last row whose top is at or above it.
 function findRowIndexAt(rowOffsetsPx, y) {
   let low = 0;
@@ -89,7 +94,6 @@ export default function useVirtualizedEntryWindow({
       ? getOffsetTopWithinContainer(scrollContainer, listStartAnchor)
       : 0;
     const relativeScrollTop = Math.max(0, scrollTop - startOffset);
-    const getRowTop = (index) => (rowOffsetsPx ? rowOffsetsPx[index] : index * rowHeightPx);
     const firstVisibleIndex = rowOffsetsPx
       ? findRowIndexAt(rowOffsetsPx, relativeScrollTop)
       : Math.floor(relativeScrollTop / rowHeightPx);
@@ -107,8 +111,9 @@ export default function useVirtualizedEntryWindow({
     setStateIfChanged({
       startIndex,
       endIndex,
-      topSpacerHeight: getRowTop(startIndex),
-      bottomSpacerHeight: getRowTop(itemCount) - getRowTop(endIndex),
+      topSpacerHeight: getRowTop(startIndex, rowHeightPx, rowOffsetsPx),
+      bottomSpacerHeight: getRowTop(itemCount, rowHeightPx, rowOffsetsPx)
+        - getRowTop(endIndex, rowHeightPx, rowOffsetsPx),
     });
   }, [
     isEnabled,
@@ -134,6 +139,21 @@ export default function useVirtualizedEntryWindow({
       recomputeRef.current();
     });
   }, []);
+
+  // For a row outside the window, which has no element to scroll into view: scrolls the least that
+  // brings it into view, as scrollIntoView({ block: "nearest" }) would, and the scroll then moves
+  // the window onto it. The top `topInsetPx` of the view count as hidden (under a sticky header).
+  const scrollRowIntoView = useCallback((index, topInsetPx = 0) => {
+    const scrollContainer = scrollContainerRef.current;
+    const listTop = getOffsetTopWithinContainer(scrollContainer, listStartAnchorRef?.current);
+    const rowTop = listTop + getRowTop(index, rowHeightPx, rowOffsetsPx);
+    const rowBottom = listTop + getRowTop(index + 1, rowHeightPx, rowOffsetsPx);
+    if (rowTop < scrollContainer.scrollTop + topInsetPx) {
+      scrollContainer.scrollTop = rowTop - topInsetPx;
+    } else if (rowBottom > scrollContainer.scrollTop + scrollContainer.clientHeight) {
+      scrollContainer.scrollTop = rowBottom - scrollContainer.clientHeight;
+    }
+  }, [listStartAnchorRef, rowHeightPx, rowOffsetsPx, scrollContainerRef]);
 
   useEffect(() => {
     recomputeWindow();
@@ -179,5 +199,6 @@ export default function useVirtualizedEntryWindow({
   return useMemo(() => ({
     ...windowState,
     scheduleRecompute,
-  }), [scheduleRecompute, windowState]);
+    scrollRowIntoView,
+  }), [scheduleRecompute, scrollRowIntoView, windowState]);
 }

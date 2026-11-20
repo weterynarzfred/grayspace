@@ -10,6 +10,7 @@ export default function FilesystemPanelGridContent({
   columnCount = 1,
   minCellWidthPx = 72,
   previewSizePx = 22,
+  rowHeightPx = 62,
   containerRef = undefined,
   anchorRef = undefined,
   topSpacerHeight = 0,
@@ -32,44 +33,39 @@ export default function FilesystemPanelGridContent({
         "--grid-cols": columnCount,
         "--grid-min-cell-width": `${minCellWidthPx}px`,
         "--grid-preview-size": `${previewSizePx}px`,
+        "--grid-row-height": `${rowHeightPx}px`,
       }}
     >
-      <div ref={anchorRef} className={styles.gridAnchor} aria-hidden />
+      <div ref={anchorRef} aria-hidden />
       {isWindowingEnabled && topSpacerHeight > 0 && (
-        <div
-          className={styles.gridSpacer}
-          style={{ height: `${topSpacerHeight}px` }}
-          aria-hidden
-        />
+        <div style={{ height: `${topSpacerHeight}px` }} aria-hidden />
       )}
-      {entries.map((entry) => {
-        const isConfigFolder = entry.is_dir && entry.name.toLowerCase() === ".grayspace";
-        const isConfig = isConfigFolder || workspaceFolderPathSet.has(entry.path);
-        return (
-          <GridEntryCell
-            key={entry.path}
-            paneId={paneId}
-            entry={entry}
-            isSelected={selectedPathSet.has(entry.path)}
-            isConfig={isConfig}
-            isRenaming={entry.path === renamingPath}
-            thumbnailSrc={thumbnailSrcByPath[entry.path] ?? ""}
-            drag={drag}
-            onEntryClick={onEntryClick}
-            onEntryDoubleClick={onEntryDoubleClick}
-            onEntryMiddleClick={onEntryMiddleClick}
-            onEntryContextMenu={onEntryContextMenu}
-            onEntryRenameSubmit={onEntryRenameSubmit}
-            onEntryRenameCancel={onEntryRenameCancel}
-          />
-        );
-      })}
+      <div className={styles.gridCells}>
+        {entries.map((entry) => {
+          const isConfigFolder = entry.is_dir && entry.name.toLowerCase() === ".grayspace";
+          const isConfig = isConfigFolder || workspaceFolderPathSet.has(entry.path);
+          return (
+            <GridEntryCell
+              key={entry.path}
+              paneId={paneId}
+              entry={entry}
+              isSelected={selectedPathSet.has(entry.path)}
+              isConfig={isConfig}
+              isRenaming={entry.path === renamingPath}
+              thumbnailSrc={thumbnailSrcByPath[entry.path] ?? ""}
+              drag={drag}
+              onEntryClick={onEntryClick}
+              onEntryDoubleClick={onEntryDoubleClick}
+              onEntryMiddleClick={onEntryMiddleClick}
+              onEntryContextMenu={onEntryContextMenu}
+              onEntryRenameSubmit={onEntryRenameSubmit}
+              onEntryRenameCancel={onEntryRenameCancel}
+            />
+          );
+        })}
+      </div>
       {isWindowingEnabled && bottomSpacerHeight > 0 && (
-        <div
-          className={styles.gridSpacer}
-          style={{ height: `${bottomSpacerHeight}px` }}
-          aria-hidden
-        />
+        <div style={{ height: `${bottomSpacerHeight}px` }} aria-hidden />
       )}
     </div>
   );

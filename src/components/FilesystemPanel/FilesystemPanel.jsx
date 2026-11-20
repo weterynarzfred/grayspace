@@ -208,6 +208,7 @@ function FilesystemPanel({
     topSpacerHeight,
     bottomSpacerHeight,
     scheduleRecompute: scheduleEntryWindowRecompute,
+    scrollRowIntoView: scrollEntryRowIntoView,
   } = useVirtualizedEntryWindow({
     itemCount: virtualRowCount,
     rowHeightPx: entryRowHeightPx,
@@ -223,6 +224,7 @@ function FilesystemPanel({
   const renderedRows = isEntryWindowingEnabled ? visibleRows : treeRows;
   const visibleEntries = useMemo(() => renderedRows.map((row) => row.entry), [renderedRows]);
 
+  const isDetailsView = viewType === "details" && isBrowsing;
   const isGridView = viewType === "grid" && isBrowsing;
   const isFoldableGridView = viewType === "foldable-grid" && isBrowsing;
   const isTileView = isGridView || isFoldableGridView;
@@ -250,6 +252,7 @@ function FilesystemPanel({
     topSpacerHeight: gridTopSpacerHeight,
     bottomSpacerHeight: gridBottomSpacerHeight,
     scheduleRecompute: scheduleGridWindowRecompute,
+    scrollRowIntoView: scrollGridRowIntoView,
   } = useVirtualizedEntryWindow({
     itemCount: gridRowCount,
     rowHeightPx: gridRowHeightPx,
@@ -322,6 +325,34 @@ function FilesystemPanel({
   let getVerticalNeighbourPath;
   if (isFoldableGridView) getVerticalNeighbourPath = foldableGrid.getVerticalNeighbourPath;
   else if (isGridView) getVerticalNeighbourPath = getGridVerticalNeighbourPath;
+  // An arrow key or a rename can go to an entry outside the rendered window of a long list. The
+  // view on screen scrolls to where the entry's row (or line) is, and the window follows the scroll.
+  const scrollToUnrenderedPath = useCallback((path) => {
+    if (isFoldableGridView) {
+      foldableGrid.scrollEntryIntoView(path);
+      return;
+    }
+    const rowIndex = viewRows.findIndex((row) => row.entry.path === path);
+    if (isGridView) {
+      scrollGridRowIntoView(Math.floor(rowIndex / gridColumns));
+      return;
+    }
+    // The details header sticks over the top of the view: a row coming in from above stops below
+    // it, where the body's scroll padding ends (.detailsPanelBody), as with scrollIntoView.
+    const headerInsetPx = isDetailsView
+      ? Number.parseFloat(getComputedStyle(panelScrollRef.current).scrollPaddingTop)
+      : 0;
+    scrollEntryRowIntoView(rowIndex, headerInsetPx);
+  }, [
+    foldableGrid.scrollEntryIntoView,
+    gridColumns,
+    isDetailsView,
+    isFoldableGridView,
+    isGridView,
+    scrollEntryRowIntoView,
+    scrollGridRowIntoView,
+    viewRows,
+  ]);
   const {
     treeData,
     selectedEntryPaths,
@@ -363,6 +394,8 @@ function FilesystemPanel({
     selectionFocusPath,
     getVerticalNeighbourPath,
     canOpenFoldersWithArrows: !isGridView,
+    hasMoreEntries,
+    scrollToUnrenderedPath,
     drivePaths: drives.map((drive) => drive.path),
     treeRows: viewRows,
     isBrowsing,
@@ -770,7 +803,7 @@ function FilesystemPanel({
     </PanelHeader>
     <div
       ref={panelScrollRef}
-      className={`${shellStyles.panelBody} ${styles.panelScrollBody} ${isTileView ? styles.gridPanelBody : ""}`}
+      className={`${shellStyles.panelBody} ${styles.panelScrollBody} ${isTileView ? styles.gridPanelBody : ""} ${isDetailsView ? styles.detailsPanelBody : ""}`}
       data-testid="filesystem-panel-scroll-container"
       data-panel-scroll="true"
       onClick={handlePanelBackgroundClick}
@@ -861,6 +894,7 @@ function FilesystemPanel({
           columnCount: gridColumns,
           minCellWidthPx: gridMinCellWidthPx,
           previewSizePx: gridPreviewPx,
+          rowHeightPx: gridRowHeightPx,
           anchorRef: gridAnchorRef,
           topSpacerHeight: gridTopSpacerHeight,
           bottomSpacerHeight: gridBottomSpacerHeight,
